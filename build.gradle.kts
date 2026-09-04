@@ -4,5 +4,15 @@ plugins {
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.ktlint) apply false
 }
 
+tasks.register("quality") {
+    group = "verification"
+    description = "Runs formatting checks for every Kotlin module."
+    dependsOn(
+        ":app:ktlintCheck",
+        ":audio-opus:ktlintCheck",
+        ":ts3-protocol:ktlintCheck",
+    )
+}

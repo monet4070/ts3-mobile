@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ktlint)
 }
 
 android {
@@ -12,8 +13,8 @@ android {
         applicationId = "io.github.ts3mobile.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.9.0-m8"
+        versionCode = 11
+        versionName = "0.11.0-m10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -44,14 +45,27 @@ android {
     }
 
     packaging {
-        resources.excludes += setOf(
-            "META-INF/DEPENDENCIES",
-            "META-INF/LICENSE",
-            "META-INF/LICENSE.txt",
-            "META-INF/NOTICE",
-            "META-INF/NOTICE.txt",
-        )
+        resources.excludes +=
+            setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+            )
     }
+}
+
+// Lock the resolved dependency graph of every configuration to the committed
+// gradle.lockfile. The dependencyLocking block only sets policy;
+// resolutionStrategy.activateDependencyLocking() is what attaches the lock
+// state to each configuration. See docs/decisions/0004-take-ownership-of-ts3j-dependency.md.
+dependencyLocking {
+    lockMode.set(LockMode.STRICT)
+}
+
+configurations.all {
+    resolutionStrategy.activateDependencyLocking()
 }
 
 dependencies {

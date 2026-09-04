@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ktlint)
 }
 
 android {
@@ -39,6 +40,18 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+// Lock the resolved dependency graph of every configuration to the committed
+// gradle.lockfile. The dependencyLocking block only sets policy;
+// resolutionStrategy.activateDependencyLocking() is what attaches the lock
+// state to each configuration. See docs/decisions/0004-take-ownership-of-ts3j-dependency.md.
+dependencyLocking {
+    lockMode.set(LockMode.STRICT)
+}
+
+configurations.all {
+    resolutionStrategy.activateDependencyLocking()
 }
 
 dependencies {

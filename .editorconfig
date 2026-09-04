@@ -1,0 +1,8 @@
+root = true
+
+[*.{kt,kts}]
+ktlint_code_style = ktlint_official
+# Compose uses PascalCase for @Composable functions and Android Keystore
+# constants are intentionally kept readable in their local scope.
+ktlint_standard_function-naming = disabled
+ktlint_standard_property-naming = disabled
