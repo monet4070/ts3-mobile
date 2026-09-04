@@ -9,15 +9,12 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import io.github.ts3mobile.protocol.VoiceFrame
 import io.github.ts3mobile.protocol.sanitizedFailureTypes
-import java.util.ArrayDeque
-import java.util.TreeMap
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
-import kotlin.math.min
 
 class OpusAudioPlayer(context: Context) : AutoCloseable {
     private val audioManager = context.getSystemService(AudioManager::class.java)
@@ -183,7 +180,7 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
         track: AudioTrack,
         playbackControl: PlaybackControl,
     ) {
-        val talkers = mutableMapOf<Int, TalkerState>()
+        val talkers = mutableMapOf<Int, TalkerJitterPipeline>()
         var outputStarted = false
         var nextTickNanos = 0L
         try {
@@ -250,7 +247,7 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
                 if (mixed == null) {
                     talkers.values
                         .filter { it.isFinishedTalkspurt() }
-                        .forEach(TalkerState::finishTalkspurt)
+                        .forEach(TalkerJitterPipeline::finishTalkspurt)
                     stopOutput(track)
                     outputStarted = false
                     continue
@@ -282,7 +279,7 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
     }
 
     private fun drainInput(
-        talkers: MutableMap<Int, TalkerState>,
+        talkers: MutableMap<Int, TalkerJitterPipeline>,
         first: QueuedFrame,
         limit: Int,
     ) {
@@ -291,7 +288,7 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
     }
 
     private fun drainAvailableInput(
-        talkers: MutableMap<Int, TalkerState>,
+        talkers: MutableMap<Int, TalkerJitterPipeline>,
         limit: Int,
     ): Int {
         var count = 0
@@ -304,7 +301,7 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
     }
 
     private fun ingestFrame(
-        talkers: MutableMap<Int, TalkerState>,
+        talkers: MutableMap<Int, TalkerJitterPipeline>,
         queued: QueuedFrame,
     ) {
         val clientId = queued.frame.clientId
@@ -317,10 +314,10 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
         if (discontinuityClients.remove(clientId)) {
             talkers.remove(clientId)?.close()
         }
-        talkers.getOrPut(clientId, ::TalkerState).offer(queued)
+        talkers.getOrPut(clientId) { TalkerJitterPipeline(decodedPacketCount) }.offer(queued)
     }
 
-    private fun applyDiscontinuities(talkers: MutableMap<Int, TalkerState>) {
+    private fun applyDiscontinuities(talkers: MutableMap<Int, TalkerJitterPipeline>) {
         val iterator = discontinuityClients.iterator()
         while (iterator.hasNext()) {
             val clientId = iterator.next()
@@ -330,7 +327,7 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
     }
 
     private fun mixNextTick(
-        talkers: MutableMap<Int, TalkerState>,
+        talkers: MutableMap<Int, TalkerJitterPipeline>,
         now: Long,
     ): ShortArray? {
         val inputs = ArrayList<ParticipantGainMixer.Input>(talkers.size)
@@ -339,7 +336,7 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
             val (clientId, talker) = iterator.next()
             try {
                 talker.fillPcm(now)
-                talker.pcm.read(MIX_TICK_SAMPLES).takeIf { it.isNotEmpty() }?.let { samples ->
+                talker.readPcm(TalkerJitterPipeline.MIX_TICK_SAMPLES).takeIf { it.isNotEmpty() }?.let { samples ->
                     inputs +=
                         ParticipantGainMixer.Input(
                             samples = samples,
@@ -355,7 +352,7 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
             }
         }
 
-        val output = ParticipantGainMixer.mix(inputs, MIX_TICK_SAMPLES)
+        val output = ParticipantGainMixer.mix(inputs, TalkerJitterPipeline.MIX_TICK_SAMPLES)
         if (output.isEmpty()) return null
         if (loggedFirstPcm.compareAndSet(false, true)) {
             System.err.println(
@@ -368,7 +365,7 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
     }
 
     private fun removeIdleTalkers(
-        talkers: MutableMap<Int, TalkerState>,
+        talkers: MutableMap<Int, TalkerJitterPipeline>,
         now: Long,
     ) {
         val iterator = talkers.iterator()
@@ -381,8 +378,8 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
         }
     }
 
-    private fun resetTalkers(talkers: MutableMap<Int, TalkerState>) {
-        talkers.values.forEach(TalkerState::close)
+    private fun resetTalkers(talkers: MutableMap<Int, TalkerJitterPipeline>) {
+        talkers.values.forEach(TalkerJitterPipeline::close)
         talkers.clear()
         discontinuityClients.clear()
     }
@@ -463,192 +460,20 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
         runCatching { audioTrack?.setVolume(volume) }
     }
 
-    private inner class TalkerState : AutoCloseable {
-        val pcm = PcmFifo(PCM_FIFO_CAPACITY_SAMPLES)
-        private val decoder = NativeOpusDecoder()
-        private val pending = TreeMap<Long, QueuedFrame>()
-        private val sequenceUnwrapper = PacketSequenceUnwrapper()
-        private var expectedSequence: Long? = null
-        private var firstArrivalNanos: Long? = null
-        private var started = false
-        private var lastFrameSamples = DEFAULT_PACKET_SAMPLES
-        private var missingRun = 0
-
-        var lastArrivalNanos: Long = System.nanoTime()
-            private set
-
-        fun offer(queued: QueuedFrame) {
-            val raw = queued.frame.packetId
-            var extended = sequenceUnwrapper.unwrap(raw)
-            val expected = expectedSequence
-            if (expected != null && extended - expected > MAX_FORWARD_PACKET_GAP) {
-                resetPipeline(clearSequence = true)
-                extended = sequenceUnwrapper.unwrap(raw)
-            }
-            if (expectedSequence?.let { extended < it } == true || pending.containsKey(extended)) return
-            if (pending.size >= MAX_PENDING_PACKETS) {
-                resetPipeline(clearSequence = false)
-            }
-
-            pending[extended] = queued
-            if (firstArrivalNanos == null) firstArrivalNanos = queued.arrivalNanos
-            lastArrivalNanos = queued.arrivalNanos
-        }
-
-        fun readyToStart(now: Long): Boolean {
-            if (pcm.availableSamples > 0) return true
-            if (started) return pending.isNotEmpty()
-            val firstArrival = firstArrivalNanos ?: return false
-            return pending.isNotEmpty() && now - firstArrival >= INITIAL_HOLD_NANOS
-        }
-
-        fun fillPcm(now: Long) {
-            if (!started) {
-                if (!readyToStart(now)) return
-                expectedSequence = pending.firstKey()
-                started = true
-            }
-
-            while (pcm.availableSamples < PCM_TARGET_SAMPLES) {
-                var expected = expectedSequence ?: break
-                while (pending.isNotEmpty() && pending.firstKey() < expected) {
-                    pending.pollFirstEntry()
-                }
-
-                val packet = pending.remove(expected)
-                if (packet != null) {
-                    val decoded = decoder.decode(packet.frame.encodedData)
-                    if (decoded.isNotEmpty()) {
-                        pcm.add(decoded)
-                        lastFrameSamples = decoded.size
-                        decodedPacketCount.incrementAndGet()
-                    }
-                    expectedSequence = expected + 1
-                    missingRun = 0
-                    continue
-                }
-
-                val nextSequence = pending.firstKeyOrNull() ?: break
-                val gap = nextSequence - expected
-                if (gap > MAX_CONCEALED_PACKETS || missingRun >= MAX_CONCEALED_PACKETS) {
-                    decoder.reset()
-                    expectedSequence = nextSequence
-                    missingRun = 0
-                    continue
-                }
-                if (pcm.availableSamples >= MIX_TICK_SAMPLES) break
-
-                pcm.add(decoder.decode(null, lastFrameSamples))
-                expected++
-                expectedSequence = expected
-                missingRun++
-            }
-        }
-
-        fun isFinishedTalkspurt(): Boolean = started && pending.isEmpty() && pcm.availableSamples == 0
-
-        fun finishTalkspurt() {
-            decoder.reset()
-            expectedSequence = null
-            firstArrivalNanos = null
-            started = false
-            missingRun = 0
-        }
-
-        override fun close() {
-            pending.clear()
-            pcm.clear()
-            decoder.close()
-        }
-
-        private fun resetPipeline(clearSequence: Boolean) {
-            decoder.reset()
-            pending.clear()
-            pcm.clear()
-            expectedSequence = null
-            firstArrivalNanos = null
-            started = false
-            missingRun = 0
-            lastFrameSamples = DEFAULT_PACKET_SAMPLES
-            if (clearSequence) {
-                sequenceUnwrapper.reset()
-            }
-        }
-    }
-
-    private class PcmFifo(private val capacity: Int) {
-        private val chunks = ArrayDeque<ShortArray>()
-        private var firstChunkOffset = 0
-
-        var availableSamples: Int = 0
-            private set
-
-        fun add(samples: ShortArray) {
-            val accepted = min(samples.size, capacity - availableSamples)
-            if (accepted <= 0) return
-            chunks.addLast(if (accepted == samples.size) samples else samples.copyOf(accepted))
-            availableSamples += accepted
-        }
-
-        fun read(maxSamples: Int): ShortArray {
-            val sampleCount = min(maxSamples, availableSamples)
-            if (sampleCount == 0) return ShortArray(0)
-            val output = ShortArray(sampleCount)
-            var outputOffset = 0
-            while (outputOffset < sampleCount) {
-                val first = chunks.first()
-                val copied = min(sampleCount - outputOffset, first.size - firstChunkOffset)
-                first.copyInto(
-                    destination = output,
-                    destinationOffset = outputOffset,
-                    startIndex = firstChunkOffset,
-                    endIndex = firstChunkOffset + copied,
-                )
-                outputOffset += copied
-                firstChunkOffset += copied
-                availableSamples -= copied
-                if (firstChunkOffset == first.size) {
-                    chunks.removeFirst()
-                    firstChunkOffset = 0
-                }
-            }
-            return output
-        }
-
-        fun clear() {
-            chunks.clear()
-            firstChunkOffset = 0
-            availableSamples = 0
-        }
-    }
-
-    private data class QueuedFrame(
-        val frame: VoiceFrame,
-        val arrivalNanos: Long,
-    )
-
     private class PlaybackControl {
         val running = AtomicBoolean(true)
     }
 
     companion object {
         private const val SAMPLE_RATE = 48_000
-        private const val MIX_TICK_SAMPLES = 480
-        private const val DEFAULT_PACKET_SAMPLES = 960
-        private const val PCM_TARGET_SAMPLES = 2_880
-        private const val PCM_FIFO_CAPACITY_SAMPLES = 5_760
         private const val INPUT_QUEUE_CAPACITY = 256
         private const val MAX_INPUT_DRAIN_PER_TICK = 256
-        private const val MAX_PENDING_PACKETS = 64
-        private const val MAX_CONCEALED_PACKETS = 3
-        private const val MAX_FORWARD_PACKET_GAP = 64
         private const val IDLE_POLL_MS = 10L
         private const val STOP_JOIN_TIMEOUT_MS = 1_000L
-        private const val TARGET_AUDIO_TRACK_BUFFER_BYTES = MIX_TICK_SAMPLES * 2 * 4
+        private const val TARGET_AUDIO_TRACK_BUFFER_BYTES = TalkerJitterPipeline.MIX_TICK_SAMPLES * 2 * 4
         private const val MIN_PARTICIPANT_GAIN = 0f
         private const val DEFAULT_PARTICIPANT_GAIN = 1f
         private const val MAX_PARTICIPANT_GAIN = 2f
-        private val INITIAL_HOLD_NANOS = TimeUnit.MILLISECONDS.toNanos(60)
         private val MIX_TICK_NANOS = TimeUnit.MILLISECONDS.toNanos(10)
         private val MAX_TICK_LAG_NANOS = TimeUnit.MILLISECONDS.toNanos(50)
         private val TALKER_IDLE_NANOS = TimeUnit.SECONDS.toNanos(2)
@@ -657,8 +482,6 @@ class OpusAudioPlayer(context: Context) : AutoCloseable {
             previous: Int,
             current: Int,
         ): Int = signedPacketDistance16(previous, current)
-
-        private fun <V> TreeMap<Long, V>.firstKeyOrNull(): Long? = if (isEmpty()) null else firstKey()
     }
 }
 

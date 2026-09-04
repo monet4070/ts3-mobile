@@ -36,6 +36,13 @@ and audio behavior is still being validated.
 
 ### Changed
 
+- Extracted the per-talker jitter/reordering/concealment pipeline from
+  OpusAudioPlayer into a JVM-testable TalkerJitterPipeline behind an
+  OpusPacketDecoder port (the native decoder remains the production
+  implementation); OpusAudioPlayer dropped from 668 to 492 lines with frame
+  timing unchanged, and the reordering, duplicate/stale rejection,
+  initial-hold gating, talkspurt-finish and packet-concealment behavior now
+  has fake-decoder unit coverage.
 - Extracted the connection/reconnect state machine from TeamSpeakService into
   a JVM-testable ConnectionCoordinator behind an internal host seam, per
   ADR-0005; TeamSpeakService dropped from 1018 to 494 lines and now owns only

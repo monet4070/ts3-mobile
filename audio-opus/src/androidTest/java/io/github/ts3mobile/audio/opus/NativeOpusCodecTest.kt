@@ -20,7 +20,7 @@ class NativeOpusCodecTest {
             }
 
         val encoded = NativeOpusEncoder().use { encoder -> encoder.encode(pcm) }
-        val decoded = NativeOpusDecoder().use { decoder -> decoder.decode(encoded) }
+        val decoded = NativeOpusDecoder().use { decoder -> decoder.decode(encoded, FRAME_SAMPLES) }
 
         assertTrue(encoded.isNotEmpty())
         assertEquals(FRAME_SAMPLES, decoded.size)
@@ -41,7 +41,7 @@ class NativeOpusCodecTest {
             NativeOpusDecoder().use { decoder ->
                 repeat(SOAK_FRAMES) {
                     val encoded = encoder.encode(pcm)
-                    val decoded = decoder.decode(encoded)
+                    val decoded = decoder.decode(encoded, FRAME_SAMPLES)
                     encodedBytes += encoded.size
                     assertEquals(FRAME_SAMPLES, decoded.size)
                 }

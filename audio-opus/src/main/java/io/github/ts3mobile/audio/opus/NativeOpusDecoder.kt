@@ -1,18 +1,18 @@
 package io.github.ts3mobile.audio.opus
 
-internal class NativeOpusDecoder : AutoCloseable {
+internal class NativeOpusDecoder : OpusPacketDecoder {
     private var handle = nativeCreate(SAMPLE_RATE, CHANNEL_COUNT)
 
-    fun decode(
+    override fun decode(
         packet: ByteArray?,
-        frameSize: Int = MAX_FRAME_SIZE,
+        frameSize: Int,
     ): ShortArray {
         check(handle != 0L) { "Opus decoder is closed" }
-        require(frameSize in 1..MAX_FRAME_SIZE) { "Invalid Opus frame size: $frameSize" }
+        require(frameSize in 1..OpusPacketDecoder.MAX_FRAME_SIZE) { "Invalid Opus frame size: $frameSize" }
         return nativeDecode(handle, packet, frameSize)
     }
 
-    fun reset() {
+    override fun reset() {
         check(handle != 0L) { "Opus decoder is closed" }
         nativeReset(handle)
     }
@@ -27,7 +27,6 @@ internal class NativeOpusDecoder : AutoCloseable {
     private companion object {
         const val SAMPLE_RATE = 48_000
         const val CHANNEL_COUNT = 1
-        const val MAX_FRAME_SIZE = 5_760
 
         init {
             System.loadLibrary("ts3opus_jni")

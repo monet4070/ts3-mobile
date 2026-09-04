@@ -96,7 +96,7 @@ from this project-specific decomposition policy.
 | --- | --- | --- |
 | `ConnectionCoordinator.kt` | 678 lines: the connection/reconnect state machine is now isolated but still mixes attempt orchestration, the listener, the reconnect loop and channel restore | Extract the reconnect loop and channel restore next; then event mapping |
 | `TeamSpeakService.kt` | 494 lines: binder, notification, participant audio settings, routing glue and component ownership — cohesive but still above the boundary | Extract the foreground-notification controller once the coordinator follow-ups land |
-| `OpusAudioPlayer.kt` | Playback lifecycle is cohesive, but jitter/talker buffering and Android output are independently testable | Extract the talker jitter pipeline and `AudioTrack` creation without changing frame timing |
+| `OpusAudioPlayer.kt` | 492 lines: playback lifecycle, focus and AudioTrack output; the per-talker jitter pipeline now lives in `TalkerJitterPipeline` | Extract `AudioTrack` creation/output control once the coordinator follow-ups land |
 | `OpusMicrophoneCapture.kt` | Capture lifecycle is cohesive; audio-effect setup and capture measurements are secondary concerns | Extract the effect chain and measurement helpers while keeping the capture thread single-owner |
 | `Ts3jSessionClient.kt` | Protocol facade also maps ts3j callbacks and failures | Extract event and failure adapters while retaining the JVM-only public facade |
 | `AudioDeviceRouter.kt` | Slightly above the boundary but still one cohesive routing responsibility | Extract device classification only if routing families or platform branches grow |
