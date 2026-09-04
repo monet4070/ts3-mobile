@@ -47,16 +47,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class TeamSpeakService : Service() {
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val sessionMutex = Mutex()
-    private val reconnectPolicy = ReconnectPolicy()
-    private val diagnosticsRecorder = DiagnosticsRecorder()
-    private val sessionGeneration = SessionGeneration()
-    private val mutableState = MutableStateFlow(TeamSpeakServiceState())
+internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
+    override val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    override val sessionMutex = Mutex()
+    override val reconnectPolicy = ReconnectPolicy()
+    override val diagnosticsRecorder = DiagnosticsRecorder()
+    override val sessionGeneration = SessionGeneration()
+    override val mutableState = MutableStateFlow(TeamSpeakServiceState())
     private val networkAvailable = MutableStateFlow(false)
     private val state = mutableState.asStateFlow()
     private val binder = SessionBinder()
+    private lateinit var connectionCoordinator: ConnectionCoordinator
 
     private lateinit var identityVault: IdentityVault
     private lateinit var audioPlayer: OpusAudioPlayer
@@ -118,9 +119,10 @@ class TeamSpeakService : Service() {
                 refreshDiagnostics = ::refreshDiagnostics,
                 updateForegroundType = ::updateForegroundType,
                 updateNotification = ::updateNotification,
-                conciseMessage = { it.conciseMessage() },
+                conciseMessage = { conciseMessage(it) },
             )
         audioRouter = AudioDeviceRouter(applicationContext, ::onAudioRoutingChanged)
+        connectionCoordinator = ConnectionCoordinator(this)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
         networkAvailable.value = hasUsableNetwork()
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
@@ -144,10 +146,14 @@ class TeamSpeakService : Service() {
                     ),
                     includeMicrophone = false,
                 )
+                connectionCoordinator.beginConnection(config)
                 beginConnection(config)
             }
 
-            ACTION_DISCONNECT -> requestDisconnect()
+            ACTION_DISCONNECT -> {
+                connectionCoordinator.requestDisconnect()
+                requestDisconnect()
+            }
         }
         return START_NOT_STICKY
     }
@@ -276,7 +282,7 @@ class TeamSpeakService : Service() {
                 val status =
                     ConnectionStatus(
                         ConnectionPhase.ERROR,
-                        error.conciseMessage(),
+                        conciseMessage(error),
                         retryable = error.isRetryableConnectionFailure(),
                     )
                 mutableState.update { current ->
@@ -379,7 +385,7 @@ class TeamSpeakService : Service() {
         override fun onSnapshotChanged(snapshot: SessionSnapshot) {
             if (!isListenerActive(this)) return
             mutableState.update { it.copy(snapshot = snapshot) }
-            applyParticipantAudioSettings(snapshot)
+            applyParticipantAudioSettingsInternal(snapshot)
             if (connected) {
                 lastChannel =
                     ChannelRestorePolicy.afterSnapshot(
@@ -601,7 +607,7 @@ class TeamSpeakService : Service() {
             }
     }
 
-    private fun refreshDiagnostics() {
+    override fun refreshDiagnostics() {
         val snapshot = diagnosticsRecorder.snapshot()
         mutableState.update { current -> current.copy(diagnostics = snapshot) }
     }
@@ -630,7 +636,7 @@ class TeamSpeakService : Service() {
                     mutableState.update {
                         it.copy(
                             switchingChannelId = null,
-                            channelError = "恢复频道失败：${error.conciseMessage()}",
+                            channelError = "恢复频道失败：${conciseMessage(error)}",
                         )
                     }
                 }
@@ -712,16 +718,82 @@ class TeamSpeakService : Service() {
             }
             current.copy(participantAudioSettings = settings)
         }
-        applyParticipantAudioSettings(mutableState.value.snapshot)
+        applyParticipantAudioSettingsInternal(mutableState.value.snapshot)
     }
 
-    private fun applyParticipantAudioSettings(snapshot: SessionSnapshot) {
+    private fun applyParticipantAudioSettingsInternal(snapshot: SessionSnapshot) {
         val settings = mutableState.value.participantAudioSettings
         audioPlayer.replaceParticipantGains(
             snapshot.participants.associate { participant ->
                 participant.id to (settings[participant.audioControlKey()]?.gain ?: 1f)
             },
         )
+    }
+
+    override fun resetParticipantGains() {
+        audioPlayer.replaceParticipantGains(emptyMap())
+    }
+
+    override fun resetMicrophoneForConnection() {
+        microphoneController.resetForConnection()
+    }
+
+    override suspend fun stopMicrophoneCapture() {
+        microphoneController.stopSerialized()
+    }
+
+    override suspend fun createIdentity(): String = identityVault.getOrCreate()
+
+    override fun startAudioRouting() {
+        audioRouter.start()
+    }
+
+    override fun stopAudioRouting() {
+        audioRouter.stop()
+    }
+
+    override fun applySelectedPlaybackMuted() {
+        audioPlayer.setMuted(mutableState.value.playbackMuted)
+    }
+
+    override fun startPlayback() {
+        audioPlayer.start()
+    }
+
+    override fun stopPlayback() {
+        audioPlayer.stop()
+    }
+
+    override fun clearPlaybackMuted() {
+        audioPlayer.setMuted(false)
+    }
+
+    override fun attachMicrophoneTo(session: Ts3SessionClient) {
+        microphoneController.attachTo(session)
+    }
+
+    override fun stopMicrophoneImmediately() {
+        microphoneController.stopImmediately()
+    }
+
+    override fun reconcileMicrophone() {
+        microphoneController.reconcile()
+    }
+
+    override fun applyParticipantAudioSettings(snapshot: SessionSnapshot) {
+        applyParticipantAudioSettingsInternal(snapshot)
+    }
+
+    override fun submitVoiceFrame(frame: VoiceFrame) {
+        audioPlayer.submit(frame)
+    }
+
+    override fun removeForegroundNotification() {
+        stopForeground(STOP_FOREGROUND_REMOVE)
+    }
+
+    override fun requestStopSelf() {
+        stopSelf()
     }
 
     private fun onAudioRoutingChanged(routing: AudioRoutingState) {
@@ -764,7 +836,7 @@ class TeamSpeakService : Service() {
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types)
     }
 
-    private fun updateNotification() {
+    override fun updateNotification() {
         val current = mutableState.value
         if (current.status.phase !in foregroundPhases) return
         val manager = getSystemService(NotificationManager::class.java)
@@ -856,13 +928,13 @@ class TeamSpeakService : Service() {
         )
     }
 
-    private fun Throwable.conciseMessage(): String {
-        var cursor: Throwable? = this
+    override fun conciseMessage(error: Throwable): String {
+        var cursor: Throwable? = error
         while (cursor != null) {
             cursor.message?.takeIf(String::isNotBlank)?.let { return it.take(180) }
             cursor = cursor.cause
         }
-        return this::class.java.simpleName
+        return error::class.java.simpleName
     }
 
     private fun joinChannel(
@@ -896,7 +968,7 @@ class TeamSpeakService : Service() {
                 mutableState.update { state ->
                     state.copy(
                         switchingChannelId = null,
-                        channelError = "切换频道失败：${error.conciseMessage()}",
+                        channelError = "切换频道失败：${conciseMessage(error)}",
                     )
                 }
             }
