@@ -8,9 +8,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AudioEffect
-import android.media.audiofx.AutomaticGainControl
 import android.os.Process
 import io.github.ts3mobile.protocol.EncodedVoiceSource
 import io.github.ts3mobile.protocol.sanitizedFailureTypes
@@ -18,7 +16,6 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
-import kotlin.math.sqrt
 
 class OpusMicrophoneCapture(
     context: Context,
@@ -29,7 +26,6 @@ class OpusMicrophoneCapture(
     private val lifecycleLock = Any()
     private val encodedFrameCount = AtomicLong(0L)
     private val providedFrameCount = AtomicLong(0L)
-    private val capturedNonZeroPcm = AtomicBoolean(false)
 
     @Volatile
     private var control: CaptureControl? = null
@@ -112,7 +108,7 @@ class OpusMicrophoneCapture(
                     System.err.println("TS3_AUDIO: microphone device preference was rejected")
                 }
             }
-            val audioEffects = createAudioEffects(record.audioSessionId)
+            val audioEffects = MicrophoneAudioEffects.create(record.audioSessionId)
 
             try {
                 record.startRecording()
@@ -120,7 +116,7 @@ class OpusMicrophoneCapture(
                     "Unable to start microphone"
                 }
             } catch (error: Throwable) {
-                audioEffects.forEach { runCatching { it.release() } }
+                MicrophoneAudioEffects.release(audioEffects)
                 record.release()
                 denoiser.close()
                 encoder.close()
@@ -130,7 +126,6 @@ class OpusMicrophoneCapture(
             encodedFrames.clear()
             encodedFrameCount.set(0L)
             providedFrameCount.set(0L)
-            capturedNonZeroPcm.set(false)
             val newControl = CaptureControl()
             control = newControl
             audioRecord = record
@@ -189,17 +184,11 @@ class OpusMicrophoneCapture(
         audioEffects: List<AudioEffect>,
         captureControl: CaptureControl,
     ) {
+        val stats = CaptureSessionStats()
         val denoiserPcm = ShortArray(RNNOISE_FRAME_SAMPLES)
         val opusPcm = ShortArray(OPUS_FRAME_SAMPLES)
         var denoiserOffset = 0
         var opusOffset = 0
-        var denoisedFrameCount = 0L
-        var totalDenoiseNanos = 0L
-        var maxDenoiseNanos = 0L
-        var vadTotal = 0.0
-        var inputEnergy = 0.0
-        var outputEnergy = 0.0
-        var measuredSamples = 0L
         try {
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
             while (captureControl.running.get()) {
@@ -216,27 +205,11 @@ class OpusMicrophoneCapture(
                 denoiserOffset += read
                 if (denoiserOffset < denoiserPcm.size) continue
 
-                var rawNonZero = false
-                denoiserPcm.forEach { sample ->
-                    val value = sample.toDouble()
-                    inputEnergy += value * value
-                    if (sample.toInt() != 0) rawNonZero = true
-                }
-                if (!capturedNonZeroPcm.get() && rawNonZero) {
-                    capturedNonZeroPcm.set(true)
-                }
+                stats.noteRawFrame(denoiserPcm)
                 val denoiseStarted = System.nanoTime()
                 val vadProbability = denoiser.processInPlace(denoiserPcm)
                 val denoiseNanos = System.nanoTime() - denoiseStarted
-                totalDenoiseNanos += denoiseNanos
-                maxDenoiseNanos = max(maxDenoiseNanos, denoiseNanos)
-                vadTotal += vadProbability
-                denoiserPcm.forEach { sample ->
-                    val value = sample.toDouble()
-                    outputEnergy += value * value
-                }
-                measuredSamples += denoiserPcm.size
-                denoisedFrameCount++
+                stats.noteDenoisedFrame(denoiserPcm, denoiseNanos, vadProbability)
 
                 denoiserPcm.copyInto(opusPcm, destinationOffset = opusOffset)
                 opusOffset += denoiserPcm.size
@@ -269,43 +242,13 @@ class OpusMicrophoneCapture(
             encodedFrames.clear()
             val encodedCount = encodedFrameCount.get()
             if (encodedCount > 0L) {
-                val averageDenoiseMicros =
-                    if (denoisedFrameCount == 0L) {
-                        0L
-                    } else {
-                        totalDenoiseNanos / denoisedFrameCount / 1_000L
-                    }
-                val inputRms =
-                    if (measuredSamples == 0L) {
-                        0
-                    } else {
-                        sqrt(inputEnergy / measuredSamples).toInt()
-                    }
-                val outputRms =
-                    if (measuredSamples == 0L) {
-                        0
-                    } else {
-                        sqrt(outputEnergy / measuredSamples).toInt()
-                    }
-                val averageVad =
-                    if (denoisedFrameCount == 0L) {
-                        0.0
-                    } else {
-                        vadTotal / denoisedFrameCount
-                    }
                 System.err.println(
-                    "TS3_AUDIO: microphone session ended " +
-                        "(encoded=$encodedCount, provided=${providedFrameCount.get()}, " +
-                        "nonZero=${capturedNonZeroPcm.get()}, " +
-                        "rnnoiseAvg=${averageDenoiseMicros}us, " +
-                        "rnnoiseMax=${maxDenoiseNanos / 1_000L}us, " +
-                        "inputRms=$inputRms, outputRms=$outputRms, " +
-                        "vad=${"%.3f".format(averageVad)})",
+                    stats.summaryLine(encodedCount, providedFrameCount.get()),
                 )
             }
             runCatching { record.stop() }
             runCatching { record.release() }
-            audioEffects.forEach { runCatching { it.release() } }
+            MicrophoneAudioEffects.release(audioEffects)
             denoiser.close()
             encoder.close()
             synchronized(lifecycleLock) {
@@ -318,48 +261,6 @@ class OpusMicrophoneCapture(
 
     private class CaptureControl {
         val running = AtomicBoolean(true)
-    }
-
-    private fun createAudioEffects(audioSessionId: Int): List<AudioEffect> =
-        buildList {
-            if (AcousticEchoCanceler.isAvailable()) {
-                createConfiguredEffect("acoustic echo canceler", enabled = true) {
-                    AcousticEchoCanceler.create(audioSessionId)
-                }?.let(::add)
-            }
-            if (AutomaticGainControl.isAvailable()) {
-                createConfiguredEffect("automatic gain control", enabled = false) {
-                    AutomaticGainControl.create(audioSessionId)
-                }?.let(::add)
-            }
-        }
-
-    private fun <T : AudioEffect> createConfiguredEffect(
-        label: String,
-        enabled: Boolean,
-        factory: () -> T?,
-    ): T? {
-        val effect =
-            try {
-                factory()
-            } catch (error: Throwable) {
-                System.err.println(
-                    "TS3_AUDIO: $label unavailable: ${error.sanitizedFailureTypes()}",
-                )
-                return null
-            } ?: return null
-
-        return try {
-            effect.enabled = enabled
-            System.err.println("TS3_AUDIO: ${if (enabled) "enabled" else "disabled"} $label")
-            effect
-        } catch (error: Throwable) {
-            runCatching { effect.release() }
-            System.err.println(
-                "TS3_AUDIO: failed to configure $label: ${error.sanitizedFailureTypes()}",
-            )
-            null
-        }
     }
 
     private companion object {

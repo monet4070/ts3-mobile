@@ -36,6 +36,15 @@ and audio behavior is still being validated.
 
 ### Changed
 
+- Completed the architecture decomposition plan for the oversized first-party
+  files: the reconnect loop and channel-restore bookkeeping moved out of
+  ConnectionCoordinator into ReconnectEngine and ChannelRestoreTracker
+  (678 to 568 lines), ts3j event-to-snapshot mapping moved into
+  Ts3jEventAdapter (Ts3jSessionClient 487 to 405 lines), and the microphone
+  effect chain and measurement bookkeeping moved into MicrophoneAudioEffects
+  and CaptureSessionStats (OpusMicrophoneCapture 373 to 275 lines, now below
+  the review boundary). All existing tests pass unchanged; the tracker and
+  stats gained dedicated JVM tests.
 - Extracted the per-talker jitter/reordering/concealment pipeline from
   OpusAudioPlayer into a JVM-testable TalkerJitterPipeline behind an
   OpusPacketDecoder port (the native decoder remains the production

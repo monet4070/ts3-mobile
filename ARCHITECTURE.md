@@ -94,15 +94,15 @@ from this project-specific decomposition policy.
 
 | File | Current responsibility assessment | Planned extraction |
 | --- | --- | --- |
-| `ConnectionCoordinator.kt` | 678 lines: the connection/reconnect state machine is now isolated but still mixes attempt orchestration, the listener, the reconnect loop and channel restore | Extract the reconnect loop and channel restore next; then event mapping |
+| `ConnectionCoordinator.kt` | 568 lines: attempt orchestration, the session listener and binder-facing entry points; the reconnect loop and channel-restore bookkeeping are now extracted | Extract the session listener and event handling next |
 | `TeamSpeakService.kt` | 494 lines: binder, notification, participant audio settings, routing glue and component ownership — cohesive but still above the boundary | Extract the foreground-notification controller once the coordinator follow-ups land |
 | `OpusAudioPlayer.kt` | 492 lines: playback lifecycle, focus and AudioTrack output; the per-talker jitter pipeline now lives in `TalkerJitterPipeline` | Extract `AudioTrack` creation/output control once the coordinator follow-ups land |
-| `OpusMicrophoneCapture.kt` | Capture lifecycle is cohesive; audio-effect setup and capture measurements are secondary concerns | Extract the effect chain and measurement helpers while keeping the capture thread single-owner |
-| `Ts3jSessionClient.kt` | Protocol facade also maps ts3j callbacks and failures | Extract event and failure adapters while retaining the JVM-only public facade |
+| `OpusMicrophoneCapture.kt` | 275 lines: capture lifecycle and worker thread; the effect chain (`MicrophoneAudioEffects`) and measurement bookkeeping (`CaptureSessionStats`) are extracted | Below the boundary — no further split needed |
+| `Ts3jSessionClient.kt` | 405 lines: connection, disconnect and voice forwarding; event-to-snapshot mapping lives in `Ts3jEventAdapter` | Extract the failure/diagnostics helpers if the facade grows again |
 | `AudioDeviceRouter.kt` | Slightly above the boundary but still one cohesive routing responsibility | Extract device classification only if routing families or platform branches grow |
 
-The extraction order is the coordinator's reconnect/restore follow-ups, then
-playback buffering, capture effects, then protocol mapping. Each step must
+The extraction order is the coordinator's listener/event handling, then
+playback output control, then protocol failure adapters. Each step must
 preserve the public service
 binder and protocol facade, session-generation rejection of stale callbacks,
 the bounded audio queue, and existing test fixtures. This avoids combining a
