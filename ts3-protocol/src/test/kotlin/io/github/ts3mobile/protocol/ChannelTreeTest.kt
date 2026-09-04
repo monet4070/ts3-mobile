@@ -6,11 +6,12 @@ import org.junit.Test
 class ChannelTreeTest {
     @Test
     fun followsTeamSpeakPreviousSiblingOrderingAndDepth() {
-        val channels = listOf(
-            channel(id = 12, parent = 0, after = 10),
-            channel(id = 21, parent = 10, after = 0),
-            channel(id = 10, parent = 0, after = 0),
-        )
+        val channels =
+            listOf(
+                channel(id = 12, parent = 0, after = 10),
+                channel(id = 21, parent = 10, after = 0),
+                channel(id = 10, parent = 0, after = 0),
+            )
 
         val rows = ChannelTree.flatten(channels)
 
@@ -26,7 +27,11 @@ class ChannelTreeTest {
         assertEquals(0, rows.single().depth)
     }
 
-    private fun channel(id: Int, parent: Int, after: Int) = Ts3Channel(
+    private fun channel(
+        id: Int,
+        parent: Int,
+        after: Int,
+    ) = Ts3Channel(
         id = id,
         parentId = parent,
         orderAfterId = after,
@@ -36,4 +41,3 @@ class ChannelTreeTest {
         isDefault = false,
     )
 }
-

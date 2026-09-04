@@ -15,5 +15,6 @@ data class VoiceFrame(
 
 interface EncodedVoiceSource {
     fun isReady(): Boolean
+
     fun pollEncodedFrame(): ByteArray?
 }

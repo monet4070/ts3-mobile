@@ -1,7 +1,8 @@
 package io.github.ts3mobile.protocol
 
-import com.github.manevolent.ts3j.command.CommandException
 import com.github.manevolent.ts3j.audio.Microphone
+import com.github.manevolent.ts3j.command.CommandException
+import com.github.manevolent.ts3j.enums.CodecType
 import com.github.manevolent.ts3j.event.ChannelCreateEvent
 import com.github.manevolent.ts3j.event.ChannelDeletedEvent
 import com.github.manevolent.ts3j.event.ChannelEditedEvent
@@ -13,24 +14,27 @@ import com.github.manevolent.ts3j.event.ClientMovedEvent
 import com.github.manevolent.ts3j.event.ClientUpdatedEvent
 import com.github.manevolent.ts3j.event.DisconnectedEvent
 import com.github.manevolent.ts3j.event.TS3Listener
-import com.github.manevolent.ts3j.enums.CodecType
+import com.github.manevolent.ts3j.protocol.PacketKind
 import com.github.manevolent.ts3j.protocol.packet.PacketBody0Voice
 import com.github.manevolent.ts3j.protocol.packet.PacketBody1VoiceWhisper
-import com.github.manevolent.ts3j.protocol.PacketKind
-import com.github.manevolent.ts3j.protocol.socket.client.LocalTeamspeakClientSocket
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.TimeoutException
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
 
 class Ts3jSessionClient : Ts3SessionClient {
-    private val generation = AtomicLong(0L)
+    private val socketFactory: Ts3jClientSocketFactory
+    private val generation = SessionGenerationGate()
     private val snapshotStore = SessionSnapshotStore()
 
+    constructor() : this(Ts3jClientSocketFactory { LocalTeamspeakClientSocketAdapter() })
+
+    internal constructor(socketFactory: Ts3jClientSocketFactory) {
+        this.socketFactory = socketFactory
+    }
+
     @Volatile
-    private var socket: LocalTeamspeakClientSocket? = null
+    private var socket: Ts3jClientSocket? = null
 
     @Volatile
     private var listener: Ts3SessionListener? = null
@@ -47,33 +51,32 @@ class Ts3jSessionClient : Ts3SessionClient {
         val validationError = normalized.validationError()
         require(validationError == null) { validationError ?: "Invalid server configuration" }
 
-        disconnectQuietly()
-        val token = generation.incrementAndGet()
-        this.listener = listener
-        snapshotStore.clear()
+        val (token, previousSocket) =
+            generation.begin { nextToken ->
+                val previous = socket
+                socket = null
+                this.listener = listener
+                snapshotStore.clear()
+                nextToken to previous
+            }
+        disconnectQuietly(previousSocket)
         emitStatus(token, ConnectionStatus(ConnectionPhase.CONNECTING))
 
         val identity = Ts3IdentityCodec.decode(identityMaterial)
-        val client = LocalTeamspeakClientSocket()
-        val asynchronousFailure = AtomicReference<Throwable?>(null)
-        socket = client
-
+        val client = socketFactory.create()
+        val connectionAttempt = ConnectionAttemptGate()
         client.setIdentity(identity)
         client.setNickname(normalized.nickname)
         client.setHWID(identity.uid.toBase64())
         client.setMicrophone(voiceSource?.toMicrophone())
         client.setExceptionHandler { error ->
-            if (token == generation.get()) {
-                asynchronousFailure.compareAndSet(null, error)
-                logFailure("background protocol failure", error)
-                emitStatus(
-                    token,
-                    ConnectionStatus(
-                        ConnectionPhase.ERROR,
-                        error.conciseMessage(),
-                        retryable = error.isRetryableConnectionFailure(),
-                    ),
-                )
+            val delivery =
+                generation.withCurrent(token) {
+                    connectionAttempt.recordFailure(error)
+                } ?: return@setExceptionHandler
+            logFailure("background protocol failure", error)
+            if (delivery == ConnectionAttemptGate.FailureDelivery.EMIT_NOW) {
+                emitConnectionFailureStatus(token, error)
             }
         }
         client.setVoiceHandler { packet ->
@@ -91,17 +94,25 @@ class Ts3jSessionClient : Ts3SessionClient {
             }
         }
         client.addListener(createListener(client, token))
+        if (generation.withCurrent(token) {
+                socket = client
+                true
+            } != true
+        ) {
+            runCatching { client.close() }
+            return
+        }
 
         try {
-            val address = InetSocketAddress(
-                InetAddress.getByName(normalized.host),
-                normalized.port,
-            )
-            logDiagnostic("connecting to ${address.address.hostAddress}:${address.port}")
+            val address =
+                InetSocketAddress(
+                    InetAddress.getByName(normalized.host),
+                    normalized.port,
+                )
+            logDiagnostic("starting TeamSpeak UDP connection")
             client.connect(address, normalized.password.takeIf(String::isNotBlank), CONNECT_TIMEOUT_MS)
-            if (token != generation.get()) {
+            if (!generation.isCurrent(token)) {
                 runCatching { client.close() }
-                if (socket === client) socket = null
                 return
             }
             try {
@@ -109,46 +120,56 @@ class Ts3jSessionClient : Ts3SessionClient {
             } catch (error: CommandException) {
                 logDiagnostic("event subscriptions unavailable: ${error.conciseMessage()}")
             }
-            if (token != generation.get()) {
+            if (!generation.isCurrent(token)) {
                 runCatching { client.close() }
-                if (socket === client) socket = null
                 return
             }
-            publishSnapshot(token)
-            emitStatus(token, ConnectionStatus(ConnectionPhase.CONNECTED))
-        } catch (error: Throwable) {
-            val reportedError = asynchronousFailure.get() ?: error.withNetworkDiagnostics(client)
-            logFailure("connection failed", reportedError)
-            if (token == generation.get()) {
-                emitStatus(
-                    token,
-                    ConnectionStatus(
-                        ConnectionPhase.ERROR,
-                        reportedError.conciseMessage(),
-                        retryable = reportedError.isRetryableConnectionFailure(),
-                    ),
-                )
+            val connectedEmissionStarted =
+                generation.withCurrent(token) {
+                    connectionAttempt.beginConnectedEmission()
+                } ?: return
+            if (!connectedEmissionStarted) {
+                throw checkNotNull(connectionAttempt.failureOrNull())
             }
+            try {
+                publishSnapshot(token)
+                emitStatus(token, ConnectionStatus(ConnectionPhase.CONNECTED))
+            } finally {
+                connectionAttempt.completeConnectedEmission()?.let { deferredFailure ->
+                    emitConnectionFailureStatus(token, deferredFailure)
+                }
+            }
+        } catch (error: Throwable) {
+            val reportedError = connectionAttempt.failureOrNull() ?: error.withNetworkDiagnostics(client)
+            logFailure("connection failed", reportedError)
+            reportConnectionFailure(token, connectionAttempt, reportedError)
             runCatching { client.close() }
-            if (socket === client) socket = null
+            generation.withCurrent(token) {
+                if (socket === client) socket = null
+            }
             throw reportedError
         }
     }
 
     override fun disconnect(reason: String) {
-        val current = socket ?: run {
-            listener?.onStatusChanged(ConnectionStatus())
+        val (current, targetListener) =
+            generation.invalidate {
+                val previous = socket
+                socket = null
+                snapshotStore.clear()
+                previous to listener
+            }
+        if (current == null) {
+            targetListener?.onStatusChanged(ConnectionStatus())
             return
         }
-        generation.incrementAndGet()
-        listener?.onStatusChanged(ConnectionStatus(ConnectionPhase.DISCONNECTING))
+        targetListener?.onStatusChanged(ConnectionStatus(ConnectionPhase.DISCONNECTING))
         try {
             runCatching { current.disconnect(reason) }
         } finally {
             runCatching { current.close() }
-            if (socket === current) socket = null
-            listener?.onSnapshotChanged(SessionSnapshot.Empty)
-            listener?.onStatusChanged(ConnectionStatus())
+            targetListener?.onSnapshotChanged(SessionSnapshot.Empty)
+            targetListener?.onStatusChanged(ConnectionStatus())
         }
     }
 
@@ -157,112 +178,159 @@ class Ts3jSessionClient : Ts3SessionClient {
         socket?.setMicrophone(source?.toMicrophone())
     }
 
-    override fun joinChannel(channelId: Int, password: String) {
+    override fun joinChannel(
+        channelId: Int,
+        password: String,
+    ) {
         require(channelId > 0) { "Invalid channel ID" }
-        val current = socket?.takeIf { it.isConnected }
-            ?: error("Not connected to a TeamSpeak server")
+        val token = generation.currentToken()
+        val current =
+            generation.withCurrent(token) {
+                socket?.takeIf { it.isConnected }
+            }
+                ?: error("Not connected to a TeamSpeak server")
         current.joinChannel(channelId, password)
-        snapshotStore.updateParticipant(current.clientId) { participant ->
-            participant.copy(channelId = channelId)
-        }
-        publishSnapshot(generation.get())
+        val snapshotUpdated =
+            generation.withCurrent(token) {
+                if (socket !== current) return@withCurrent false
+                snapshotStore.updateParticipant(current.clientId) { participant ->
+                    participant.copy(channelId = channelId)
+                }
+                true
+            } == true
+        if (snapshotUpdated) publishSnapshot(token)
     }
 
     override fun close() {
-        generation.incrementAndGet()
-        val current = socket
-        socket = null
+        val current =
+            generation.invalidate {
+                val previous = socket
+                socket = null
+                snapshotStore.clear()
+                voiceSource = null
+                listener = null
+                previous
+            }
         runCatching { current?.close() }
-        snapshotStore.clear()
-        voiceSource = null
-        listener = null
     }
 
     private fun createListener(
-        client: LocalTeamspeakClientSocket,
+        client: Ts3jClientSocket,
         token: Long,
-    ): TS3Listener = object : TS3Listener {
-        override fun onDisconnected(event: DisconnectedEvent) {
-            if (token != generation.get()) return
-            socket = null
-            runCatching { client.close() }
-            snapshotStore.clear()
-            listener?.onSnapshotChanged(SessionSnapshot.Empty)
-            emitStatus(
-                token,
-                ConnectionStatus(
-                    ConnectionPhase.DISCONNECTED,
-                    "Server closed the connection (${event.reasonId})",
-                    retryable = event.reasonId !in TERMINAL_DISCONNECT_REASONS,
-                ),
-            )
-        }
+    ): TS3Listener =
+        object : TS3Listener {
+            override fun onDisconnected(event: DisconnectedEvent) {
+                val targetListener =
+                    generation.withCurrent(token) {
+                        socket = null
+                        snapshotStore.clear()
+                        listener
+                    } ?: return
+                runCatching { client.close() }
+                targetListener.onSnapshotChanged(SessionSnapshot.Empty)
+                targetListener.onStatusChanged(
+                    ConnectionStatus(
+                        ConnectionPhase.DISCONNECTED,
+                        "Server closed the connection (${event.reasonId})",
+                        retryable = event.reasonId !in TERMINAL_DISCONNECT_REASONS,
+                    ),
+                )
+            }
 
-        override fun onChannelList(event: ChannelListEvent) {
-            snapshotStore.putChannel(event.map.toChannel(event.channelId))
-            publishSnapshotWhenConnected(client, token)
-        }
+            override fun onChannelList(event: ChannelListEvent) {
+                applySnapshotMutation(token) {
+                    snapshotStore.putChannel(event.map.toTs3Channel(event.channelId))
+                }?.let { publishSnapshotWhenConnected(client, token) }
+            }
 
-        override fun onClientJoin(event: ClientJoinEvent) {
-            if (event.clientType == REGULAR_CLIENT_TYPE) {
-                snapshotStore.putParticipant(event.toParticipant())
-                publishSnapshotWhenConnected(client, token)
+            override fun onClientJoin(event: ClientJoinEvent) {
+                if (event.clientType == REGULAR_CLIENT_TYPE) {
+                    applySnapshotMutation(token) {
+                        snapshotStore.putParticipant(event.toParticipant())
+                    }?.let { publishSnapshotWhenConnected(client, token) }
+                }
+            }
+
+            override fun onClientLeave(event: ClientLeaveEvent) {
+                applySnapshotMutation(token) {
+                    snapshotStore.removeParticipant(event.clientId)
+                }?.let { publishSnapshotWhenConnected(client, token) }
+            }
+
+            override fun onClientMoved(event: ClientMovedEvent) {
+                applySnapshotMutation(token) {
+                    snapshotStore.updateParticipant(event.clientId) { it.copy(channelId = event.targetChannelId) }
+                }?.let { publishSnapshotWhenConnected(client, token) }
+            }
+
+            override fun onClientChanged(event: ClientUpdatedEvent) {
+                applySnapshotMutation(token) {
+                    snapshotStore.updateParticipant(event.clientId) { it.withTeamSpeakUpdates(event.map) }
+                }?.let { publishSnapshotWhenConnected(client, token) }
+            }
+
+            override fun onChannelCreate(event: ChannelCreateEvent) {
+                applySnapshotMutation(token) {
+                    snapshotStore.putChannel(event.map.toTs3Channel(event.channelId))
+                }?.let { publishSnapshotWhenConnected(client, token) }
+            }
+
+            override fun onChannelDeleted(event: ChannelDeletedEvent) {
+                applySnapshotMutation(token) {
+                    snapshotStore.removeChannel(event.channelId)
+                }?.let { publishSnapshotWhenConnected(client, token) }
+            }
+
+            override fun onChannelEdit(event: ChannelEditedEvent) {
+                applySnapshotMutation(token) {
+                    snapshotStore.updateChannel(event.channelId) { it.withTeamSpeakUpdates(event.map) }
+                }?.let { publishSnapshotWhenConnected(client, token) }
+            }
+
+            override fun onChannelMoved(event: ChannelMovedEvent) {
+                applySnapshotMutation(token) {
+                    snapshotStore.updateChannel(event.channelId) {
+                        it.copy(parentId = event.channelParentId, orderAfterId = event.channelOrder)
+                    }
+                }?.let { publishSnapshotWhenConnected(client, token) }
             }
         }
 
-        override fun onClientLeave(event: ClientLeaveEvent) {
-            snapshotStore.removeParticipant(event.clientId)
-            publishSnapshotWhenConnected(client, token)
-        }
-
-        override fun onClientMoved(event: ClientMovedEvent) {
-            snapshotStore.updateParticipant(event.clientId) { it.copy(channelId = event.targetChannelId) }
-            publishSnapshotWhenConnected(client, token)
-        }
-
-        override fun onClientChanged(event: ClientUpdatedEvent) {
-            snapshotStore.updateParticipant(event.clientId) { it.withUpdates(event.map) }
-            publishSnapshotWhenConnected(client, token)
-        }
-
-        override fun onChannelCreate(event: ChannelCreateEvent) {
-            snapshotStore.putChannel(event.map.toChannel(event.channelId))
-            publishSnapshotWhenConnected(client, token)
-        }
-
-        override fun onChannelDeleted(event: ChannelDeletedEvent) {
-            snapshotStore.removeChannel(event.channelId)
-            publishSnapshotWhenConnected(client, token)
-        }
-
-        override fun onChannelEdit(event: ChannelEditedEvent) {
-            snapshotStore.updateChannel(event.channelId) { it.withUpdates(event.map) }
-            publishSnapshotWhenConnected(client, token)
-        }
-
-        override fun onChannelMoved(event: ChannelMovedEvent) {
-            snapshotStore.updateChannel(event.channelId) {
-                it.copy(parentId = event.channelParentId, orderAfterId = event.channelOrder)
-            }
-            publishSnapshotWhenConnected(client, token)
-        }
-    }
-
-    private fun publishSnapshotWhenConnected(client: LocalTeamspeakClientSocket, token: Long) {
+    private fun publishSnapshotWhenConnected(
+        client: Ts3jClientSocket,
+        token: Long,
+    ) {
         if (client.isConnected) publishSnapshot(token)
     }
 
     private fun publishSnapshot(token: Long) {
-        if (token != generation.get()) return
-        val ownClientId = socket?.takeIf { it.isConnected }?.clientId
-        listener?.onSnapshotChanged(snapshotStore.snapshot().copy(ownClientId = ownClientId))
+        val pending =
+            generation.withCurrent(token) {
+                val ownClientId = socket?.takeIf { it.isConnected }?.clientId
+                listener to snapshotStore.snapshot().copy(ownClientId = ownClientId)
+            } ?: return
+        pending.first?.onSnapshotChanged(pending.second)
     }
 
-    private fun emitStatus(token: Long, status: ConnectionStatus) {
-        if (token == generation.get()) listener?.onStatusChanged(status)
+    private fun emitStatus(
+        token: Long,
+        status: ConnectionStatus,
+    ) {
+        generation.withCurrent(token) { listener }?.onStatusChanged(status)
     }
 
-    private fun forwardVoicePacket(packet: PacketBody0Voice, token: Long) {
+    private fun applySnapshotMutation(
+        token: Long,
+        mutation: () -> Unit,
+    ): Unit? =
+        generation.withCurrent(token) {
+            mutation()
+        }
+
+    private fun forwardVoicePacket(
+        packet: PacketBody0Voice,
+        token: Long,
+    ) {
         forwardVoiceFrame(
             clientId = packet.clientId,
             packetId = packet.packetId,
@@ -273,7 +341,10 @@ class Ts3jSessionClient : Ts3SessionClient {
         )
     }
 
-    private fun forwardWhisperPacket(packet: PacketBody1VoiceWhisper, token: Long) {
+    private fun forwardWhisperPacket(
+        packet: PacketBody1VoiceWhisper,
+        token: Long,
+    ) {
         forwardVoiceFrame(
             clientId = packet.clientId,
             packetId = packet.packetId,
@@ -292,13 +363,15 @@ class Ts3jSessionClient : Ts3SessionClient {
         isWhisper: Boolean,
         token: Long,
     ) {
-        if (token != generation.get()) return
-        val codec = when (codecType) {
-            CodecType.OPUS_VOICE -> VoiceCodec.OPUS_VOICE
-            CodecType.OPUS_MUSIC -> VoiceCodec.OPUS_MUSIC
-            else -> return
-        }
-        listener?.onVoiceFrame(
+        if (!generation.isCurrent(token)) return
+        val codec =
+            when (codecType) {
+                CodecType.OPUS_VOICE -> VoiceCodec.OPUS_VOICE
+                CodecType.OPUS_MUSIC -> VoiceCodec.OPUS_MUSIC
+                else -> return
+            }
+        val targetListener = generation.withCurrent(token) { listener } ?: return
+        targetListener.onVoiceFrame(
             VoiceFrame(
                 clientId = clientId,
                 packetId = packetId,
@@ -309,65 +382,64 @@ class Ts3jSessionClient : Ts3SessionClient {
         )
     }
 
-    private fun disconnectQuietly() {
-        val current = socket ?: return
+    private fun disconnectQuietly(current: Ts3jClientSocket?) {
+        current ?: return
         runCatching { current.disconnect("Replacing connection") }
         runCatching { current.close() }
-        if (socket === current) socket = null
     }
 
-    private fun EncodedVoiceSource.toMicrophone(): Microphone = object : Microphone {
-        override fun isReady(): Boolean = runCatching { this@toMicrophone.isReady() }
-            .getOrDefault(false)
-
-        override fun getCodec(): CodecType = CodecType.OPUS_VOICE
-
-        override fun provide(): ByteArray = runCatching { this@toMicrophone.pollEncodedFrame() }
-            .getOrNull()
-            ?: EMPTY_AUDIO_FRAME
+    private fun reportConnectionFailure(
+        token: Long,
+        attempt: ConnectionAttemptGate,
+        error: Throwable,
+    ) {
+        val delivery =
+            generation.withCurrent(token) {
+                attempt.recordFailure(error)
+            }
+        if (delivery == ConnectionAttemptGate.FailureDelivery.EMIT_NOW) {
+            emitConnectionFailureStatus(token, error)
+        }
     }
 
-    private fun Map<String, String>.toChannel(id: Int) = Ts3Channel(
-        id = id,
-        parentId = intValue("pid") ?: intValue("cpid") ?: 0,
-        orderAfterId = intValue("channel_order") ?: 0,
-        name = get("channel_name").orEmpty(),
-        clientCount = 0,
-        hasPassword = booleanValue("channel_flag_password") ?: false,
-        isDefault = booleanValue("channel_flag_default") ?: false,
-    )
+    private fun emitConnectionFailureStatus(
+        token: Long,
+        error: Throwable,
+    ) {
+        emitStatus(
+            token,
+            ConnectionStatus(
+                ConnectionPhase.ERROR,
+                error.conciseMessage(),
+                retryable = error.isRetryableConnectionFailure(),
+            ),
+        )
+    }
 
-    private fun ClientJoinEvent.toParticipant() = Ts3Participant(
-        id = clientId,
-        channelId = clientTargetId,
-        nickname = clientNickname,
-        isTalking = isClientTalking,
-        isInputMuted = isClientInputMuted,
-        isOutputMuted = isClientOutputMuted,
-        uniqueIdentifier = uniqueClientIdentifier,
-    )
+    private fun EncodedVoiceSource.toMicrophone(): Microphone =
+        object : Microphone {
+            override fun isReady(): Boolean =
+                runCatching { this@toMicrophone.isReady() }
+                    .getOrDefault(false)
 
-    private fun Ts3Channel.withUpdates(values: Map<String, String>) = copy(
-        parentId = values.intValue("pid") ?: values.intValue("cpid") ?: parentId,
-        orderAfterId = values.intValue("channel_order") ?: orderAfterId,
-        name = values["channel_name"] ?: name,
-        hasPassword = values.booleanValue("channel_flag_password") ?: hasPassword,
-        isDefault = values.booleanValue("channel_flag_default") ?: isDefault,
-    )
+            override fun getCodec(): CodecType = CodecType.OPUS_VOICE
 
-    private fun Ts3Participant.withUpdates(values: Map<String, String>) = copy(
-        nickname = values["client_nickname"] ?: nickname,
-        uniqueIdentifier = values["client_unique_identifier"] ?: uniqueIdentifier,
-        isTalking = values.booleanValue("client_flag_talking")
-            ?: values.booleanValue("status")
-            ?: isTalking,
-        isInputMuted = values.booleanValue("client_input_muted") ?: isInputMuted,
-        isOutputMuted = values.booleanValue("client_output_muted") ?: isOutputMuted,
-    )
+            override fun provide(): ByteArray =
+                runCatching { this@toMicrophone.pollEncodedFrame() }
+                    .getOrNull()
+                    ?: EMPTY_AUDIO_FRAME
+        }
 
-    private fun Map<String, String>.intValue(key: String): Int? = get(key)?.toIntOrNull()
-
-    private fun Map<String, String>.booleanValue(key: String): Boolean? = get(key)?.let { it == "1" }
+    private fun ClientJoinEvent.toParticipant() =
+        Ts3Participant(
+            id = clientId,
+            channelId = clientTargetId,
+            nickname = clientNickname,
+            isTalking = isClientTalking,
+            isInputMuted = isClientInputMuted,
+            isOutputMuted = isClientOutputMuted,
+            uniqueIdentifier = uniqueClientIdentifier,
+        )
 
     private fun Throwable.conciseMessage(): String {
         var cursor: Throwable? = this
@@ -378,16 +450,17 @@ class Ts3jSessionClient : Ts3SessionClient {
         return this::class.java.simpleName
     }
 
-    private fun Throwable.withNetworkDiagnostics(client: LocalTeamspeakClientSocket): Throwable {
+    private fun Throwable.withNetworkDiagnostics(client: Ts3jClientSocket): Throwable {
         if (this !is TimeoutException) return this
 
         val sentPackets = PacketKind.entries.sumOf { client.getStatistics(it).sentPackets }
         val receivedPackets = PacketKind.entries.sumOf { client.getStatistics(it).receivedPackets }
-        val detail = if (receivedPackets == 0) {
-            "the server sent no TeamSpeak response"
-        } else {
-            "sent $sentPackets and received $receivedPackets UDP packets before the handshake stalled"
-        }
+        val detail =
+            if (receivedPackets == 0) {
+                "the server sent no TeamSpeak response"
+            } else {
+                "sent $sentPackets and received $receivedPackets UDP packets before the handshake stalled"
+            }
         return IOException("TeamSpeak handshake timed out: $detail", this)
     }
 
@@ -395,9 +468,14 @@ class Ts3jSessionClient : Ts3SessionClient {
         System.err.println("TS3_DIAG: $message")
     }
 
-    private fun logFailure(stage: String, error: Throwable) {
-        System.err.println("TS3_DIAG: $stage: ${error.conciseMessage()}")
-        error.printStackTrace(System.err)
+    private fun logFailure(
+        stage: String,
+        error: Throwable,
+    ) {
+        System.err.println(
+            "TS3_DIAG: $stage; types=${error.sanitizedFailureTypes()}; " +
+                "retryable=${error.isRetryableConnectionFailure()}",
+        )
     }
 
     private companion object {

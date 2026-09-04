@@ -1,0 +1,7 @@
+# operation\targuments
+CHANNEL\t10\t0\t0\tLobby\tfalse\ttrue
+CHANNEL\t20\t0\t10\tGames\ttrue\tfalse
+PARTICIPANT\t7\t10\tAlice\tstable-alice
+MOVE\t7\t20
+CHANNEL_NAME\t20\tGames Room
+REMOVE_PARTICIPANT\t7

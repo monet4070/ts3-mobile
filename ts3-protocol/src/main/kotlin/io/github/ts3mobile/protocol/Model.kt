@@ -6,17 +6,19 @@ data class ServerConfig(
     val nickname: String,
     val password: String = "",
 ) {
-    fun normalized(): ServerConfig = copy(
-        host = host.trim(),
-        nickname = nickname.trim(),
-    )
+    fun normalized(): ServerConfig =
+        copy(
+            host = host.trim(),
+            nickname = nickname.trim(),
+        )
 
-    fun validationError(): String? = when {
-        host.trim().isEmpty() -> "Server address is required"
-        port !in 1..65535 -> "Port must be between 1 and 65535"
-        nickname.trim().length !in 3..30 -> "Nickname must contain 3 to 30 characters"
-        else -> null
-    }
+    fun validationError(): String? =
+        when {
+            host.trim().isEmpty() -> "Server address is required"
+            port !in 1..65535 -> "Port must be between 1 and 65535"
+            nickname.trim().length !in 3..30 -> "Nickname must contain 3 to 30 characters"
+            else -> null
+        }
 }
 
 enum class ConnectionPhase {

@@ -39,11 +39,12 @@ class SessionSnapshotStoreTest {
 
     @Test
     fun snapshotDerivesOwnCurrentChannel() {
-        val snapshot = SessionSnapshot(
-            channels = listOf(firstChannel, secondChannel),
-            participants = listOf(participant),
-            ownClientId = participant.id,
-        )
+        val snapshot =
+            SessionSnapshot(
+                channels = listOf(firstChannel, secondChannel),
+                participants = listOf(participant),
+                ownClientId = participant.id,
+            )
 
         assertEquals(firstChannel.id, snapshot.currentChannelId)
         assertEquals(null, snapshot.copy(ownClientId = 999).currentChannelId)

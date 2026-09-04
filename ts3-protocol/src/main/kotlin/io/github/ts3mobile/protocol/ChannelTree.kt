@@ -8,7 +8,10 @@ object ChannelTree {
         val result = mutableListOf<ChannelRow>()
         val visited = mutableSetOf<Int>()
 
-        fun append(parentId: Int, depth: Int) {
+        fun append(
+            parentId: Int,
+            depth: Int,
+        ) {
             orderedSiblings(byParent[parentId].orEmpty()).forEach { channel ->
                 if (!visited.add(channel.id)) return@forEach
                 result += ChannelRow(channel, depth)
@@ -38,11 +41,12 @@ object ChannelTree {
         var previousId = 0
 
         while (true) {
-            val next = byPrevious[previousId]
-                .orEmpty()
-                .filterNot { it.id in visited }
-                .minByOrNull(Ts3Channel::id)
-                ?: break
+            val next =
+                byPrevious[previousId]
+                    .orEmpty()
+                    .filterNot { it.id in visited }
+                    .minByOrNull(Ts3Channel::id)
+                    ?: break
             visited += next.id
             ordered += next
             previousId = next.id
@@ -52,4 +56,3 @@ object ChannelTree {
         return ordered
     }
 }
-
