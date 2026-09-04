@@ -16,4 +16,14 @@ class ReconnectPolicyTest {
         assertEquals(30_000L, policy.delayForAttempt(6))
         assertEquals(30_000L, policy.delayForAttempt(20))
     }
+
+    @Test
+    fun remainsBoundedAndMonotonicAcrossRepeatedReconnectCycles() {
+        val policy = ReconnectPolicy()
+        val delays = (1..100).map(policy::delayForAttempt)
+
+        assertEquals(delays.sorted(), delays)
+        assertEquals(30_000L, delays.last())
+        assertEquals(95, delays.count { it == 30_000L })
+    }
 }

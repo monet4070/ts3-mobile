@@ -1,6 +1,8 @@
 package io.github.ts3mobile.app
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -9,6 +11,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -20,9 +23,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakService
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
-import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.ui.MainScreen
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import io.github.ts3mobile.protocol.ServerConfig
@@ -36,37 +39,43 @@ class MainActivity : ComponentActivity() {
     private var pendingMicrophoneMode: MicrophoneMode? = null
     private var pushToTalkPressed = false
 
-    private val notificationPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) {
-        pendingConnection?.let { TeamSpeakService.connect(this, it) }
-        pendingConnection = null
-    }
-
-    private val microphonePermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        val requestedMode = pendingMicrophoneMode
-        pendingMicrophoneMode = null
-        if (granted && requestedMode != null) {
-            serviceBinder?.setMicrophoneMode(requestedMode)
-        } else if (granted && pushToTalkPressed) {
-            serviceBinder?.setPushToTalkPressed(true)
-        } else if (!granted) {
-            pushToTalkPressed = false
-            serviceBinder?.reportMicrophonePermissionDenied()
-        }
-    }
-
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            serviceBinder = binder as? TeamSpeakService.SessionBinder
+    private val notificationPermission =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) {
+            pendingConnection?.let { TeamSpeakService.connect(this, it) }
+            pendingConnection = null
         }
 
-        override fun onServiceDisconnected(name: ComponentName?) {
-            serviceBinder = null
+    private val microphonePermission =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { granted ->
+            val requestedMode = pendingMicrophoneMode
+            pendingMicrophoneMode = null
+            if (granted && requestedMode != null) {
+                serviceBinder?.setMicrophoneMode(requestedMode)
+            } else if (granted && pushToTalkPressed) {
+                serviceBinder?.setPushToTalkPressed(true)
+            } else if (!granted) {
+                pushToTalkPressed = false
+                serviceBinder?.reportMicrophonePermissionDenied()
+            }
         }
-    }
+
+    private val serviceConnection =
+        object : ServiceConnection {
+            override fun onServiceConnected(
+                name: ComponentName?,
+                binder: IBinder?,
+            ) {
+                serviceBinder = binder as? TeamSpeakService.SessionBinder
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                serviceBinder = null
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,6 +117,7 @@ class MainActivity : ComponentActivity() {
                     onJoinChannel = { channelId, password ->
                         serviceBinder?.joinChannel(channelId, password)
                     },
+                    onCopyDiagnostics = ::copyDiagnostics,
                 )
             }
         }
@@ -115,11 +125,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        isBound = bindService(
-            Intent(this, TeamSpeakService::class.java),
-            serviceConnection,
-            Context.BIND_AUTO_CREATE,
-        )
+        isBound =
+            bindService(
+                Intent(this, TeamSpeakService::class.java),
+                serviceConnection,
+                Context.BIND_AUTO_CREATE,
+            )
     }
 
     override fun onPause() {
@@ -165,7 +176,7 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.RECORD_AUDIO,
-        ) == PackageManager.PERMISSION_GRANTED
+            ) == PackageManager.PERMISSION_GRANTED
         ) {
             serviceBinder?.setPushToTalkPressed(true)
         } else {
@@ -189,5 +200,13 @@ class MainActivity : ComponentActivity() {
             pendingMicrophoneMode = null
             serviceBinder?.setMicrophoneMode(mode)
         }
+    }
+
+    private fun copyDiagnostics() {
+        val export = serviceBinder?.redactedDiagnosticsJson() ?: return
+        getSystemService(ClipboardManager::class.java).setPrimaryClip(
+            ClipData.newPlainText("TS3 Mobile diagnostics", export),
+        )
+        Toast.makeText(this, "诊断信息已复制", Toast.LENGTH_SHORT).show()
     }
 }

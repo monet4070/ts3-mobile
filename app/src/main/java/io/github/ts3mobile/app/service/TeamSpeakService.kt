@@ -1,6 +1,5 @@
 package io.github.ts3mobile.app.service
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,7 +7,6 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
@@ -22,9 +20,8 @@ import io.github.ts3mobile.app.MainActivity
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.identity.IdentityVault
 import io.github.ts3mobile.audio.opus.AudioDeviceRouter
-import io.github.ts3mobile.audio.opus.OpusAudioPlayer
-import io.github.ts3mobile.audio.opus.OpusMicrophoneCapture
 import io.github.ts3mobile.audio.opus.AudioRoutingState
+import io.github.ts3mobile.audio.opus.OpusAudioPlayer
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ServerConfig
@@ -45,17 +42,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.atomic.AtomicBoolean
 
 class TeamSpeakService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessionMutex = Mutex()
-    private val transmitMutex = Mutex()
     private val reconnectPolicy = ReconnectPolicy()
-    private val pushToTalkPressed = AtomicBoolean(false)
+    private val diagnosticsRecorder = DiagnosticsRecorder()
+    private val sessionGeneration = SessionGeneration()
     private val mutableState = MutableStateFlow(TeamSpeakServiceState())
     private val networkAvailable = MutableStateFlow(false)
     private val state = mutableState.asStateFlow()
@@ -63,7 +60,7 @@ class TeamSpeakService : Service() {
 
     private lateinit var identityVault: IdentityVault
     private lateinit var audioPlayer: OpusAudioPlayer
-    private lateinit var microphone: OpusMicrophoneCapture
+    private lateinit var microphoneController: MicrophoneController
     private lateinit var audioRouter: AudioDeviceRouter
     private lateinit var connectivityManager: ConnectivityManager
 
@@ -74,46 +71,55 @@ class TeamSpeakService : Service() {
     private var activeListener: SessionListener? = null
 
     @Volatile
-    private var connectionEpoch = 0L
-
-    @Volatile
     private var connectedOnce = false
-
-    @Volatile
-    private var userDisconnectRequested = true
 
     @Volatile
     private var restorePending = false
 
     private var desiredConfig: ServerConfig? = null
     private var identityMaterial: String? = null
-    private var lastChannel: ChannelTarget? = null
+    private var lastChannel: ChannelRestoreTarget? = null
     private var reconnectAttempt = 0
     private var connectionJob: Job? = null
     private var reconnectJob: Job? = null
     private var stableConnectionJob: Job? = null
+    private var diagnosticsRefreshJob: Job? = null
 
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            updateNetworkAvailability(true)
-        }
+    private val networkCallback =
+        object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                updateNetworkAvailability(true)
+            }
 
-        override fun onLost(network: Network) {
-            updateNetworkAvailability(hasUsableNetwork())
-        }
+            override fun onLost(network: Network) {
+                updateNetworkAvailability(hasUsableNetwork())
+            }
 
-        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-            updateNetworkAvailability(
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
-            )
+            override fun onCapabilitiesChanged(
+                network: Network,
+                capabilities: NetworkCapabilities,
+            ) {
+                updateNetworkAvailability(
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+                )
+            }
         }
-    }
 
     override fun onCreate() {
         super.onCreate()
         identityVault = IdentityVault(applicationContext)
         audioPlayer = OpusAudioPlayer(applicationContext)
-        microphone = OpusMicrophoneCapture(applicationContext, ::onMicrophoneFailure)
+        microphoneController =
+            MicrophoneController(
+                context = applicationContext,
+                scope = serviceScope,
+                state = mutableState,
+                diagnosticsRecorder = diagnosticsRecorder,
+                refreshDiagnostics = ::refreshDiagnostics,
+                updateForegroundType = ::updateForegroundType,
+                updateNotification = ::updateNotification,
+                conciseMessage = { it.conciseMessage() },
+            )
         audioRouter = AudioDeviceRouter(applicationContext, ::onAudioRoutingChanged)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
         networkAvailable.value = hasUsableNetwork()
@@ -123,7 +129,11 @@ class TeamSpeakService : Service() {
 
     override fun onBind(intent: Intent?): IBinder = binder
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         when (intent?.action) {
             ACTION_CONNECT -> {
                 val config = intent.toServerConfig() ?: return START_NOT_STICKY
@@ -143,17 +153,16 @@ class TeamSpeakService : Service() {
     }
 
     override fun onDestroy() {
-        connectionEpoch++
-        userDisconnectRequested = true
+        sessionGeneration.invalidate()
         activeListener = null
         connectionJob?.cancel()
         reconnectJob?.cancel()
         stableConnectionJob?.cancel()
+        diagnosticsRefreshJob?.cancel()
         session?.close()
         session = null
-        pushToTalkPressed.set(false)
         runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
-        microphone.close()
+        microphoneController.close()
         audioPlayer.close()
         audioRouter.close()
         serviceScope.cancel()
@@ -161,11 +170,10 @@ class TeamSpeakService : Service() {
     }
 
     private fun beginConnection(config: ServerConfig) {
-        connectionEpoch++
-        val epoch = connectionEpoch
-        userDisconnectRequested = false
+        val epoch = sessionGeneration.beginSession()
         connectedOnce = false
         reconnectAttempt = 0
+        diagnosticsRecorder.resetSession()
         desiredConfig = config
         identityMaterial = null
         lastChannel = null
@@ -178,138 +186,151 @@ class TeamSpeakService : Service() {
         val selectedMicrophoneMode = mutableState.value.microphoneMode
         val selectedPlaybackMuted = mutableState.value.playbackMuted
         audioPlayer.replaceParticipantGains(emptyMap())
-        pushToTalkPressed.set(false)
-        mutableState.value = TeamSpeakServiceState(
-            status = ConnectionStatus(ConnectionPhase.CONNECTING),
-            serverLabel = "${config.host}:${config.port}",
-            microphoneMode = selectedMicrophoneMode,
-            playbackMuted = selectedPlaybackMuted,
-            audioRouting = mutableState.value.audioRouting,
-        )
+        microphoneController.resetForConnection()
+        mutableState.value =
+            TeamSpeakServiceState(
+                status = ConnectionStatus(ConnectionPhase.CONNECTING),
+                serverLabel = "${config.host}:${config.port}",
+                microphoneMode = selectedMicrophoneMode,
+                playbackMuted = selectedPlaybackMuted,
+                audioRouting = mutableState.value.audioRouting,
+                diagnostics = diagnosticsRecorder.snapshot(),
+            )
         if (session != null) session?.close()
 
-        connectionJob = serviceScope.launch {
-            transmitMutex.withLock { stopMicrophoneLocked() }
-            when (val result = performConnectionAttempt(config, epoch, reconnecting = false)) {
-                AttemptResult.Success,
-                AttemptResult.Stale,
-                -> Unit
+        connectionJob =
+            serviceScope.launch {
+                microphoneController.stopSerialized()
+                when (val result = performConnectionAttempt(config, epoch, reconnecting = false)) {
+                    AttemptResult.Success,
+                    AttemptResult.Stale,
+                    -> Unit
 
-                is AttemptResult.Failed -> {
-                    if (connectedOnce && result.retryable) {
-                        launchReconnect(result.status, epoch)
-                    } else {
-                        finishTerminalFailure(result.status, epoch)
+                    is AttemptResult.Failed -> {
+                        if (connectedOnce && result.retryable) {
+                            launchReconnect(result.status, epoch)
+                        } else {
+                            finishTerminalFailure(result.status, epoch)
+                        }
                     }
                 }
             }
-        }
     }
 
     private suspend fun performConnectionAttempt(
         config: ServerConfig,
         epoch: Long,
         reconnecting: Boolean,
-    ): AttemptResult = sessionMutex.withLock {
-        if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
-
-        activeListener = null
-        session?.close()
-        session = null
-
-        try {
-            audioRouter.start()
-            val identity = identityMaterial ?: identityVault.getOrCreate().also {
-                identityMaterial = it
-            }
-            mutableState.update { it.copy(identityReady = true) }
-
-            audioPlayer.setMuted(mutableState.value.playbackMuted)
-            audioPlayer.replaceParticipantGains(emptyMap())
-            audioPlayer.start()
-
-            val newSession = Ts3jSessionClient()
-            val listener = SessionListener(epoch, reconnecting)
-            activeListener = listener
-            session = newSession
-            newSession.setVoiceSource(microphone)
-            newSession.connect(config, identity, listener)
-            if (!isListenerActive(listener)) {
-                newSession.close()
-                if (session === newSession) session = null
-                return@withLock if (isEpochActive(epoch)) {
-                    val status = mutableState.value.status
-                    AttemptResult.Failed(status, status.retryable)
-                } else {
-                    AttemptResult.Stale
-                }
-            }
-            if (mutableState.value.status.phase == ConnectionPhase.CONNECTED) {
-                AttemptResult.Success
-            } else {
-                val status = mutableState.value.status
-                AttemptResult.Failed(status, status.retryable && reconnecting)
-            }
-        } catch (error: Throwable) {
-            val failedSession = session
-            activeListener = null
-            failedSession?.close()
-            if (session === failedSession) session = null
+    ): AttemptResult =
+        sessionMutex.withLock {
             if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
 
-            val status = ConnectionStatus(
-                ConnectionPhase.ERROR,
-                error.conciseMessage(),
-                retryable = error.isRetryableConnectionFailure(),
-            )
-            mutableState.update { current ->
-                current.copy(
-                    status = if (reconnecting) {
-                        ConnectionStatus(
-                            ConnectionPhase.RECONNECTING,
-                            "重连失败：${status.detail.orEmpty()}".trimEnd('：'),
-                            retryable = status.retryable,
-                        )
+            diagnosticsRecorder.recordConnectionAttempt(reconnecting)
+            refreshDiagnostics()
+
+            activeListener = null
+            session?.close()
+            session = null
+
+            try {
+                audioRouter.start()
+                val identity =
+                    identityMaterial ?: identityVault.getOrCreate().also {
+                        identityMaterial = it
+                    }
+                mutableState.update { it.copy(identityReady = true) }
+
+                audioPlayer.setMuted(mutableState.value.playbackMuted)
+                audioPlayer.replaceParticipantGains(emptyMap())
+                audioPlayer.start()
+
+                val newSession = Ts3jSessionClient()
+                val listener = SessionListener(epoch, reconnecting)
+                activeListener = listener
+                session = newSession
+                microphoneController.attachTo(newSession)
+                newSession.connect(config, identity, listener)
+                if (!isListenerActive(listener)) {
+                    newSession.close()
+                    if (session === newSession) session = null
+                    return@withLock if (isEpochActive(epoch)) {
+                        val status = mutableState.value.status
+                        AttemptResult.Failed(status, status.retryable)
                     } else {
-                        status
-                    },
-                    snapshot = SessionSnapshot.Empty,
-                )
+                        AttemptResult.Stale
+                    }
+                }
+                if (mutableState.value.status.phase == ConnectionPhase.CONNECTED) {
+                    AttemptResult.Success
+                } else {
+                    val status = mutableState.value.status
+                    AttemptResult.Failed(status, status.retryable && reconnecting)
+                }
+            } catch (error: Throwable) {
+                val failedSession = session
+                activeListener = null
+                failedSession?.close()
+                if (session === failedSession) session = null
+                if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
+
+                val status =
+                    ConnectionStatus(
+                        ConnectionPhase.ERROR,
+                        error.conciseMessage(),
+                        retryable = error.isRetryableConnectionFailure(),
+                    )
+                mutableState.update { current ->
+                    current.copy(
+                        status =
+                            if (reconnecting) {
+                                ConnectionStatus(
+                                    ConnectionPhase.RECONNECTING,
+                                    "重连失败：${status.detail.orEmpty()}".trimEnd('：'),
+                                    retryable = status.retryable,
+                                )
+                            } else {
+                                status
+                            },
+                        snapshot = SessionSnapshot.Empty,
+                    )
+                }
+                diagnosticsRecorder.recordConnectionFailure(status.retryable)
+                refreshDiagnostics()
+                AttemptResult.Failed(status, status.retryable && reconnecting)
             }
-            AttemptResult.Failed(status, status.retryable && reconnecting)
         }
-    }
 
     private fun requestDisconnect() {
-        userDisconnectRequested = true
-        connectionEpoch++
+        sessionGeneration.invalidate()
         activeListener = null
         connectionJob?.cancel()
         reconnectJob?.cancel()
         stableConnectionJob?.cancel()
+        diagnosticsRefreshJob?.cancel()
         if (mutableState.value.status.phase in interruptibleConnectionPhases) {
             session?.close()
         }
         serviceScope.launch { disconnect(userInitiated = true) }
     }
 
-    private suspend fun disconnect(userInitiated: Boolean) = sessionMutex.withLock {
-        pushToTalkPressed.set(false)
-        transmitMutex.withLock { stopMicrophoneLocked() }
-        try {
-            session?.disconnect(if (userInitiated) "Disconnected by user" else "Service stopped")
-        } finally {
-            session?.close()
-            session = null
-            activeListener = null
-            audioPlayer.stop()
-            audioPlayer.setMuted(false)
-            audioRouter.stop()
-            mutableState.value = TeamSpeakServiceState()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            if (userInitiated) stopSelf()
+    private suspend fun disconnect(userInitiated: Boolean) =
+        sessionMutex.withLock {
+            microphoneController.stopSerialized()
+            try {
+                session?.disconnect(if (userInitiated) "Disconnected by user" else "Service stopped")
+            } finally {
+                session?.close()
+                session = null
+                activeListener = null
+                audioPlayer.stop()
+                audioPlayer.setMuted(false)
+                audioRouter.stop()
+                diagnosticsRefreshJob?.cancel()
+                mutableState.value = TeamSpeakServiceState()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                if (userInitiated) stopSelf()
+            }
         }
-    }
 
     private inner class SessionListener(
         val epoch: Long,
@@ -359,22 +380,31 @@ class TeamSpeakService : Service() {
             if (!isListenerActive(this)) return
             mutableState.update { it.copy(snapshot = snapshot) }
             applyParticipantAudioSettings(snapshot)
-            if (connected && !restorePending) {
-                snapshot.currentChannelId?.let { channelId ->
-                    if (lastChannel?.id != channelId) lastChannel = ChannelTarget(channelId, "")
-                }
+            if (connected) {
+                lastChannel =
+                    ChannelRestorePolicy.afterSnapshot(
+                        remembered = lastChannel,
+                        observedChannelId = snapshot.currentChannelId,
+                        restorePending = restorePending,
+                    )
             }
             updateNotification()
         }
 
         override fun onVoiceFrame(frame: VoiceFrame) {
-            if (isListenerActive(this) && connected) audioPlayer.submit(frame)
+            if (!isListenerActive(this) || !connected) {
+                diagnosticsRecorder.recordVoiceFrameDropped()
+                return
+            }
+            diagnosticsRecorder.recordVoiceFrameReceived()
+            audioPlayer.submit(frame)
         }
     }
 
     private fun onSessionConnected(listener: SessionListener) {
         if (!isListenerActive(listener)) return
         connectedOnce = true
+        diagnosticsRecorder.recordConnectionSuccess()
         mutableState.update { current ->
             current.copy(
                 status = ConnectionStatus(ConnectionPhase.CONNECTED),
@@ -384,12 +414,14 @@ class TeamSpeakService : Service() {
         }
         if (lastChannel == null) {
             mutableState.value.snapshot.currentChannelId?.let {
-                lastChannel = ChannelTarget(it, "")
+                lastChannel = ChannelRestoreTarget(it, "")
             }
         }
         scheduleStableConnectionReset(listener)
+        startDiagnosticsRefresh(listener)
+        refreshDiagnostics()
         updateNotification()
-        reconcileMicrophone()
+        microphoneController.reconcile()
         restoreLastChannelIfNeeded(listener)
     }
 
@@ -400,43 +432,52 @@ class TeamSpeakService : Service() {
         if (!isListenerActive(listener)) return
         activeListener = null
         stableConnectionJob?.cancel()
-        pushToTalkPressed.set(false)
-        microphone.stop()
+        diagnosticsRefreshJob?.cancel()
+        diagnosticsRecorder.recordConnectionFailure(status.retryable)
+        refreshDiagnostics()
+        microphoneController.stopImmediately()
         audioPlayer.stop()
 
-        if (status.retryable && connectedOnce && !userDisconnectRequested) {
+        if (status.retryable && connectedOnce && !sessionGeneration.isDisconnectRequested) {
             launchReconnect(status, listener.epoch)
         } else {
             serviceScope.launch { finishTerminalFailure(status, listener.epoch) }
         }
     }
 
-    private fun launchReconnect(cause: ConnectionStatus, epoch: Long) {
-        if (!isEpochActive(epoch) || userDisconnectRequested) return
-        val detail = if (networkAvailable.value) {
-            "连接中断，准备自动重连：${cause.detail.orEmpty()}".trimEnd('：')
-        } else {
-            WAITING_FOR_NETWORK_DETAIL
-        }
+    private fun launchReconnect(
+        cause: ConnectionStatus,
+        epoch: Long,
+    ) {
+        if (!isEpochActive(epoch)) return
+        val detail =
+            if (networkAvailable.value) {
+                "连接中断，准备自动重连：${cause.detail.orEmpty()}".trimEnd('：')
+            } else {
+                WAITING_FOR_NETWORK_DETAIL
+            }
         mutableState.update { current ->
             current.copy(
-                status = ConnectionStatus(
-                    ConnectionPhase.RECONNECTING,
-                    detail,
-                    retryable = true,
-                ),
+                status =
+                    ConnectionStatus(
+                        ConnectionPhase.RECONNECTING,
+                        detail,
+                        retryable = true,
+                    ),
                 snapshot = SessionSnapshot.Empty,
                 isTransmitting = false,
                 switchingChannelId = null,
             )
         }
+        refreshDiagnostics()
         updateNotification()
         if (reconnectJob?.isActive == true) return
 
-        val job = serviceScope.launch {
-            suspendAudioForReconnect()
-            reconnectLoop(epoch)
-        }
+        val job =
+            serviceScope.launch {
+                suspendAudioForReconnect()
+                reconnectLoop(epoch)
+            }
         reconnectJob = job
         job.invokeOnCompletion {
             if (reconnectJob === job) reconnectJob = null
@@ -445,46 +486,49 @@ class TeamSpeakService : Service() {
 
     private suspend fun reconnectLoop(epoch: Long) {
         val config = desiredConfig ?: return
-        while (isEpochActive(epoch) && !userDisconnectRequested) {
+        while (isEpochActive(epoch)) {
             if (!networkAvailable.value) {
                 mutableState.update { current ->
                     current.copy(
-                        status = ConnectionStatus(
-                            ConnectionPhase.RECONNECTING,
-                            WAITING_FOR_NETWORK_DETAIL,
-                            retryable = true,
-                        ),
+                        status =
+                            ConnectionStatus(
+                                ConnectionPhase.RECONNECTING,
+                                WAITING_FOR_NETWORK_DETAIL,
+                                retryable = true,
+                            ),
                     )
                 }
                 updateNotification()
                 networkAvailable.first { it }
             }
-            if (!isEpochActive(epoch) || userDisconnectRequested) return
+            if (!isEpochActive(epoch)) return
 
             val attempt = reconnectAttempt + 1
             val delayMs = reconnectPolicy.delayForAttempt(attempt)
             mutableState.update { current ->
                 current.copy(
-                    status = ConnectionStatus(
-                        ConnectionPhase.RECONNECTING,
-                        "${delayMs / 1_000} 秒后进行第 $attempt 次重连",
-                        retryable = true,
-                    ),
+                    status =
+                        ConnectionStatus(
+                            ConnectionPhase.RECONNECTING,
+                            "${delayMs / 1_000} 秒后进行第 $attempt 次重连",
+                            retryable = true,
+                        ),
                 )
             }
             updateNotification()
             delay(delayMs)
             if (!networkAvailable.value) continue
-            if (!isEpochActive(epoch) || userDisconnectRequested) return
+            if (!isEpochActive(epoch)) return
 
             reconnectAttempt = attempt
             mutableState.update { current ->
                 current.copy(
-                    status = ConnectionStatus(
-                        ConnectionPhase.RECONNECTING,
-                        "正在进行第 $attempt 次重连",
-                        retryable = true,
-                    ),
+                    status =
+                        ConnectionStatus(
+                            ConnectionPhase.RECONNECTING,
+                            "正在进行第 $attempt 次重连",
+                            retryable = true,
+                        ),
                 )
             }
             updateNotification()
@@ -504,22 +548,24 @@ class TeamSpeakService : Service() {
     }
 
     private suspend fun suspendAudioForReconnect() {
-        pushToTalkPressed.set(false)
-        transmitMutex.withLock { stopMicrophoneLocked() }
+        microphoneController.stopSerialized()
         audioPlayer.stop()
     }
 
-    private suspend fun finishTerminalFailure(status: ConnectionStatus, epoch: Long) {
+    private suspend fun finishTerminalFailure(
+        status: ConnectionStatus,
+        epoch: Long,
+    ) {
         if (!isEpochActive(epoch)) return
         activeListener = null
         stableConnectionJob?.cancel()
+        diagnosticsRefreshJob?.cancel()
         sessionMutex.withLock {
             if (!isEpochActive(epoch)) return@withLock
             session?.close()
             session = null
         }
-        pushToTalkPressed.set(false)
-        transmitMutex.withLock { microphone.stop() }
+        microphoneController.stopSerialized()
         audioPlayer.stop()
         audioRouter.stop()
         mutableState.update { current ->
@@ -530,34 +576,57 @@ class TeamSpeakService : Service() {
                 switchingChannelId = null,
             )
         }
+        refreshDiagnostics()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     private fun scheduleStableConnectionReset(listener: SessionListener) {
         stableConnectionJob?.cancel()
-        stableConnectionJob = serviceScope.launch {
-            delay(STABLE_CONNECTION_MS)
-            if (isListenerActive(listener) && listener.connected) reconnectAttempt = 0
-        }
+        stableConnectionJob =
+            serviceScope.launch {
+                delay(STABLE_CONNECTION_MS)
+                if (isListenerActive(listener) && listener.connected) reconnectAttempt = 0
+            }
+    }
+
+    private fun startDiagnosticsRefresh(listener: SessionListener) {
+        diagnosticsRefreshJob?.cancel()
+        diagnosticsRefreshJob =
+            serviceScope.launch {
+                while (isActive && isListenerActive(listener)) {
+                    refreshDiagnostics()
+                    delay(DIAGNOSTICS_REFRESH_MS)
+                }
+            }
+    }
+
+    private fun refreshDiagnostics() {
+        val snapshot = diagnosticsRecorder.snapshot()
+        mutableState.update { current -> current.copy(diagnostics = snapshot) }
     }
 
     private fun restoreLastChannelIfNeeded(listener: SessionListener) {
-        val target = lastChannel ?: return
-        if (mutableState.value.snapshot.currentChannelId == target.id) return
+        val target =
+            ChannelRestorePolicy.targetToRestore(
+                remembered = lastChannel,
+                currentChannelId = mutableState.value.snapshot.currentChannelId,
+            ) ?: return
         restorePending = true
-        mutableState.update { it.copy(switchingChannelId = target.id) }
+        mutableState.update { it.copy(switchingChannelId = target.channelId) }
         serviceScope.launch {
             try {
                 sessionMutex.withLock {
                     check(isListenerActive(listener) && listener.connected) { "连接已失效" }
-                    session?.joinChannel(target.id, target.password) ?: error("连接已失效")
+                    session?.joinChannel(target.channelId, target.password) ?: error("连接已失效")
                 }
                 mutableState.update {
                     it.copy(switchingChannelId = null, channelError = null)
                 }
             } catch (error: Throwable) {
                 if (isEpochActive(listener.epoch)) {
+                    diagnosticsRecorder.recordChannelJoinFailure()
+                    refreshDiagnostics()
                     mutableState.update {
                         it.copy(
                             switchingChannelId = null,
@@ -571,11 +640,9 @@ class TeamSpeakService : Service() {
         }
     }
 
-    private fun isListenerActive(listener: SessionListener): Boolean =
-        activeListener === listener && isEpochActive(listener.epoch)
+    private fun isListenerActive(listener: SessionListener): Boolean = activeListener === listener && isEpochActive(listener.epoch)
 
-    private fun isEpochActive(epoch: Long): Boolean =
-        epoch == connectionEpoch && !userDisconnectRequested
+    private fun isEpochActive(epoch: Long): Boolean = sessionGeneration.isActive(epoch)
 
     private fun hasUsableNetwork(): Boolean {
         val network = connectivityManager.activeNetwork ?: return false
@@ -600,22 +667,29 @@ class TeamSpeakService : Service() {
         if (!available && mutableState.value.status.phase == ConnectionPhase.RECONNECTING) {
             mutableState.update { current ->
                 current.copy(
-                    status = ConnectionStatus(
-                        ConnectionPhase.RECONNECTING,
-                        WAITING_FOR_NETWORK_DETAIL,
-                        retryable = true,
-                    ),
+                    status =
+                        ConnectionStatus(
+                            ConnectionPhase.RECONNECTING,
+                            WAITING_FOR_NETWORK_DETAIL,
+                            retryable = true,
+                        ),
                 )
             }
             updateNotification()
         }
     }
 
-    private fun setParticipantMuted(key: String, muted: Boolean) {
+    private fun setParticipantMuted(
+        key: String,
+        muted: Boolean,
+    ) {
         updateParticipantAudioSettings(key) { copy(muted = muted) }
     }
 
-    private fun setParticipantVolume(key: String, volumePercent: Int) {
+    private fun setParticipantVolume(
+        key: String,
+        volumePercent: Int,
+    ) {
         updateParticipantAudioSettings(key) {
             copy(volumePercent = volumePercent.coerceIn(0, MAX_PARTICIPANT_VOLUME_PERCENT))
         }
@@ -650,117 +724,9 @@ class TeamSpeakService : Service() {
         )
     }
 
-    private fun setMicrophoneMode(mode: MicrophoneMode) {
-        if (
-            mode == MicrophoneMode.CONTINUOUS &&
-            !hasMicrophonePermission()
-        ) {
-            mutableState.update {
-                it.copy(microphoneError = "需要麦克风权限才能开启常开模式")
-            }
-            return
-        }
-        if (mode != MicrophoneMode.PUSH_TO_TALK) pushToTalkPressed.set(false)
-        mutableState.update {
-            it.copy(microphoneMode = mode, microphoneError = null)
-        }
-        reconcileMicrophone()
-    }
-
-    private fun setPushToTalkPressed(pressed: Boolean) {
-        if (mutableState.value.microphoneMode != MicrophoneMode.PUSH_TO_TALK) {
-            pushToTalkPressed.set(false)
-            return
-        }
-        pushToTalkPressed.set(pressed)
-        if (!pressed) {
-            mutableState.update { it.copy(isTransmitting = false) }
-        }
-        reconcileMicrophone()
-    }
-
-    private fun reconcileMicrophone() {
-        serviceScope.launch {
-            transmitMutex.withLock {
-                if (!shouldCaptureMicrophone()) {
-                    stopMicrophoneLocked()
-                    return@withLock
-                }
-
-                if (!hasMicrophonePermission()) {
-                    pushToTalkPressed.set(false)
-                    mutableState.update {
-                        it.copy(
-                            isTransmitting = false,
-                            microphoneError = "没有麦克风权限",
-                        )
-                    }
-                    return@withLock
-                }
-
-                try {
-                    updateForegroundType(includeMicrophone = true)
-                    microphone.start()
-                    if (!shouldCaptureMicrophone()) {
-                        stopMicrophoneLocked()
-                    } else {
-                        mutableState.update {
-                            it.copy(isTransmitting = true, microphoneError = null)
-                        }
-                        updateNotification()
-                    }
-                } catch (error: Throwable) {
-                    pushToTalkPressed.set(false)
-                    microphone.stop()
-                    mutableState.update {
-                        it.copy(
-                            isTransmitting = false,
-                            microphoneError = error.conciseMessage(),
-                        )
-                    }
-                    updateForegroundType(includeMicrophone = false)
-                }
-            }
-        }
-    }
-
-    private fun shouldCaptureMicrophone(): Boolean {
-        val current = mutableState.value
-        if (current.status.phase != ConnectionPhase.CONNECTED) return false
-        return when (current.microphoneMode) {
-            MicrophoneMode.OFF -> false
-            MicrophoneMode.PUSH_TO_TALK -> pushToTalkPressed.get()
-            MicrophoneMode.CONTINUOUS -> true
-        }
-    }
-
-    private fun hasMicrophonePermission(): Boolean = ContextCompat.checkSelfPermission(
-        this,
-        Manifest.permission.RECORD_AUDIO,
-    ) == PackageManager.PERMISSION_GRANTED
-
-    private fun stopMicrophoneLocked() {
-        microphone.stop()
-        mutableState.update { it.copy(isTransmitting = false) }
-        updateForegroundType(includeMicrophone = false)
-    }
-
-    private fun onMicrophoneFailure(error: Throwable) {
-        pushToTalkPressed.set(false)
-        mutableState.update {
-            it.copy(
-                isTransmitting = false,
-                microphoneError = error.conciseMessage(),
-            )
-        }
-        serviceScope.launch {
-            transmitMutex.withLock { stopMicrophoneLocked() }
-        }
-    }
-
     private fun onAudioRoutingChanged(routing: AudioRoutingState) {
         audioPlayer.setPreferredDevice(audioRouter.preferredOutputDevice())
-        microphone.setPreferredDevice(audioRouter.preferredInputDevice())
+        microphoneController.setPreferredDevice(audioRouter.preferredInputDevice())
         mutableState.update { it.copy(audioRouting = routing) }
     }
 
@@ -769,12 +735,13 @@ class TeamSpeakService : Service() {
         if (current.status.phase !in foregroundPhases) return
         val host = current.serverLabel ?: return
         startForegroundWithTypes(
-            notification = buildNotification(
-                host = host,
-                status = current.status,
-                onlineCount = current.snapshot.participants.size,
-                microphoneActive = includeMicrophone,
-            ),
+            notification =
+                buildNotification(
+                    host = host,
+                    status = current.status,
+                    onlineCount = current.snapshot.participants.size,
+                    microphoneActive = includeMicrophone,
+                ),
             includeMicrophone = includeMicrophone,
         )
     }
@@ -784,13 +751,16 @@ class TeamSpeakService : Service() {
         notification: android.app.Notification,
         includeMicrophone: Boolean,
     ) {
-        val baseTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-        val types = baseTypes or if (includeMicrophone) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-        } else {
-            0
-        }
+        val baseTypes =
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        val types =
+            baseTypes or
+                if (includeMicrophone) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                } else {
+                    0
+                }
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types)
     }
 
@@ -824,15 +794,17 @@ class TeamSpeakService : Service() {
             } else {
                 when (status.phase) {
                     ConnectionPhase.CONNECTING -> getString(R.string.notification_connecting, host)
-                    ConnectionPhase.RECONNECTING -> status.detail
-                        ?: getString(R.string.notification_reconnecting, host)
+                    ConnectionPhase.RECONNECTING ->
+                        status.detail
+                            ?: getString(R.string.notification_reconnecting, host)
                     ConnectionPhase.DISCONNECTING -> getString(R.string.notification_disconnecting, host)
-                    ConnectionPhase.CONNECTED -> resources.getQuantityString(
-                        R.plurals.notification_connected,
-                        onlineCount,
-                        host,
-                        onlineCount,
-                    )
+                    ConnectionPhase.CONNECTED ->
+                        resources.getQuantityString(
+                            R.plurals.notification_connected,
+                            onlineCount,
+                            host,
+                            onlineCount,
+                        )
                     ConnectionPhase.DISCONNECTED,
                     ConnectionPhase.ERROR,
                     -> host
@@ -893,10 +865,15 @@ class TeamSpeakService : Service() {
         return this::class.java.simpleName
     }
 
-    private fun joinChannel(channelId: Int, password: String) {
+    private fun joinChannel(
+        channelId: Int,
+        password: String,
+    ) {
         val current = mutableState.value
         if (current.status.phase != ConnectionPhase.CONNECTED) return
         if (current.snapshot.currentChannelId == channelId) return
+        diagnosticsRecorder.recordChannelJoinAttempt()
+        refreshDiagnostics()
         mutableState.update {
             it.copy(switchingChannelId = channelId, channelError = null)
         }
@@ -909,11 +886,13 @@ class TeamSpeakService : Service() {
                     session?.joinChannel(channelId, password)
                         ?: error("当前未连接到服务器")
                 }
-                lastChannel = ChannelTarget(channelId, password)
+                lastChannel = ChannelRestoreTarget(channelId, password)
                 mutableState.update { state ->
                     state.copy(switchingChannelId = null, channelError = null)
                 }
             } catch (error: Throwable) {
+                diagnosticsRecorder.recordChannelJoinFailure()
+                refreshDiagnostics()
                 mutableState.update { state ->
                     state.copy(
                         switchingChannelId = null,
@@ -933,11 +912,17 @@ class TeamSpeakService : Service() {
             mutableState.update { it.copy(playbackMuted = muted) }
         }
 
-        fun setParticipantMuted(key: String, muted: Boolean) {
+        fun setParticipantMuted(
+            key: String,
+            muted: Boolean,
+        ) {
             this@TeamSpeakService.setParticipantMuted(key, muted)
         }
 
-        fun setParticipantVolume(key: String, volumePercent: Int) {
+        fun setParticipantVolume(
+            key: String,
+            volumePercent: Int,
+        ) {
             this@TeamSpeakService.setParticipantVolume(key, volumePercent)
         }
 
@@ -946,45 +931,43 @@ class TeamSpeakService : Service() {
         }
 
         fun setMicrophoneMode(mode: MicrophoneMode) {
-            this@TeamSpeakService.setMicrophoneMode(mode)
+            microphoneController.setMode(mode)
         }
 
         fun setPushToTalkPressed(pressed: Boolean) {
-            this@TeamSpeakService.setPushToTalkPressed(pressed)
+            microphoneController.setPushToTalkPressed(pressed)
         }
 
         fun releasePushToTalk() {
-            this@TeamSpeakService.setPushToTalkPressed(false)
+            microphoneController.setPushToTalkPressed(false)
         }
 
-        fun joinChannel(channelId: Int, password: String = "") {
+        fun joinChannel(
+            channelId: Int,
+            password: String = "",
+        ) {
             this@TeamSpeakService.joinChannel(channelId, password)
         }
 
+        fun diagnosticSnapshot(): DiagnosticsSnapshot = diagnosticsRecorder.snapshot()
+
+        fun redactedDiagnosticsJson(): String = diagnosticSnapshot().toRedactedJson()
+
         fun reportMicrophonePermissionDenied() {
-            pushToTalkPressed.set(false)
-            mutableState.update {
-                it.copy(
-                    isTransmitting = false,
-                    microphoneError = "需要麦克风权限才能发送语音",
-                )
-            }
+            microphoneController.reportPermissionDenied()
         }
     }
 
     private sealed interface AttemptResult {
         data object Success : AttemptResult
+
         data object Stale : AttemptResult
+
         data class Failed(
             val status: ConnectionStatus,
             val retryable: Boolean,
         ) : AttemptResult
     }
-
-    private data class ChannelTarget(
-        val id: Int,
-        val password: String,
-    )
 
     companion object {
         private const val ACTION_CONNECT = "io.github.ts3mobile.action.CONNECT"
@@ -998,24 +981,31 @@ class TeamSpeakService : Service() {
         private const val STABLE_CONNECTION_MS = 30_000L
         private const val WAITING_FOR_NETWORK_DETAIL = "网络不可用，恢复后自动重连"
         private const val MAX_PARTICIPANT_VOLUME_PERCENT = 200
-        private val foregroundPhases = setOf(
-            ConnectionPhase.CONNECTING,
-            ConnectionPhase.RECONNECTING,
-            ConnectionPhase.CONNECTED,
-            ConnectionPhase.DISCONNECTING,
-        )
-        private val interruptibleConnectionPhases = setOf(
-            ConnectionPhase.CONNECTING,
-            ConnectionPhase.RECONNECTING,
-        )
+        private const val DIAGNOSTICS_REFRESH_MS = 1_000L
+        private val foregroundPhases =
+            setOf(
+                ConnectionPhase.CONNECTING,
+                ConnectionPhase.RECONNECTING,
+                ConnectionPhase.CONNECTED,
+                ConnectionPhase.DISCONNECTING,
+            )
+        private val interruptibleConnectionPhases =
+            setOf(
+                ConnectionPhase.CONNECTING,
+                ConnectionPhase.RECONNECTING,
+            )
 
-        fun connect(context: Context, config: ServerConfig) {
-            val intent = Intent(context, TeamSpeakService::class.java)
-                .setAction(ACTION_CONNECT)
-                .putExtra(EXTRA_HOST, config.host)
-                .putExtra(EXTRA_PORT, config.port)
-                .putExtra(EXTRA_NICKNAME, config.nickname)
-                .putExtra(EXTRA_PASSWORD, config.password)
+        fun connect(
+            context: Context,
+            config: ServerConfig,
+        ) {
+            val intent =
+                Intent(context, TeamSpeakService::class.java)
+                    .setAction(ACTION_CONNECT)
+                    .putExtra(EXTRA_HOST, config.host)
+                    .putExtra(EXTRA_PORT, config.port)
+                    .putExtra(EXTRA_NICKNAME, config.nickname)
+                    .putExtra(EXTRA_PASSWORD, config.password)
             ContextCompat.startForegroundService(context, intent)
         }
 

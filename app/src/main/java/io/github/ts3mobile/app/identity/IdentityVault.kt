@@ -80,4 +80,3 @@ class IdentityVault(private val context: Context) {
         const val transformation = "AES/GCM/NoPadding"
     }
 }
-
