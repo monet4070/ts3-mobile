@@ -47,6 +47,11 @@ foreach ($relativePath in ($repositoryFiles | Sort-Object -Unique)) {
     }
 
     $absolutePath = Join-Path $repositoryRoot $relativePath
+    # ls-files --cached can list a file deleted in the working tree but not yet
+    # committed; skip those rather than failing on the missing path.
+    if (-not (Test-Path -LiteralPath $absolutePath)) {
+        continue
+    }
     $content = [IO.File]::ReadAllText($absolutePath)
     if ($content.IndexOf($teamSpeakScheme, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
         $ipv4Pattern.IsMatch($content)) {

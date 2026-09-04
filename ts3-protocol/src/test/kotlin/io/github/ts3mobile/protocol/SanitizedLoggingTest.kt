@@ -6,7 +6,7 @@ import org.junit.Test
 
 class SanitizedLoggingTest {
     @Test
-    fun failureSummaryDoesNotExposeConnectionDetails() {
+    fun exposesFailureTypesWithoutExceptionMessages() {
         val error =
             IllegalStateException(
                 "voice.example.com:9987",

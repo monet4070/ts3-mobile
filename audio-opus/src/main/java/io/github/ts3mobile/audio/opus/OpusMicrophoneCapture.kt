@@ -13,6 +13,7 @@ import android.media.audiofx.AudioEffect
 import android.media.audiofx.AutomaticGainControl
 import android.os.Process
 import io.github.ts3mobile.protocol.EncodedVoiceSource
+import io.github.ts3mobile.protocol.sanitizedFailureTypes
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong

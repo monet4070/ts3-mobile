@@ -8,6 +8,7 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import io.github.ts3mobile.protocol.VoiceFrame
+import io.github.ts3mobile.protocol.sanitizedFailureTypes
 import java.util.ArrayDeque
 import java.util.TreeMap
 import java.util.concurrent.ArrayBlockingQueue

@@ -1,6 +1,10 @@
 package io.github.ts3mobile.protocol
 
-internal fun Throwable.sanitizedFailureTypes(): String {
+/**
+ * Failure-type summary safe for logging: class names only, never exception
+ * messages, which may carry server endpoints or credentials.
+ */
+public fun Throwable.sanitizedFailureTypes(): String {
     val types = mutableListOf<String>()
     val visited = mutableSetOf<Throwable>()
     var current: Throwable? = this

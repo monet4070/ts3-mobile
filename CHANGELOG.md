@@ -31,9 +31,14 @@ and audio behavior is still being validated.
   unwrapper test that broke Kotlin compilation.
 - The build-environment check no longer aborts on Windows PowerShell 5.1 when
   `java -version` writes its version banner to stderr.
+- The repository privacy scan no longer fails when a tracked file is deleted
+  in the working tree but not yet committed.
 
 ### Changed
 
+- Consolidated the duplicated sanitized failure-type logging helper into the
+  protocol module as a public API; the audio module now imports the single
+  implementation instead of maintaining a byte-identical copy.
 - Split the Compose connection, connected-session, channel, participant,
   microphone, diagnostics and top-level screen surfaces into focused files.
 - Moved microphone permission, push-to-talk intent, serialized capture lifecycle
