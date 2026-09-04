@@ -3,7 +3,10 @@ package io.github.ts3mobile.audio.opus
 internal class NativeOpusDecoder : AutoCloseable {
     private var handle = nativeCreate(SAMPLE_RATE, CHANNEL_COUNT)
 
-    fun decode(packet: ByteArray?, frameSize: Int = MAX_FRAME_SIZE): ShortArray {
+    fun decode(
+        packet: ByteArray?,
+        frameSize: Int = MAX_FRAME_SIZE,
+    ): ShortArray {
         check(handle != 0L) { "Opus decoder is closed" }
         require(frameSize in 1..MAX_FRAME_SIZE) { "Invalid Opus frame size: $frameSize" }
         return nativeDecode(handle, packet, frameSize)
@@ -31,10 +34,17 @@ internal class NativeOpusDecoder : AutoCloseable {
         }
 
         @JvmStatic
-        private external fun nativeCreate(sampleRate: Int, channels: Int): Long
+        private external fun nativeCreate(
+            sampleRate: Int,
+            channels: Int,
+        ): Long
 
         @JvmStatic
-        private external fun nativeDecode(handle: Long, packet: ByteArray?, frameSize: Int): ShortArray
+        private external fun nativeDecode(
+            handle: Long,
+            packet: ByteArray?,
+            frameSize: Int,
+        ): ShortArray
 
         @JvmStatic
         private external fun nativeReset(handle: Long)

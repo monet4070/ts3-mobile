@@ -27,11 +27,12 @@ data class AudioRoutingState(
         get() = routes.firstOrNull { it.id == selectedRouteId } ?: SystemRoute
 
     companion object {
-        val SystemRoute = AudioRouteOption(
-            id = SYSTEM_AUDIO_ROUTE_ID,
-            kind = AudioRouteKind.SYSTEM,
-            label = "系统自动",
-        )
+        val SystemRoute =
+            AudioRouteOption(
+                id = SYSTEM_AUDIO_ROUTE_ID,
+                kind = AudioRouteKind.SYSTEM,
+                label = "系统自动",
+            )
 
         val Default = AudioRoutingState()
     }
@@ -40,5 +41,6 @@ data class AudioRoutingState(
 internal fun resolveSelectedRouteId(
     requestedRouteId: Int,
     routes: List<AudioRouteOption>,
-): Int = requestedRouteId.takeIf { requested -> routes.any { it.id == requested } }
-    ?: SYSTEM_AUDIO_ROUTE_ID
+): Int =
+    requestedRouteId.takeIf { requested -> routes.any { it.id == requested } }
+        ?: SYSTEM_AUDIO_ROUTE_ID

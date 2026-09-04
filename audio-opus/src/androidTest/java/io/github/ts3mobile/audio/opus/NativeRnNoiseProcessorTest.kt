@@ -19,9 +19,10 @@ class NativeRnNoiseProcessorTest {
 
         NativeRnNoiseProcessor().use { processor ->
             repeat(TEST_FRAMES) { frameIndex ->
-                val pcm = ShortArray(FRAME_SAMPLES) {
-                    random.nextInt(-NOISE_AMPLITUDE, NOISE_AMPLITUDE + 1).toShort()
-                }
+                val pcm =
+                    ShortArray(FRAME_SAMPLES) {
+                        random.nextInt(-NOISE_AMPLITUDE, NOISE_AMPLITUDE + 1).toShort()
+                    }
                 if (frameIndex >= WARMUP_FRAMES) inputEnergy += pcm.energy()
                 processor.processInPlace(pcm)
                 if (frameIndex >= WARMUP_FRAMES) {
@@ -40,9 +41,10 @@ class NativeRnNoiseProcessorTest {
     @Test
     fun processesTenMillisecondFramesWithinRealtimeBudget() {
         val random = Random(9987)
-        val source = ShortArray(FRAME_SAMPLES) {
-            random.nextInt(-NOISE_AMPLITUDE, NOISE_AMPLITUDE + 1).toShort()
-        }
+        val source =
+            ShortArray(FRAME_SAMPLES) {
+                random.nextInt(-NOISE_AMPLITUDE, NOISE_AMPLITUDE + 1).toShort()
+            }
         val timings = LongArray(BENCHMARK_FRAMES)
 
         NativeRnNoiseProcessor().use { processor ->
@@ -67,10 +69,11 @@ class NativeRnNoiseProcessorTest {
         assertTrue("RNNoise P95 exceeded its 10ms realtime budget", p95 < FRAME_DURATION_NANOS)
     }
 
-    private fun ShortArray.energy(): Double = sumOf { sample ->
-        val value = sample.toDouble()
-        value * value
-    }
+    private fun ShortArray.energy(): Double =
+        sumOf { sample ->
+            val value = sample.toDouble()
+            value * value
+        }
 
     private companion object {
         const val FRAME_SAMPLES = 480

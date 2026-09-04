@@ -27,10 +27,17 @@ internal class NativeOpusEncoder : AutoCloseable {
         }
 
         @JvmStatic
-        private external fun nativeCreate(sampleRate: Int, channels: Int, bitrate: Int): Long
+        private external fun nativeCreate(
+            sampleRate: Int,
+            channels: Int,
+            bitrate: Int,
+        ): Long
 
         @JvmStatic
-        private external fun nativeEncode(handle: Long, pcm: ShortArray): ByteArray
+        private external fun nativeEncode(
+            handle: Long,
+            pcm: ShortArray,
+        ): ByteArray
 
         @JvmStatic
         private external fun nativeDestroy(handle: Long)

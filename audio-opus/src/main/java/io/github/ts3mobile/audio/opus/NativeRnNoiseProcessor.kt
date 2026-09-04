@@ -29,7 +29,10 @@ internal class NativeRnNoiseProcessor : AutoCloseable {
         private external fun nativeCreate(): Long
 
         @JvmStatic
-        private external fun nativeProcessInPlace(handle: Long, pcm: ShortArray): Float
+        private external fun nativeProcessInPlace(
+            handle: Long,
+            pcm: ShortArray,
+        ): Float
 
         @JvmStatic
         private external fun nativeDestroy(handle: Long)

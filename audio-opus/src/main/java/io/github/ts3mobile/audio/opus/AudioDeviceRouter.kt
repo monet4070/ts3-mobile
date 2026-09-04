@@ -16,6 +16,7 @@ class AudioDeviceRouter(
     private val audioManager = context.applicationContext.getSystemService(AudioManager::class.java)
     private val callbackHandler = Handler(Looper.getMainLooper())
     private val lifecycleLock = Any()
+
     @Volatile
     private var started = false
     private var previousMode = AudioManager.MODE_NORMAL
@@ -27,15 +28,16 @@ class AudioDeviceRouter(
     var state: AudioRoutingState = AudioRoutingState.Default
         private set
 
-    private val deviceCallback = object : AudioDeviceCallback() {
-        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
-            refreshDevices()
-        }
+    private val deviceCallback =
+        object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
+                refreshDevices()
+            }
 
-        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-            refreshDevices()
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
+                refreshDevices()
+            }
         }
-    }
 
     @Suppress("DEPRECATION")
     fun start() {
@@ -62,11 +64,12 @@ class AudioDeviceRouter(
         }
 
         val output = outputDevice(routeId)
-        val switched = runCatching { applySystemRoute(output) }
-            .getOrElse { error ->
-                publishState(routes, "切换音频设备失败：${error.message ?: error.javaClass.simpleName}")
-                return
-            }
+        val switched =
+            runCatching { applySystemRoute(output) }
+                .getOrElse { error ->
+                    publishState(routes, "切换音频设备失败：${error.message ?: error.javaClass.simpleName}")
+                    return
+                }
         if (!switched) {
             publishState(routes, "系统拒绝切换到该音频设备")
             return
@@ -86,15 +89,16 @@ class AudioDeviceRouter(
         val output = outputDevice(selectedRouteId) ?: return null
         val inputs = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS).toList()
         val preferredTypes = inputTypesFor(output.type)
-        val sameAddressInput = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            inputs.firstOrNull { candidate ->
-                candidate.type == output.type &&
-                    output.address.isNotBlank() &&
-                    candidate.address == output.address
+        val sameAddressInput =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                inputs.firstOrNull { candidate ->
+                    candidate.type == output.type &&
+                        output.address.isNotBlank() &&
+                        candidate.address == output.address
+                }
+            } else {
+                null
             }
-        } else {
-            null
-        }
         return sameAddressInput ?: preferredTypes.firstNotNullOfOrNull { type ->
             inputs.firstOrNull { it.type == type }
         }
@@ -142,22 +146,27 @@ class AudioDeviceRouter(
         )
     }
 
-    private fun publishState(routes: List<AudioRouteOption>, error: String?) {
-        val newState = AudioRoutingState(
-            routes = routes,
-            selectedRouteId = resolveSelectedRouteId(selectedRouteId, routes),
-            error = error,
-        )
+    private fun publishState(
+        routes: List<AudioRouteOption>,
+        error: String?,
+    ) {
+        val newState =
+            AudioRoutingState(
+                routes = routes,
+                selectedRouteId = resolveSelectedRouteId(selectedRouteId, routes),
+                error = error,
+            )
         state = newState
         onRoutingChanged(newState)
     }
 
     private fun availableRoutes(): List<AudioRouteOption> {
-        val outputs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            audioManager.availableCommunicationDevices
-        } else {
-            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
-        }
+        val outputs =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                audioManager.availableCommunicationDevices
+            } else {
+                audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
+            }
         return buildList {
             add(AudioRoutingState.SystemRoute)
             outputs
@@ -170,11 +179,12 @@ class AudioDeviceRouter(
 
     private fun outputDevice(routeId: Int): AudioDeviceInfo? {
         if (routeId == SYSTEM_AUDIO_ROUTE_ID) return null
-        val outputs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            audioManager.availableCommunicationDevices
-        } else {
-            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
-        }
+        val outputs =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                audioManager.availableCommunicationDevices
+            } else {
+                audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
+            }
         return outputs.firstOrNull { it.id == routeId }
     }
 
@@ -216,87 +226,99 @@ class AudioDeviceRouter(
         if (kind == AudioRouteKind.OTHER) return null
         val baseLabel = routeLabel(kind)
         val productName = device.productName?.toString()?.trim().orEmpty()
-        val shouldShowProductName = kind in setOf(
-            AudioRouteKind.WIRED,
-            AudioRouteKind.BLUETOOTH,
-            AudioRouteKind.USB,
-        )
-        val label = if (
-            shouldShowProductName &&
-            productName.isNotBlank() &&
-            !productName.equals(baseLabel, ignoreCase = true)
-        ) {
-            "$baseLabel · $productName"
-        } else {
-            baseLabel
-        }
+        val shouldShowProductName =
+            kind in
+                setOf(
+                    AudioRouteKind.WIRED,
+                    AudioRouteKind.BLUETOOTH,
+                    AudioRouteKind.USB,
+                )
+        val label =
+            if (
+                shouldShowProductName &&
+                productName.isNotBlank() &&
+                !productName.equals(baseLabel, ignoreCase = true)
+            ) {
+                "$baseLabel · $productName"
+            } else {
+                baseLabel
+            }
         return AudioRouteOption(device.id, kind, label)
     }
 
-    private companion object {
-        fun routeKind(device: AudioDeviceInfo): AudioRouteKind = when (device.type) {
-            AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> AudioRouteKind.EARPIECE
-            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> AudioRouteKind.SPEAKER
-            AudioDeviceInfo.TYPE_WIRED_HEADSET,
-            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-            AudioDeviceInfo.TYPE_LINE_ANALOG,
-            -> AudioRouteKind.WIRED
+    companion object {
+        private fun routeKind(device: AudioDeviceInfo): AudioRouteKind = routeKindForDeviceType(device.type)
 
-            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-            AudioDeviceInfo.TYPE_BLE_HEADSET,
-            AudioDeviceInfo.TYPE_BLE_SPEAKER,
-            AudioDeviceInfo.TYPE_HEARING_AID,
-            -> AudioRouteKind.BLUETOOTH
-
-            AudioDeviceInfo.TYPE_USB_ACCESSORY,
-            AudioDeviceInfo.TYPE_USB_DEVICE,
-            AudioDeviceInfo.TYPE_USB_HEADSET,
-            -> AudioRouteKind.USB
-
-            else -> AudioRouteKind.OTHER
-        }
-
-        fun routeLabel(kind: AudioRouteKind): String = when (kind) {
-            AudioRouteKind.SYSTEM -> "系统自动"
-            AudioRouteKind.EARPIECE -> "听筒"
-            AudioRouteKind.SPEAKER -> "扬声器"
-            AudioRouteKind.WIRED -> "有线耳机"
-            AudioRouteKind.BLUETOOTH -> "蓝牙设备"
-            AudioRouteKind.USB -> "USB 音频"
-            AudioRouteKind.OTHER -> "其他设备"
-        }
-
-        fun routeOrder(kind: AudioRouteKind): Int = when (kind) {
-            AudioRouteKind.SYSTEM -> 0
-            AudioRouteKind.EARPIECE -> 1
-            AudioRouteKind.SPEAKER -> 2
-            AudioRouteKind.WIRED -> 3
-            AudioRouteKind.BLUETOOTH -> 4
-            AudioRouteKind.USB -> 5
-            AudioRouteKind.OTHER -> 6
-        }
-
-        fun inputTypesFor(outputType: Int): List<Int> = when (outputType) {
-            AudioDeviceInfo.TYPE_WIRED_HEADSET -> listOf(
+        internal fun routeKindForDeviceType(type: Int): AudioRouteKind =
+            when (type) {
+                AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> AudioRouteKind.EARPIECE
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> AudioRouteKind.SPEAKER
                 AudioDeviceInfo.TYPE_WIRED_HEADSET,
-                AudioDeviceInfo.TYPE_BUILTIN_MIC,
-            )
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_LINE_ANALOG,
+                -> AudioRouteKind.WIRED
 
-            AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> listOf(
                 AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-                AudioDeviceInfo.TYPE_BUILTIN_MIC,
-            )
+                AudioDeviceInfo.TYPE_BLE_HEADSET,
+                AudioDeviceInfo.TYPE_BLE_SPEAKER,
+                AudioDeviceInfo.TYPE_HEARING_AID,
+                -> AudioRouteKind.BLUETOOTH
 
-            AudioDeviceInfo.TYPE_USB_ACCESSORY,
-            AudioDeviceInfo.TYPE_USB_DEVICE,
-            AudioDeviceInfo.TYPE_USB_HEADSET,
-            -> listOf(
-                AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_USB_ACCESSORY,
                 AudioDeviceInfo.TYPE_USB_DEVICE,
-                AudioDeviceInfo.TYPE_BUILTIN_MIC,
-            )
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                -> AudioRouteKind.USB
 
-            else -> listOf(AudioDeviceInfo.TYPE_BUILTIN_MIC)
-        }
+                else -> AudioRouteKind.OTHER
+            }
+
+        fun routeLabel(kind: AudioRouteKind): String =
+            when (kind) {
+                AudioRouteKind.SYSTEM -> "系统自动"
+                AudioRouteKind.EARPIECE -> "听筒"
+                AudioRouteKind.SPEAKER -> "扬声器"
+                AudioRouteKind.WIRED -> "有线耳机"
+                AudioRouteKind.BLUETOOTH -> "蓝牙设备"
+                AudioRouteKind.USB -> "USB 音频"
+                AudioRouteKind.OTHER -> "其他设备"
+            }
+
+        fun routeOrder(kind: AudioRouteKind): Int =
+            when (kind) {
+                AudioRouteKind.SYSTEM -> 0
+                AudioRouteKind.EARPIECE -> 1
+                AudioRouteKind.SPEAKER -> 2
+                AudioRouteKind.WIRED -> 3
+                AudioRouteKind.BLUETOOTH -> 4
+                AudioRouteKind.USB -> 5
+                AudioRouteKind.OTHER -> 6
+            }
+
+        fun inputTypesFor(outputType: Int): List<Int> =
+            when (outputType) {
+                AudioDeviceInfo.TYPE_WIRED_HEADSET ->
+                    listOf(
+                        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                        AudioDeviceInfo.TYPE_BUILTIN_MIC,
+                    )
+
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO ->
+                    listOf(
+                        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                        AudioDeviceInfo.TYPE_BUILTIN_MIC,
+                    )
+
+                AudioDeviceInfo.TYPE_USB_ACCESSORY,
+                AudioDeviceInfo.TYPE_USB_DEVICE,
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                ->
+                    listOf(
+                        AudioDeviceInfo.TYPE_USB_HEADSET,
+                        AudioDeviceInfo.TYPE_USB_DEVICE,
+                        AudioDeviceInfo.TYPE_BUILTIN_MIC,
+                    )
+
+                else -> listOf(AudioDeviceInfo.TYPE_BUILTIN_MIC)
+            }
     }
 }
