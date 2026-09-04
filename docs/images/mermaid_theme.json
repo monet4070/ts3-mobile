@@ -1,0 +1,33 @@
+{
+  "theme": "base",
+  "themeVariables": {
+    "darkMode": true,
+    "background": "#141414",
+    "mainBkg": "#1f1f1f",
+    "nodeBorder": "#3a3a3a",
+    "nodeTextColor": "#eaeaea",
+    "lineColor": "#6e6e6e",
+    "arrowheadColor": "#858585",
+    "clusterBkg": "#181818",
+    "clusterBorder": "#2c2c2c",
+    "titleColor": "#aaaaaa",
+    "fontFamily": "Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif",
+    "fontSize": "13px",
+    "edgeLabelBackground": "#1e1e1e",
+    "actorBkg": "#1f1f1f",
+    "actorBorder": "#3a3a3a",
+    "actorTextColor": "#eaeaea",
+    "actorLineColor": "#6e6e6e",
+    "signalColor": "#858585",
+    "signalTextColor": "#eaeaea",
+    "labelBoxBkgColor": "#1f1f1f",
+    "labelBoxBorderColor": "#3a3a3a",
+    "labelTextColor": "#eaeaea",
+    "loopTextColor": "#eaeaea",
+    "noteBkgColor": "#252525",
+    "noteBorderColor": "#3a3a3a",
+    "noteTextColor": "#eaeaea",
+    "activationBkgColor": "#2d2d2d",
+    "activationBorderColor": "#4a4a4a"
+  }
+}

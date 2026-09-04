@@ -1,0 +1,16 @@
+flowchart TB
+    subgraph Panels["Focused Compose Panels (< 300 Lines Each)"]
+        CP["ConnectionPanel"]
+        ChP["ChannelPanel"]
+        PP["ParticipantPanel"]
+        MP["MicrophonePanel"]
+        DP["DiagnosticsPanel"]
+    end
+    Service["TeamSpeakService (Single Source of Truth)"]
+    VM["MainViewModel"]
+    UI["Jetpack Compose Panels"]
+
+    Panels -->|"User Intents / Commands via Binder"| Service
+    Service -->|"StateFlow"| VM
+    VM -->|"Read-only State"| UI
+    UI --> Panels

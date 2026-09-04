@@ -1,0 +1,29 @@
+flowchart TB
+    subgraph FSLifecycle["Foreground Service Lifecycle"]
+        Connect["User Connects"]
+        FS["Start Foreground Service"]
+        Types["Types: MEDIA_PLAYBACK | DATA_SYNC"]
+        PTTPress["PTT Pressed / Continuous Active"]
+        AddMic["Dynamically Append: MICROPHONE Type"]
+        PTTRelease["PTT Released"]
+        RemoveMic["Remove MICROPHONE Type"]
+        NetDrop["Network Lost"]
+        RecLoop["ReconnectPolicy (1-30s Exponential Backoff)"]
+        NetBack["Network Recovered"]
+        Rejoin["ChannelRestorePolicy (Rejoin Previous Channel)"]
+        Connect --> FS --> Types
+        PTTPress --> AddMic
+        PTTRelease --> RemoveMic
+        NetDrop --> RecLoop --> NetBack --> Rejoin
+    end
+
+    subgraph Identity["Identity & Security"]
+        Keystore["Android Keystore (Hardware Backed)"]
+        AES["AES-GCM-NoPadding Cipher"]
+        PrivKey["Generate/Retrieve AES-256"]
+        EncBlob["Encrypted Blob"]
+        IdentityMat["TeamSpeak Identity Material"]
+        DataStore["Preferences DataStore"]
+        Keystore --> PrivKey --> AES --> EncBlob --> DataStore
+        DataStore -.->|"decrypt on use"| IdentityMat
+    end

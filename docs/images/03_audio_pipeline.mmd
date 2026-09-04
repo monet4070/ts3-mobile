@@ -1,0 +1,28 @@
+flowchart TB
+    subgraph Capture["Audio Capture Pipeline (OpusMicrophoneCapture)"]
+        Mic["AudioRecord (48kHz Mono)"]
+        AEC["Hardware AEC"]
+        RNN["RNNoise Denoise (10ms / 480 smp)"]
+        Enc["NativeOpusEncoder (64kbps Fullband)"]
+        BQ["Bounded Queue (Cap: 3)"]
+        Mic --> AEC --> RNN --> Enc --> BQ
+    end
+    BQ -->|"ts3j UDP Push"| Socket["ts3j Voice Thread"]
+
+    subgraph Playback["Audio Playback Pipeline (OpusAudioPlayer)"]
+        InPkt["Incoming VoiceFrame"]
+        JB["Per-Speaker Jitter Buffer"]
+        Seq["PacketSequenceUnwrapper"]
+        PLC{"Missing Packet?"}
+        Dec["NativeOpusDecoder"]
+        OpusPLC["Opus PLC Interpolation"]
+        Mixer["ParticipantGainMixer (0-200% Gain)"]
+        Focus["AudioFocusPolicy"]
+        OutTrack["AudioTrack (Voice Comm)"]
+        InPkt --> JB --> Seq --> PLC
+        PLC -->|"No"| Dec
+        PLC -->|"Yes (<=3)"| OpusPLC
+        OpusPLC --> Dec
+        Dec --> Mixer --> Focus --> OutTrack
+    end
+    Socket -.->|"remote audio"| InPkt

@@ -8,7 +8,12 @@ This is an unofficial community project. It is not affiliated with, endorsed
 by, or sponsored by TeamSpeak Systems GmbH. TeamSpeak and related names and
 marks are the property of their respective owners.
 
-## Current milestone: M8 channel roster
+## Current milestone: M11 production-beta preparation
+
+M10 code hardening is in place, while its physical-device acceptance matrix is
+still partially deferred. M11 focuses on reproducible build gates, release
+evidence and production-beta readiness; see the
+[M11 release checklist](docs/release/M11_RELEASE_CHECKLIST.md).
 
 The current build provides:
 
@@ -33,6 +38,9 @@ The current build provides:
 - cancellable automatic reconnection with network-aware 1-30 second backoff
 - stale-session callback rejection and in-memory restoration of the last channel
 - per-user mute and 0-200% playback gain keyed by stable TeamSpeak identity
+- an in-app diagnostics tab with thread-safe connection/audio counters
+- a redacted JSON export that excludes server, password, nickname, channel, and participant data
+- fixture-based protocol mapping regression tests and sanitized failure logging
 
 Whisper transmission, automatic voice activation, text chat, file transfer,
 permissions administration, bookmarks, and multi-server tabs are not
@@ -58,8 +66,15 @@ See [PRIVACY.md](PRIVACY.md) for the complete data-handling statement.
   and Android audio I/O
 
 The compatibility layer pins ts3j commit
-`db57d60c989e399626aa16d921390f5033e6cdeb` through JitPack. A maintained fork
-and dependency locking are still required before a stable product release.
+`db57d60c989e399626aa16d921390f5033e6cdeb` through JitPack. Every module's
+dependency graph is locked to committed `gradle.lockfile`s in STRICT mode,
+and ts3j's transitive dependencies (bcprov-jdk15on, commons-lang, dnsjava,
+ini4j) are additionally capped by explicit Gradle constraints, so supply-chain
+drift surfaces as a lockfile diff instead of a silent version change. Version
+bumps must run the build with `--write-locks` and commit the lockfile diff. A
+maintained fork of ts3j is still required before a stable product release —
+see [ADR-0004](docs/decisions/0004-take-ownership-of-ts3j-dependency.md) for
+the plan and current status.
 
 The app uses the BSD-licensed Xiph libopus 1.3.1 Prefab package and vendors the
 official Xiph RNNoise v0.2 model at commit `904a876d`. License texts and exact
@@ -78,7 +93,19 @@ Requirements:
 Set `sdk.dir` in an untracked `local.properties`, then run:
 
 ```powershell
+.\tools\check-build-environment.ps1
+```
+
+Then run the automated build gate:
+
+```powershell
 .\gradlew.bat :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+```
+
+Formatting gate:
+
+```powershell
+.\gradlew.bat quality
 ```
 
 With a physical Android device connected, run the native codec test with:
@@ -90,6 +117,12 @@ With a physical Android device connected, run the native codec test with:
 The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 GitHub Actions runs the JVM/unit tests, lint, and debug build for every pull
 request and push to `main`.
+
+## Android support
+
+The APK remains installable on Android 8.0 (API 26) and newer. The beta quality
+target is Android 10 and newer; Android 8/9 receive compatibility fixes when
+practical but are not part of the primary physical-device matrix yet.
 
 ## Contributing and security
 
@@ -103,9 +136,12 @@ TS3 Mobile is licensed under the [Apache License 2.0](LICENSE). Components from
 other projects remain under their respective licenses; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## Next gate
-
-Verify long-running duplex audio, simultaneous speakers, packet loss, audio
-focus, Bluetooth duplex behavior, route hot-plugging, subjective echo and voice
-quality, and minimum-API behavior on more physical devices. Input-level
-diagnostics and automatic voice activation remain the next functional targets.
+The M10 implementation baseline is in place, including audio-focus recovery,
+communication-device routing, password-channel restore protection, stale-session
+gating, and redacted diagnostics. The physical-device acceptance matrix is
+tracked in [docs/testing/M10_STABILITY_MATRIX.md](docs/testing/M10_STABILITY_MATRIX.md).
+Long-running duplex/background runs, physical Bluetooth and hot-plug coverage,
+password-channel device coverage, and a second Android generation are
+intentionally deferred for a later test session. Automatic voice activation
+remains outside the current microphone-mode scope until its false-trigger and
+latency behavior can be measured.

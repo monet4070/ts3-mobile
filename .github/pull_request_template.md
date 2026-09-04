@@ -4,6 +4,7 @@ Describe the user-visible change and the technical approach.
 
 ## Verification
 
+- [ ] Kotlin formatting gate passes
 - [ ] Protocol tests pass, if affected
 - [ ] App/audio unit tests pass, if affected
 - [ ] Android lint passes

@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    participant UI as Compose UI / ViewModel
+    participant Svc as TeamSpeakService
+    participant Gate as SessionGenerationGate
+    participant Client as Ts3jSessionClient (Facade)
+    participant UDP as TeamSpeak Server (UDP)
+
+    UI->>Svc: Connect(Host, Port, Nickname)
+    Svc->>Gate: begin { nextToken }
+    Gate-->>Svc: Token = Epoch_N
+    Svc->>Client: connect(Config, Token)
+    Client->>UDP: UDP Handshake & Login
+    alt Connection Success
+        UDP-->>Client: onConnected & Snapshot Events
+        Client->>Gate: withCurrent(Token)
+        Gate-->>Client: Allowed
+        Client->>Svc: onStatusChanged(CONNECTED)
+        Svc->>UI: StateFlow Update
+    else Stale Event from Epoch_(N-1)
+        UDP-->>Client: Disconnect from previous session
+        Client->>Gate: withCurrent(Epoch_N-1)
+        Gate-->>Client: Rejected (Null)
+        Note over Client: Dropped safely, no UI pollution
+    end

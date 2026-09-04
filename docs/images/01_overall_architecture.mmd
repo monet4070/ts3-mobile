@@ -1,0 +1,42 @@
+flowchart LR
+    subgraph UI_And_AppLayer["app (Android Interface / Application Layer)"]
+        UI["Jetpack Compose UI (Material 3)"]
+        VM["MainViewModel"]
+        Service["TeamSpeakService (Foreground Service)"]
+        MicCtrl["MicrophoneController"]
+        Vault["IdentityVault (Android Keystore + AES-GCM)"]
+        Recon["ReconnectPolicy & ChannelRestorePolicy"]
+    end
+
+    subgraph ProtocolLayer["ts3-protocol (Pure JVM Domain Layer)"]
+        Facade["Ts3jSessionClient (Facade)"]
+        GenGate["SessionGenerationGate (Stale Callback Filter)"]
+        AttemptGate["ConnectionAttemptGate (Atomic Status)"]
+        CTree["ChannelTree (Topology & Sort)"]
+    end
+
+    subgraph AudioLayer["audio-opus (Audio Infrastructure & JNI Layer)"]
+        Router["AudioDeviceRouter (CommunicationDevice API)"]
+        Player["OpusAudioPlayer (Jitter Buffer + PLC + Mixer)"]
+        Capture["OpusMicrophoneCapture (AEC + RNNoise + Encoder)"]
+        JNI["ts3opus_jni (C++17 Shared Library)"]
+        LibOpus["Xiph libopus 1.3.1 (Prefab)"]
+        RNNoise["Xiph RNNoise v0.2 (Vendored C Model)"]
+    end
+
+    UI --> VM
+    VM --> Service
+    Service --> MicCtrl
+    Service --> Vault
+    Service --> Recon
+    Service --> Facade
+    Service --> Player
+    Service --> Capture
+    Service --> Router
+    Facade --> GenGate
+    Facade --> AttemptGate
+    Facade --> CTree
+    Player --> JNI
+    Capture --> JNI
+    JNI --> LibOpus
+    JNI --> RNNoise
