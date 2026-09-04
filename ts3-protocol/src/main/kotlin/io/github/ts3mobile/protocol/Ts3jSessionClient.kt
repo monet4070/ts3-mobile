@@ -3,15 +3,6 @@ package io.github.ts3mobile.protocol
 import com.github.manevolent.ts3j.audio.Microphone
 import com.github.manevolent.ts3j.command.CommandException
 import com.github.manevolent.ts3j.enums.CodecType
-import com.github.manevolent.ts3j.event.ChannelCreateEvent
-import com.github.manevolent.ts3j.event.ChannelDeletedEvent
-import com.github.manevolent.ts3j.event.ChannelEditedEvent
-import com.github.manevolent.ts3j.event.ChannelListEvent
-import com.github.manevolent.ts3j.event.ChannelMovedEvent
-import com.github.manevolent.ts3j.event.ClientJoinEvent
-import com.github.manevolent.ts3j.event.ClientLeaveEvent
-import com.github.manevolent.ts3j.event.ClientMovedEvent
-import com.github.manevolent.ts3j.event.ClientUpdatedEvent
 import com.github.manevolent.ts3j.event.DisconnectedEvent
 import com.github.manevolent.ts3j.event.TS3Listener
 import com.github.manevolent.ts3j.protocol.PacketKind
@@ -93,7 +84,7 @@ class Ts3jSessionClient : Ts3SessionClient {
                 logFailure("whisper callback rejected", error)
             }
         }
-        client.addListener(createListener(client, token))
+        client.addListener(createEventAdapter(client, token))
         if (generation.withCurrent(token) {
                 socket = client
                 true
@@ -214,93 +205,39 @@ class Ts3jSessionClient : Ts3SessionClient {
         runCatching { current?.close() }
     }
 
-    private fun createListener(
+    private fun createEventAdapter(
         client: Ts3jClientSocket,
         token: Long,
     ): TS3Listener =
-        object : TS3Listener {
-            override fun onDisconnected(event: DisconnectedEvent) {
-                val targetListener =
-                    generation.withCurrent(token) {
-                        socket = null
-                        snapshotStore.clear()
-                        listener
-                    } ?: return
-                runCatching { client.close() }
-                targetListener.onSnapshotChanged(SessionSnapshot.Empty)
-                targetListener.onStatusChanged(
-                    ConnectionStatus(
-                        ConnectionPhase.DISCONNECTED,
-                        "Server closed the connection (${event.reasonId})",
-                        retryable = event.reasonId !in TERMINAL_DISCONNECT_REASONS,
-                    ),
-                )
-            }
+        Ts3jEventAdapter(
+            token = token,
+            generation = generation,
+            snapshotStore = snapshotStore,
+            client = client,
+            publishSnapshot = { publishSnapshot(token) },
+            handleDisconnected = { event -> handleServerDisconnect(client, token, event) },
+        )
 
-            override fun onChannelList(event: ChannelListEvent) {
-                applySnapshotMutation(token) {
-                    snapshotStore.putChannel(event.map.toTs3Channel(event.channelId))
-                }?.let { publishSnapshotWhenConnected(client, token) }
-            }
-
-            override fun onClientJoin(event: ClientJoinEvent) {
-                if (event.clientType == REGULAR_CLIENT_TYPE) {
-                    applySnapshotMutation(token) {
-                        snapshotStore.putParticipant(event.toParticipant())
-                    }?.let { publishSnapshotWhenConnected(client, token) }
-                }
-            }
-
-            override fun onClientLeave(event: ClientLeaveEvent) {
-                applySnapshotMutation(token) {
-                    snapshotStore.removeParticipant(event.clientId)
-                }?.let { publishSnapshotWhenConnected(client, token) }
-            }
-
-            override fun onClientMoved(event: ClientMovedEvent) {
-                applySnapshotMutation(token) {
-                    snapshotStore.updateParticipant(event.clientId) { it.copy(channelId = event.targetChannelId) }
-                }?.let { publishSnapshotWhenConnected(client, token) }
-            }
-
-            override fun onClientChanged(event: ClientUpdatedEvent) {
-                applySnapshotMutation(token) {
-                    snapshotStore.updateParticipant(event.clientId) { it.withTeamSpeakUpdates(event.map) }
-                }?.let { publishSnapshotWhenConnected(client, token) }
-            }
-
-            override fun onChannelCreate(event: ChannelCreateEvent) {
-                applySnapshotMutation(token) {
-                    snapshotStore.putChannel(event.map.toTs3Channel(event.channelId))
-                }?.let { publishSnapshotWhenConnected(client, token) }
-            }
-
-            override fun onChannelDeleted(event: ChannelDeletedEvent) {
-                applySnapshotMutation(token) {
-                    snapshotStore.removeChannel(event.channelId)
-                }?.let { publishSnapshotWhenConnected(client, token) }
-            }
-
-            override fun onChannelEdit(event: ChannelEditedEvent) {
-                applySnapshotMutation(token) {
-                    snapshotStore.updateChannel(event.channelId) { it.withTeamSpeakUpdates(event.map) }
-                }?.let { publishSnapshotWhenConnected(client, token) }
-            }
-
-            override fun onChannelMoved(event: ChannelMovedEvent) {
-                applySnapshotMutation(token) {
-                    snapshotStore.updateChannel(event.channelId) {
-                        it.copy(parentId = event.channelParentId, orderAfterId = event.channelOrder)
-                    }
-                }?.let { publishSnapshotWhenConnected(client, token) }
-            }
-        }
-
-    private fun publishSnapshotWhenConnected(
+    private fun handleServerDisconnect(
         client: Ts3jClientSocket,
         token: Long,
+        event: DisconnectedEvent,
     ) {
-        if (client.isConnected) publishSnapshot(token)
+        val targetListener =
+            generation.withCurrent(token) {
+                socket = null
+                snapshotStore.clear()
+                listener
+            } ?: return
+        runCatching { client.close() }
+        targetListener.onSnapshotChanged(SessionSnapshot.Empty)
+        targetListener.onStatusChanged(
+            ConnectionStatus(
+                ConnectionPhase.DISCONNECTED,
+                "Server closed the connection (${event.reasonId})",
+                retryable = event.reasonId !in TERMINAL_DISCONNECT_REASONS,
+            ),
+        )
     }
 
     private fun publishSnapshot(token: Long) {
@@ -318,14 +255,6 @@ class Ts3jSessionClient : Ts3SessionClient {
     ) {
         generation.withCurrent(token) { listener }?.onStatusChanged(status)
     }
-
-    private fun applySnapshotMutation(
-        token: Long,
-        mutation: () -> Unit,
-    ): Unit? =
-        generation.withCurrent(token) {
-            mutation()
-        }
 
     private fun forwardVoicePacket(
         packet: PacketBody0Voice,
@@ -429,17 +358,6 @@ class Ts3jSessionClient : Ts3SessionClient {
                     .getOrNull()
                     ?: EMPTY_AUDIO_FRAME
         }
-
-    private fun ClientJoinEvent.toParticipant() =
-        Ts3Participant(
-            id = clientId,
-            channelId = clientTargetId,
-            nickname = clientNickname,
-            isTalking = isClientTalking,
-            isInputMuted = isClientInputMuted,
-            isOutputMuted = isClientOutputMuted,
-            uniqueIdentifier = uniqueClientIdentifier,
-        )
 
     private fun Throwable.conciseMessage(): String {
         var cursor: Throwable? = this
