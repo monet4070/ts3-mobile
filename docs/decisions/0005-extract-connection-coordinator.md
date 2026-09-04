@@ -1,7 +1,21 @@
 # 0005: Extract a ConnectionCoordinator from TeamSpeakService
 
-**Status:** Proposed
+**Status:** Accepted (implemented 2026-09-04)
 **Date:** 2026-08-26
+
+> Implementation notes (2026-09-04): the extraction landed in the three
+> committed steps described below. One deviation from the original sketch: the
+> host interface exposes behavior-level operations (start/stop playback,
+> create identity, attach microphone) instead of component references
+> (`audioPlayer`, `identityVault`, …), because the app module's JVM unit tests
+> cannot construct those Android-bound classes; a fake host implementing the
+> operations keeps the coordinator fully testable on the JVM. The coordinator
+> also receives a `sessionFactory` seam so tests can substitute the session.
+> `TeamSpeakService.kt` dropped from 1018 to 494 lines; the new
+> `ConnectionCoordinator.kt` is 678 lines and remains above the 300-line
+> boundary — the follow-up extractions (event mapping and the reconnect loop)
+> should target it next. `ConnectionCoordinatorTest` covers the four minimum
+> cases below with a fake host and virtual-time coroutines.
 
 ## Context
 

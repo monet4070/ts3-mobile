@@ -36,6 +36,12 @@ and audio behavior is still being validated.
 
 ### Changed
 
+- Extracted the connection/reconnect state machine from TeamSpeakService into
+  a JVM-testable ConnectionCoordinator behind an internal host seam, per
+  ADR-0005; TeamSpeakService dropped from 1018 to 494 lines and now owns only
+  the binder, notification, participant settings and components. The
+  coordinator is covered by new fake-host unit tests for stale-callback
+  rejection, user disconnect, network-driven reconnect and terminal failure.
 - Consolidated the duplicated sanitized failure-type logging helper into the
   protocol module as a public API; the audio module now imports the single
   implementation instead of maintaining a byte-identical copy.

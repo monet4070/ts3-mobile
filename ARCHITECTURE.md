@@ -28,7 +28,13 @@ notifications, reconnection orchestration and user-visible error mapping.
 
 `TeamSpeakServiceState` is the single UI state model. The service publishes it
 through a read-only `StateFlow`; UI code never mutates service state directly.
-Session replacement is guarded by a `Mutex` and `SessionGeneration`, a
+`ConnectionCoordinator` owns the session-epoch state and the connection/
+reconnect state machine behind the internal `ConnectionCoordinatorHost` seam;
+the host exposes behavior-level operations (start/stop playback, identity
+creation, microphone control, foreground teardown) rather than component
+references, so the coordinator is JVM-unit-testable with a fake host and a
+substitutable session factory. Session replacement is guarded by a `Mutex` and
+`SessionGeneration`, a
 thread-safe monotonically increasing lifecycle token. The protocol adapter uses
 the equivalent `SessionGenerationGate` to serialize generation checks with
 snapshot mutations, so callbacks from an old session cannot write into a new
@@ -76,9 +82,11 @@ Connection, connected-session, channel, participant, microphone and diagnostics
 surfaces live in focused files under the same `ui` package, each below the
 preferred 300-line review boundary.
 
-`TeamSpeakService.kt` remains larger than that boundary because connection,
-reconnection, playback routing and foreground-service state currently share
-lifecycle invariants. Microphone capture has moved to `MicrophoneController`.
+`TeamSpeakService.kt` is down to 494 lines after the ADR-0005 extraction: it
+now owns the binder, foreground notification, participant audio settings,
+audio routing glue and component ownership, while `ConnectionCoordinator`
+(678 lines) owns the connection/reconnect state machine behind a
+`ConnectionCoordinatorHost` seam with JVM unit tests.
 
 The remaining first-party files near or above the preferred 300-line review
 boundary have been assessed as follows. Vendored RNNoise sources are excluded
@@ -86,14 +94,16 @@ from this project-specific decomposition policy.
 
 | File | Current responsibility assessment | Planned extraction |
 | --- | --- | --- |
-| `TeamSpeakService.kt` | Too broad: connection, reconnect, playback routing, notifications and binder commands | Extract `ConnectionCoordinator`, then playback/routing and foreground-notification controllers |
+| `ConnectionCoordinator.kt` | 678 lines: the connection/reconnect state machine is now isolated but still mixes attempt orchestration, the listener, the reconnect loop and channel restore | Extract the reconnect loop and channel restore next; then event mapping |
+| `TeamSpeakService.kt` | 494 lines: binder, notification, participant audio settings, routing glue and component ownership — cohesive but still above the boundary | Extract the foreground-notification controller once the coordinator follow-ups land |
 | `OpusAudioPlayer.kt` | Playback lifecycle is cohesive, but jitter/talker buffering and Android output are independently testable | Extract the talker jitter pipeline and `AudioTrack` creation without changing frame timing |
 | `OpusMicrophoneCapture.kt` | Capture lifecycle is cohesive; audio-effect setup and capture measurements are secondary concerns | Extract the effect chain and measurement helpers while keeping the capture thread single-owner |
 | `Ts3jSessionClient.kt` | Protocol facade also maps ts3j callbacks and failures | Extract event and failure adapters while retaining the JVM-only public facade |
 | `AudioDeviceRouter.kt` | Slightly above the boundary but still one cohesive routing responsibility | Extract device classification only if routing families or platform branches grow |
 
-The extraction order is service orchestration, playback buffering, capture
-effects, then protocol mapping. Each step must preserve the public service
+The extraction order is the coordinator's reconnect/restore follow-ups, then
+playback buffering, capture effects, then protocol mapping. Each step must
+preserve the public service
 binder and protocol facade, session-generation rejection of stale callbacks,
 the bounded audio queue, and existing test fixtures. This avoids combining a
 large structural change with the outstanding M10 physical-device acceptance
