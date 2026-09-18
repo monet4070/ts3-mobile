@@ -98,7 +98,7 @@ class Ts3jSessionClient : Ts3SessionClient {
                 normalized.port,
             )
             logDiagnostic("connecting to ${address.address.hostAddress}:${address.port}")
-            client.connect(address, normalized.password.takeIf(String::isNotBlank), CONNECT_TIMEOUT_MS)
+            client.connect(address, normalized.password.toTs3jServerPassword(), CONNECT_TIMEOUT_MS)
             if (token != generation.get()) {
                 runCatching { client.close() }
                 if (socket === client) socket = null
