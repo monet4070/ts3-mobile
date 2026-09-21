@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat
 import io.github.ts3mobile.app.MainActivity
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.identity.IdentityVault
+import io.github.ts3mobile.app.ui.resolve
 import io.github.ts3mobile.audio.opus.AudioDeviceRouter
 import io.github.ts3mobile.audio.opus.AudioRoutingState
 import io.github.ts3mobile.audio.opus.OpusAudioPlayer
@@ -158,6 +159,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
             buildNotification(
                 host = host,
                 status = current.status,
+                statusMessage = current.statusMessage,
                 onlineCount = current.snapshot.participants.size,
                 microphoneActive = current.isTransmitting,
             ),
@@ -297,6 +299,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 buildNotification(
                     host = host,
                     status = current.status,
+                    statusMessage = current.statusMessage,
                     onlineCount = current.snapshot.participants.size,
                     microphoneActive = includeMicrophone,
                 ),
@@ -325,6 +328,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     private fun buildNotification(
         host: String,
         status: ConnectionStatus,
+        statusMessage: UserMessage? = null,
         onlineCount: Int = 0,
         microphoneActive: Boolean = false,
     ) = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
@@ -337,7 +341,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 when (status.phase) {
                     ConnectionPhase.CONNECTING -> getString(R.string.notification_connecting, host)
                     ConnectionPhase.RECONNECTING ->
-                        status.detail
+                        statusMessage?.let { it.resolve(this) }
                             ?: getString(R.string.notification_reconnecting, host)
                     ConnectionPhase.DISCONNECTING -> getString(R.string.notification_disconnecting, host)
                     ConnectionPhase.CONNECTED ->

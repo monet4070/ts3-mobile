@@ -33,9 +33,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.ParticipantAudioSettings
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.service.audioControlKey
@@ -54,7 +56,7 @@ internal fun ParticipantList(
         }
     var expandedKey by remember { mutableStateOf<String?>(null) }
     if (state.snapshot.participants.isEmpty()) {
-        EmptyList("没有可见用户")
+        EmptyList(stringResource(R.string.empty_participants))
         return
     }
 
@@ -116,11 +118,14 @@ internal fun ParticipantList(
                                         Icons.AutoMirrored.Outlined.VolumeUp
                                     },
                                 contentDescription =
-                                    if (settings.muted) {
-                                        "取消静音${participant.nickname}"
-                                    } else {
-                                        "静音${participant.nickname}"
-                                    },
+                                    stringResource(
+                                        if (settings.muted) {
+                                            R.string.action_unmute_participant
+                                        } else {
+                                            R.string.action_mute_participant
+                                        },
+                                        participant.nickname,
+                                    ),
                             )
                         }
                         IconButton(
@@ -130,7 +135,8 @@ internal fun ParticipantList(
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Tune,
-                                contentDescription = "调整${participant.nickname}的音量",
+                                contentDescription =
+                                    stringResource(R.string.action_adjust_volume, participant.nickname),
                                 tint =
                                     if (settings.volumePercent != 100) {
                                         MaterialTheme.colorScheme.primary
@@ -175,12 +181,13 @@ internal fun ParticipantList(
     }
 }
 
+@Composable
 private fun participantAudioDetail(
     channelName: String,
     settings: ParticipantAudioSettings,
 ): String =
     when {
-        settings.muted -> "$channelName · 已静音"
+        settings.muted -> stringResource(R.string.participant_channel_muted, channelName)
         settings.volumePercent != 100 -> "$channelName · ${settings.volumePercent}%"
         else -> channelName
     }
@@ -224,9 +231,9 @@ internal fun ChannelParticipantRow(
                 },
             contentDescription =
                 when {
-                    participant.isTalking -> "正在说话"
-                    participant.isInputMuted -> "麦克风静音"
-                    participant.isOutputMuted -> "扬声器静音"
+                    participant.isTalking -> stringResource(R.string.participant_talking)
+                    participant.isInputMuted -> stringResource(R.string.participant_input_muted)
+                    participant.isOutputMuted -> stringResource(R.string.participant_output_muted)
                     else -> null
                 },
             modifier = Modifier.size(19.dp),
@@ -248,7 +255,7 @@ internal fun ChannelParticipantRow(
         )
         if (isOwnClient) {
             Text(
-                text = "我",
+                text = stringResource(R.string.participant_self),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )

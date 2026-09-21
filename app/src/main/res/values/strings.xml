@@ -1,14 +1,143 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">TS3 Mobile</string>
+    <string name="app_name" translatable="false">TS3 Mobile</string>
+
+    <!-- Foreground service notification -->
     <string name="notification_channel_name">TeamSpeak connection</string>
     <string name="notification_connecting">Connecting to %1$s</string>
     <string name="notification_reconnecting">Reconnecting to %1$s</string>
     <string name="notification_disconnecting">Disconnecting from %1$s</string>
-    <string name="notification_microphone_active">麦克风已开启 · %1$s · %2$d 人在线</string>
+    <string name="notification_microphone_active">Microphone on · %1$s · %2$d online</string>
     <plurals name="notification_connected">
         <item quantity="one">Connected to %1$s · %2$d online</item>
         <item quantity="other">Connected to %1$s · %2$d online</item>
     </plurals>
     <string name="notification_disconnect">Disconnect</string>
+
+    <!-- Connection phase indicator -->
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_connecting">Connecting</string>
+    <string name="status_reconnecting">Reconnecting</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_disconnecting">Disconnecting</string>
+    <string name="status_error">Connection failed</string>
+
+    <!-- Service-layer messages -->
+    <string name="status_not_connected">Not connected to a server</string>
+    <string name="status_session_expired">The session ended before the channel switch finished</string>
+    <string name="status_waiting_for_network">No network. Reconnecting automatically once it is back.</string>
+    <string name="status_connection_interrupted">Connection lost. Reconnecting automatically.</string>
+    <string name="status_connection_interrupted_cause">Connection lost. Reconnecting automatically: %1$s</string>
+    <string name="status_reconnect_failed">Reconnect failed</string>
+    <string name="status_reconnect_failed_cause">Reconnect failed: %1$s</string>
+    <string name="status_reconnect_scheduled">Reconnect attempt %2$d in %1$d s</string>
+    <string name="status_reconnecting_attempt">Reconnect attempt %1$d under way</string>
+    <string name="channel_join_failed">Could not switch channel: %1$s</string>
+    <string name="channel_restore_failed">Could not restore the channel: %1$s</string>
+    <string name="microphone_permission_continuous">Microphone permission is required for always-on mode</string>
+    <string name="microphone_permission_missing">No microphone permission</string>
+    <string name="microphone_permission_voice">Microphone permission is required to send voice</string>
+    <string name="microphone_failed">Microphone error: %1$s</string>
+
+    <!-- Audio routing -->
+    <string name="audio_route_system">Automatic</string>
+    <string name="audio_route_earpiece">Earpiece</string>
+    <string name="audio_route_speaker">Speaker</string>
+    <string name="audio_route_wired">Wired headset</string>
+    <string name="audio_route_bluetooth">Bluetooth</string>
+    <string name="audio_route_usb">USB audio</string>
+    <string name="audio_route_other">Other device</string>
+    <string name="audio_route_with_device" translatable="false">%1$s · %2$s</string>
+    <string name="audio_route_unavailable">That audio device is no longer available</string>
+    <string name="audio_route_switch_failed">Could not switch audio device: %1$s</string>
+    <string name="audio_route_switch_denied">The system refused the switch to that audio device</string>
+    <string name="audio_route_disconnected">The selected audio device disconnected; switched back to automatic</string>
+    <string name="action_select_audio_device">Select audio device, currently %1$s</string>
+
+    <!-- Connection form -->
+    <string name="connect_title">Connect to server</string>
+    <string name="field_server_address">Server address</string>
+    <string name="field_server_address_hint" translatable="false">voice.example.com</string>
+    <string name="error_server_address_required">Enter a server address</string>
+    <string name="field_port">Port</string>
+    <string name="field_port_range" translatable="false">1–65535</string>
+    <string name="field_nickname">Nickname</string>
+    <string name="error_nickname_length">Nickname must be 3–30 characters</string>
+    <string name="field_server_password">Server password (optional)</string>
+    <string name="action_show_password">Show password</string>
+    <string name="action_hide_password">Hide password</string>
+    <string name="action_connect">Connect</string>
+    <string name="action_reconnect">Reconnect</string>
+    <string name="action_cancel_connect">Cancel</string>
+    <string name="action_cancel_reconnect">Cancel reconnect</string>
+    <string name="action_disconnecting">Disconnecting</string>
+
+    <!-- Connected header and tabs -->
+    <plurals name="connected_channel_count">
+        <item quantity="one">%d channel</item>
+        <item quantity="other">%d channels</item>
+    </plurals>
+    <plurals name="connected_online_count">
+        <item quantity="one">%d online</item>
+        <item quantity="other">%d online</item>
+    </plurals>
+    <string name="connected_summary" translatable="false">%1$s · %2$s · %3$s</string>
+    <string name="action_mute_playback">Mute speaker</string>
+    <string name="action_unmute_playback">Unmute speaker</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="tab_channels">Channels</string>
+    <string name="tab_participants">Users</string>
+    <string name="tab_diagnostics">Diagnostics</string>
+
+    <!-- Channels -->
+    <string name="channel_join_title">Join “%1$s”</string>
+    <string name="field_channel_password">Channel password</string>
+    <string name="action_join">Join</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="empty_channels">No visible channels</string>
+    <string name="action_expand_channel">Expand channel</string>
+    <string name="action_collapse_channel">Collapse channel</string>
+    <string name="state_expanded">Expanded</string>
+    <string name="state_collapsed">Collapsed</string>
+    <string name="label_current_channel">Current channel</string>
+
+    <!-- Participants -->
+    <string name="empty_participants">No visible users</string>
+    <string name="action_mute_participant">Mute %1$s</string>
+    <string name="action_unmute_participant">Unmute %1$s</string>
+    <string name="action_adjust_volume">Adjust volume for %1$s</string>
+    <string name="participant_channel_muted">%1$s · Muted</string>
+    <string name="participant_talking">Talking</string>
+    <string name="participant_input_muted">Microphone muted</string>
+    <string name="participant_output_muted">Speaker muted</string>
+    <string name="participant_self">Me</string>
+
+    <!-- Microphone -->
+    <string name="microphone_mode_off">Off</string>
+    <string name="microphone_mode_push_to_talk">Hold</string>
+    <string name="microphone_mode_continuous">Always on</string>
+    <string name="microphone_state_off">Microphone off</string>
+    <string name="microphone_state_continuous">Microphone always on</string>
+    <string name="microphone_state_starting">Starting microphone</string>
+    <string name="microphone_talking">Talking</string>
+    <string name="microphone_push_to_talk">Push to talk</string>
+
+    <!-- Diagnostics -->
+    <string name="diagnostics_title">Connection diagnostics</string>
+    <string name="diagnostics_privacy_note">The export contains no server, password, nickname or channel names</string>
+    <string name="action_copy">Copy</string>
+    <string name="diagnostics_copied">Diagnostics copied</string>
+    <string name="diagnostics_uptime">Uptime</string>
+    <string name="diagnostics_connection_attempts">Connection attempts</string>
+    <string name="diagnostics_reconnect_attempts">Reconnect attempts</string>
+    <string name="diagnostics_successful_connections">Successful connections</string>
+    <string name="diagnostics_failed_connections">Failed connections</string>
+    <string name="diagnostics_retryable_failures">Retryable failures</string>
+    <string name="diagnostics_voice_frames_received">Voice frames received</string>
+    <string name="diagnostics_voice_frames_dropped">Voice frames dropped</string>
+    <string name="diagnostics_microphone_errors">Microphone errors</string>
+    <string name="diagnostics_channel_join_attempts">Channel switch attempts</string>
+    <string name="diagnostics_channel_join_failures">Channel switch failures</string>
+    <string name="diagnostics_last_failure">Last failure type</string>
+    <string name="diagnostics_none" translatable="false">NONE</string>
 </resources>

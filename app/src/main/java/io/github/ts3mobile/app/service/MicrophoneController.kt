@@ -45,7 +45,7 @@ internal class MicrophoneController(
     fun setMode(mode: MicrophoneMode) {
         if (mode == MicrophoneMode.CONTINUOUS && !hasPermission()) {
             state.update {
-                it.copy(microphoneError = "需要麦克风权限才能开启常开模式")
+                it.copy(microphoneError = UserMessage.MicrophonePermissionForContinuous)
             }
             return
         }
@@ -85,7 +85,7 @@ internal class MicrophoneController(
                     state.update {
                         it.copy(
                             isTransmitting = false,
-                            microphoneError = "没有麦克风权限",
+                            microphoneError = UserMessage.MicrophonePermissionMissing,
                         )
                     }
                     return@withLock
@@ -108,7 +108,7 @@ internal class MicrophoneController(
                     state.update {
                         it.copy(
                             isTransmitting = false,
-                            microphoneError = conciseMessage(error),
+                            microphoneError = UserMessage.MicrophoneFailed(conciseMessage(error)),
                         )
                     }
                     updateForegroundType(false)
@@ -135,7 +135,7 @@ internal class MicrophoneController(
         state.update {
             it.copy(
                 isTransmitting = false,
-                microphoneError = "需要麦克风权限才能发送语音",
+                microphoneError = UserMessage.MicrophonePermissionForVoice,
             )
         }
     }
@@ -173,7 +173,7 @@ internal class MicrophoneController(
         state.update {
             it.copy(
                 isTransmitting = false,
-                microphoneError = conciseMessage(error),
+                microphoneError = UserMessage.MicrophoneFailed(conciseMessage(error)),
             )
         }
         scope.launch {

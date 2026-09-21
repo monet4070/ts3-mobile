@@ -40,24 +40,27 @@ internal class ReconnectEngine(
         epoch: Long,
     ) {
         if (!host.sessionGeneration.isActive(epoch)) return
-        val detail =
+        val message =
             if (host.networkAvailable.value) {
-                "连接中断，准备自动重连：${cause.detail.orEmpty()}".trimEnd('：')
+                UserMessage.ConnectionInterrupted(cause.detail?.takeIf(String::isNotBlank))
             } else {
-                WAITING_FOR_NETWORK_DETAIL
+                UserMessage.WaitingForNetwork
             }
         host.mutableState.update { current ->
-            current.copy(
-                status =
+            current
+                .withStatus(
                     ConnectionStatus(
                         ConnectionPhase.RECONNECTING,
-                        detail,
+                        cause.detail,
                         retryable = true,
                     ),
-                snapshot = SessionSnapshot.Empty,
-                isTransmitting = false,
-                switchingChannelId = null,
-            )
+                    message,
+                )
+                .copy(
+                    snapshot = SessionSnapshot.Empty,
+                    isTransmitting = false,
+                    switchingChannelId = null,
+                )
         }
         host.refreshDiagnostics()
         host.updateNotification()
@@ -79,13 +82,12 @@ internal class ReconnectEngine(
         while (host.sessionGeneration.isActive(epoch)) {
             if (!host.networkAvailable.value) {
                 host.mutableState.update { current ->
-                    current.copy(
-                        status =
-                            ConnectionStatus(
-                                ConnectionPhase.RECONNECTING,
-                                WAITING_FOR_NETWORK_DETAIL,
-                                retryable = true,
-                            ),
+                    current.withStatus(
+                        ConnectionStatus(
+                            ConnectionPhase.RECONNECTING,
+                            retryable = true,
+                        ),
+                        UserMessage.WaitingForNetwork,
                     )
                 }
                 host.updateNotification()
@@ -96,13 +98,12 @@ internal class ReconnectEngine(
             val attempt = reconnectAttempt + 1
             val delayMs = host.reconnectPolicy.delayForAttempt(attempt)
             host.mutableState.update { current ->
-                current.copy(
-                    status =
-                        ConnectionStatus(
-                            ConnectionPhase.RECONNECTING,
-                            "${delayMs / 1_000} 秒后进行第 $attempt 次重连",
-                            retryable = true,
-                        ),
+                current.withStatus(
+                    ConnectionStatus(
+                        ConnectionPhase.RECONNECTING,
+                        retryable = true,
+                    ),
+                    UserMessage.ReconnectScheduled(delayMs / 1_000, attempt),
                 )
             }
             host.updateNotification()
@@ -112,13 +113,12 @@ internal class ReconnectEngine(
 
             reconnectAttempt = attempt
             host.mutableState.update { current ->
-                current.copy(
-                    status =
-                        ConnectionStatus(
-                            ConnectionPhase.RECONNECTING,
-                            "正在进行第 $attempt 次重连",
-                            retryable = true,
-                        ),
+                current.withStatus(
+                    ConnectionStatus(
+                        ConnectionPhase.RECONNECTING,
+                        retryable = true,
+                    ),
+                    UserMessage.Reconnecting(attempt),
                 )
             }
             host.updateNotification()
@@ -148,9 +148,5 @@ internal class ReconnectEngine(
         )
 
         suspend fun suspendAudioForReconnect()
-    }
-
-    internal companion object {
-        const val WAITING_FOR_NETWORK_DETAIL = "网络不可用，恢复后自动重连"
     }
 }

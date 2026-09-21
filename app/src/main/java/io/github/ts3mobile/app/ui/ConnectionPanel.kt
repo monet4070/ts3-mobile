@@ -36,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.ConnectionFormState
+import io.github.ts3mobile.app.R
 import io.github.ts3mobile.protocol.ConnectionPhase
 
 @Composable
@@ -74,7 +76,7 @@ internal fun ConnectionForm(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text(
-            text = "连接服务器",
+            text = stringResource(R.string.connect_title),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
         )
@@ -90,13 +92,13 @@ internal fun ConnectionForm(
                 modifier = Modifier.weight(1f),
                 enabled = !isConnecting,
                 singleLine = true,
-                label = { Text("服务器地址") },
-                placeholder = { Text("voice.example.com") },
+                label = { Text(stringResource(R.string.field_server_address)) },
+                placeholder = { Text(stringResource(R.string.field_server_address_hint)) },
                 leadingIcon = { Icon(Icons.Outlined.Dns, contentDescription = null) },
                 isError = invalidHost,
                 supportingText =
                     if (invalidHost) {
-                        { Text("请输入服务器地址") }
+                        { Text(stringResource(R.string.error_server_address_required)) }
                     } else {
                         null
                     },
@@ -108,11 +110,11 @@ internal fun ConnectionForm(
                 modifier = Modifier.width(108.dp),
                 enabled = !isConnecting,
                 singleLine = true,
-                label = { Text("端口") },
+                label = { Text(stringResource(R.string.field_port)) },
                 isError = invalidPort,
                 supportingText =
                     if (invalidPort) {
-                        { Text("1–65535") }
+                        { Text(stringResource(R.string.field_port_range)) }
                     } else {
                         null
                     },
@@ -130,12 +132,12 @@ internal fun ConnectionForm(
             modifier = Modifier.fillMaxWidth(),
             enabled = !isConnecting,
             singleLine = true,
-            label = { Text("昵称") },
+            label = { Text(stringResource(R.string.field_nickname)) },
             leadingIcon = { Icon(Icons.Outlined.AlternateEmail, contentDescription = null) },
             isError = invalidNickname,
             supportingText =
                 if (invalidNickname) {
-                    { Text("昵称需要 3–30 个字符") }
+                    { Text(stringResource(R.string.error_nickname_length)) }
                 } else {
                     null
                 },
@@ -148,7 +150,7 @@ internal fun ConnectionForm(
             modifier = Modifier.fillMaxWidth(),
             enabled = !isConnecting,
             singleLine = true,
-            label = { Text("服务器密码（可选）") },
+            label = { Text(stringResource(R.string.field_server_password)) },
             leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
             trailingIcon = {
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
@@ -159,7 +161,14 @@ internal fun ConnectionForm(
                             } else {
                                 Icons.Outlined.Visibility
                             },
-                        contentDescription = if (passwordVisible) "隐藏密码" else "显示密码",
+                        contentDescription =
+                            stringResource(
+                                if (passwordVisible) {
+                                    R.string.action_hide_password
+                                } else {
+                                    R.string.action_show_password
+                                },
+                            ),
                     )
                 }
             },
@@ -193,11 +202,13 @@ internal fun ConnectionForm(
                 Icon(Icons.Default.PowerSettingsNew, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    when (phase) {
-                        ConnectionPhase.RECONNECTING -> "取消重连"
-                        ConnectionPhase.DISCONNECTING -> "正在断开"
-                        else -> "取消连接"
-                    },
+                    stringResource(
+                        when (phase) {
+                            ConnectionPhase.RECONNECTING -> R.string.action_cancel_reconnect
+                            ConnectionPhase.DISCONNECTING -> R.string.action_disconnecting
+                            else -> R.string.action_cancel_connect
+                        },
+                    ),
                 )
             }
         } else {
@@ -210,7 +221,7 @@ internal fun ConnectionForm(
             ) {
                 Icon(Icons.Default.Link, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (phase == ConnectionPhase.ERROR) "重新连接" else "连接")
+                Text(stringResource(if (phase == ConnectionPhase.ERROR) R.string.action_reconnect else R.string.action_connect))
             }
         }
     }

@@ -19,13 +19,17 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.ts3mobile.app.ConnectionFormState
+import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
+import io.github.ts3mobile.app.service.UserMessage
 import io.github.ts3mobile.protocol.ConnectionPhase
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,17 +75,20 @@ fun MainScreen(
                     .fillMaxSize()
                     .padding(contentPadding),
         ) {
-            serviceState.status.detail?.let { detail ->
+            val context = LocalContext.current
+            val statusText =
+                serviceState.statusMessage?.resolve(context) ?: serviceState.status.detail
+            statusText?.let { detail ->
                 StatusMessage(serviceState.status.phase, detail)
             }
-            serviceState.microphoneError?.let { detail ->
-                StatusMessage(ConnectionPhase.ERROR, detail)
+            serviceState.microphoneError?.let { message ->
+                StatusMessage(ConnectionPhase.ERROR, message.resolve(context))
             }
-            serviceState.channelError?.let { detail ->
-                StatusMessage(ConnectionPhase.ERROR, detail)
+            serviceState.channelError?.let { message ->
+                StatusMessage(ConnectionPhase.ERROR, message.resolve(context))
             }
-            serviceState.audioRouting.error?.let { detail ->
-                StatusMessage(ConnectionPhase.ERROR, detail)
+            serviceState.audioRouting.error?.let { error ->
+                StatusMessage(ConnectionPhase.ERROR, UserMessage.AudioRouting(error).resolve(context))
             }
 
             if (serviceState.status.phase == ConnectionPhase.CONNECTED) {
@@ -115,14 +122,14 @@ fun MainScreen(
 
 @Composable
 private fun StatusIndicator(phase: ConnectionPhase) {
-    val (label, color) =
+    val (labelId, color) =
         when (phase) {
-            ConnectionPhase.DISCONNECTED -> "未连接" to MaterialTheme.colorScheme.outline
-            ConnectionPhase.CONNECTING -> "连接中" to MaterialTheme.colorScheme.tertiary
-            ConnectionPhase.RECONNECTING -> "重连中" to MaterialTheme.colorScheme.tertiary
-            ConnectionPhase.CONNECTED -> "已连接" to MaterialTheme.colorScheme.primary
-            ConnectionPhase.DISCONNECTING -> "断开中" to MaterialTheme.colorScheme.tertiary
-            ConnectionPhase.ERROR -> "连接失败" to MaterialTheme.colorScheme.error
+            ConnectionPhase.DISCONNECTED -> R.string.status_disconnected to MaterialTheme.colorScheme.outline
+            ConnectionPhase.CONNECTING -> R.string.status_connecting to MaterialTheme.colorScheme.tertiary
+            ConnectionPhase.RECONNECTING -> R.string.status_reconnecting to MaterialTheme.colorScheme.tertiary
+            ConnectionPhase.CONNECTED -> R.string.status_connected to MaterialTheme.colorScheme.primary
+            ConnectionPhase.DISCONNECTING -> R.string.status_disconnecting to MaterialTheme.colorScheme.tertiary
+            ConnectionPhase.ERROR -> R.string.status_error to MaterialTheme.colorScheme.error
         }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -132,7 +139,7 @@ private fun StatusIndicator(phase: ConnectionPhase) {
                 .background(color, CircleShape),
         )
         Spacer(Modifier.width(7.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge)
+        Text(stringResource(labelId), style = MaterialTheme.typography.labelLarge)
     }
 }
 

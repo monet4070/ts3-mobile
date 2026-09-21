@@ -33,12 +33,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.MicrophoneMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,11 +72,13 @@ internal fun MicrophoneControl(
                             ),
                     ) {
                         Text(
-                            when (option) {
-                                MicrophoneMode.OFF -> "关闭"
-                                MicrophoneMode.PUSH_TO_TALK -> "按住"
-                                MicrophoneMode.CONTINUOUS -> "常开"
-                            },
+                            stringResource(
+                                when (option) {
+                                    MicrophoneMode.OFF -> R.string.microphone_mode_off
+                                    MicrophoneMode.PUSH_TO_TALK -> R.string.microphone_mode_push_to_talk
+                                    MicrophoneMode.CONTINUOUS -> R.string.microphone_mode_continuous
+                                },
+                            ),
                         )
                     }
                 }
@@ -112,13 +116,15 @@ internal fun MicrophoneControl(
                         )
                         Text(
                             text =
-                                if (mode == MicrophoneMode.OFF) {
-                                    "麦克风已关闭"
-                                } else if (isTransmitting) {
-                                    "麦克风常开中"
-                                } else {
-                                    "正在启动麦克风"
-                                },
+                                stringResource(
+                                    if (mode == MicrophoneMode.OFF) {
+                                        R.string.microphone_state_off
+                                    } else if (isTransmitting) {
+                                        R.string.microphone_state_continuous
+                                    } else {
+                                        R.string.microphone_state_starting
+                                    },
+                                ),
                             style = MaterialTheme.typography.labelLarge,
                         )
                     }
@@ -135,6 +141,8 @@ private fun PushToTalkButton(
     var pressed by remember { mutableStateOf(false) }
     val currentPushToTalkChanged by rememberUpdatedState(onPushToTalkChanged)
     val active = pressed || isTransmitting
+    val talkDescription =
+        stringResource(if (active) R.string.microphone_talking else R.string.microphone_push_to_talk)
 
     Surface(
         modifier =
@@ -142,7 +150,7 @@ private fun PushToTalkButton(
                 .size(58.dp)
                 .semantics {
                     role = Role.Button
-                    contentDescription = if (active) "正在说话" else "按住说话"
+                    contentDescription = talkDescription
                     onClick {
                         onPushToTalkChanged(!isTransmitting)
                         true

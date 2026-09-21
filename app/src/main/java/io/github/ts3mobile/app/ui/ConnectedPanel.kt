@@ -35,9 +35,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.audio.opus.AudioRoutingState
@@ -76,9 +80,20 @@ internal fun ConnectedContent(
                     )
                     Text(
                         text =
-                            "${state.snapshot.channels.size} 个频道 · " +
-                                "${state.snapshot.participants.size} 人在线 · " +
-                                state.audioRouting.selectedRoute.label,
+                            stringResource(
+                                R.string.connected_summary,
+                                pluralStringResource(
+                                    R.plurals.connected_channel_count,
+                                    state.snapshot.channels.size,
+                                    state.snapshot.channels.size,
+                                ),
+                                pluralStringResource(
+                                    R.plurals.connected_online_count,
+                                    state.snapshot.participants.size,
+                                    state.snapshot.participants.size,
+                                ),
+                                state.audioRouting.selectedRoute.resolveLabel(LocalContext.current),
+                            ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -97,11 +112,21 @@ internal fun ConnectedContent(
                             } else {
                                 Icons.AutoMirrored.Outlined.VolumeUp
                             },
-                        contentDescription = if (state.playbackMuted) "打开扬声器" else "静音扬声器",
+                        contentDescription =
+                            stringResource(
+                                if (state.playbackMuted) {
+                                    R.string.action_unmute_playback
+                                } else {
+                                    R.string.action_mute_playback
+                                },
+                            ),
                     )
                 }
                 IconButton(onClick = onDisconnect) {
-                    Icon(Icons.Default.PowerSettingsNew, contentDescription = "断开连接")
+                    Icon(
+                        Icons.Default.PowerSettingsNew,
+                        contentDescription = stringResource(R.string.action_disconnect),
+                    )
                 }
             }
         }
@@ -110,19 +135,19 @@ internal fun ConnectedContent(
             Tab(
                 selected = selectedTab == 0,
                 onClick = { selectedTab = 0 },
-                text = { Text("频道") },
+                text = { Text(stringResource(R.string.tab_channels)) },
                 icon = { Icon(Icons.Outlined.Tag, contentDescription = null) },
             )
             Tab(
                 selected = selectedTab == 1,
                 onClick = { selectedTab = 1 },
-                text = { Text("用户") },
+                text = { Text(stringResource(R.string.tab_participants)) },
                 icon = { Icon(Icons.Outlined.Groups, contentDescription = null) },
             )
             Tab(
                 selected = selectedTab == 2,
                 onClick = { selectedTab = 2 },
-                text = { Text("诊断") },
+                text = { Text(stringResource(R.string.tab_diagnostics)) },
                 icon = { Icon(Icons.Outlined.BugReport, contentDescription = null) },
             )
         }
@@ -164,7 +189,11 @@ private fun AudioRouteMenu(
         IconButton(onClick = { expanded = true }) {
             Icon(
                 Icons.Outlined.Headphones,
-                contentDescription = "选择音频设备，当前为${routing.selectedRoute.label}",
+                contentDescription =
+                    stringResource(
+                        R.string.action_select_audio_device,
+                        routing.selectedRoute.resolveLabel(LocalContext.current),
+                    ),
             )
         }
         DropdownMenu(
@@ -176,7 +205,7 @@ private fun AudioRouteMenu(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = route.label,
+                            text = route.resolveLabel(LocalContext.current),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )

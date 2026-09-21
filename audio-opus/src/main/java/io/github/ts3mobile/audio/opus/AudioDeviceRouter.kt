@@ -58,7 +58,7 @@ class AudioDeviceRouter(
         if (routes.none { it.id == routeId }) {
             publishState(
                 routes = routes,
-                error = "音频设备已不可用",
+                error = AudioRoutingError(AudioRoutingErrorKind.DEVICE_UNAVAILABLE),
             )
             return
         }
@@ -67,11 +67,17 @@ class AudioDeviceRouter(
         val switched =
             runCatching { applySystemRoute(output) }
                 .getOrElse { error ->
-                    publishState(routes, "切换音频设备失败：${error.message ?: error.javaClass.simpleName}")
+                    publishState(
+                        routes,
+                        AudioRoutingError(
+                            AudioRoutingErrorKind.SWITCH_FAILED,
+                            error.message ?: error.javaClass.simpleName,
+                        ),
+                    )
                     return
                 }
         if (!switched) {
-            publishState(routes, "系统拒绝切换到该音频设备")
+            publishState(routes, AudioRoutingError(AudioRoutingErrorKind.SWITCH_DENIED))
             return
         }
 
@@ -142,13 +148,18 @@ class AudioDeviceRouter(
         }
         publishState(
             routes = routes,
-            error = if (routeWasRemoved) "所选音频设备已断开，已切回系统自动" else null,
+            error =
+                if (routeWasRemoved) {
+                    AudioRoutingError(AudioRoutingErrorKind.DEVICE_DISCONNECTED)
+                } else {
+                    null
+                },
         )
     }
 
     private fun publishState(
         routes: List<AudioRouteOption>,
-        error: String?,
+        error: AudioRoutingError?,
     ) {
         val newState =
             AudioRoutingState(
@@ -172,7 +183,7 @@ class AudioDeviceRouter(
             outputs
                 .mapNotNull(::toRouteOption)
                 .distinctBy(AudioRouteOption::id)
-                .sortedWith(compareBy({ routeOrder(it.kind) }, AudioRouteOption::label))
+                .sortedWith(compareBy({ routeOrder(it.kind) }, { it.deviceName.orEmpty() }))
                 .forEach(::add)
         }
     }
@@ -224,7 +235,6 @@ class AudioDeviceRouter(
     private fun toRouteOption(device: AudioDeviceInfo): AudioRouteOption? {
         val kind = routeKind(device)
         if (kind == AudioRouteKind.OTHER) return null
-        val baseLabel = routeLabel(kind)
         val productName = device.productName?.toString()?.trim().orEmpty()
         val shouldShowProductName =
             kind in
@@ -233,17 +243,11 @@ class AudioDeviceRouter(
                     AudioRouteKind.BLUETOOTH,
                     AudioRouteKind.USB,
                 )
-        val label =
-            if (
-                shouldShowProductName &&
-                productName.isNotBlank() &&
-                !productName.equals(baseLabel, ignoreCase = true)
-            ) {
-                "$baseLabel · $productName"
-            } else {
-                baseLabel
-            }
-        return AudioRouteOption(device.id, kind, label)
+        return AudioRouteOption(
+            id = device.id,
+            kind = kind,
+            deviceName = productName.takeIf { shouldShowProductName && it.isNotBlank() },
+        )
     }
 
     companion object {
@@ -270,17 +274,6 @@ class AudioDeviceRouter(
                 -> AudioRouteKind.USB
 
                 else -> AudioRouteKind.OTHER
-            }
-
-        fun routeLabel(kind: AudioRouteKind): String =
-            when (kind) {
-                AudioRouteKind.SYSTEM -> "系统自动"
-                AudioRouteKind.EARPIECE -> "听筒"
-                AudioRouteKind.SPEAKER -> "扬声器"
-                AudioRouteKind.WIRED -> "有线耳机"
-                AudioRouteKind.BLUETOOTH -> "蓝牙设备"
-                AudioRouteKind.USB -> "USB 音频"
-                AudioRouteKind.OTHER -> "其他设备"
             }
 
         fun routeOrder(kind: AudioRouteKind): Int =

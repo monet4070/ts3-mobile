@@ -13,9 +13,23 @@ data class TeamSpeakServiceState(
     val participantAudioSettings: Map<String, ParticipantAudioSettings> = emptyMap(),
     val microphoneMode: MicrophoneMode = MicrophoneMode.PUSH_TO_TALK,
     val isTransmitting: Boolean = false,
-    val microphoneError: String? = null,
+    val microphoneError: UserMessage? = null,
     val switchingChannelId: Int? = null,
-    val channelError: String? = null,
+    val channelError: UserMessage? = null,
     val audioRouting: AudioRoutingState = AudioRoutingState.Default,
     val diagnostics: DiagnosticsSnapshot = DiagnosticsSnapshot.Empty,
+    /**
+     * App-generated text for the current [status]. Takes precedence over
+     * [ConnectionStatus.detail], which stays the protocol's technical detail.
+     */
+    val statusMessage: UserMessage? = null,
 )
+
+/**
+ * Replaces the connection status together with its user-facing message so a
+ * message from an earlier phase can never outlive the status that produced it.
+ */
+fun TeamSpeakServiceState.withStatus(
+    status: ConnectionStatus,
+    message: UserMessage? = null,
+): TeamSpeakServiceState = copy(status = status, statusMessage = message)

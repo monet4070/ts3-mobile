@@ -7,6 +7,11 @@ and audio behavior is still being validated.
 
 ### Added
 
+- English as the default UI language with Simplified Chinese kept under
+  `values-zh/`. All user-facing text now lives in string resources, and the
+  service and audio layers emit typed `UserMessage` / `AudioRoutingError`
+  values that are resolved to text at the Android boundary (ADR-0006).
+  The English wording follows @polleyr's `fb_localization_english` branch.
 - High-volume 16-bit voice packet sequence regression coverage.
 - Repeated reconnect backoff verification and a 60-second native Opus device soak.
 - A privacy-safe M10 physical-device stability and audio test matrix.

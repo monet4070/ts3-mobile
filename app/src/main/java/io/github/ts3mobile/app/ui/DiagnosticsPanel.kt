@@ -21,9 +21,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.DiagnosticsSnapshot
 
 @Composable
@@ -45,12 +47,12 @@ internal fun DiagnosticsPanel(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "连接诊断",
+                    text = stringResource(R.string.diagnostics_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "导出内容不包含服务器、密码、昵称或频道名称",
+                    text = stringResource(R.string.diagnostics_privacy_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -59,25 +61,28 @@ internal fun DiagnosticsPanel(
             OutlinedButton(onClick = onCopyDiagnostics) {
                 Icon(Icons.Outlined.ContentCopy, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("复制")
+                Text(stringResource(R.string.action_copy))
             }
         }
 
         Spacer(Modifier.height(2.dp))
         HorizontalDivider()
 
-        DiagnosticMetric("运行时间", formatDuration(diagnostics.uptimeMs))
-        DiagnosticMetric("连接尝试", diagnostics.connectionAttempts.toString())
-        DiagnosticMetric("重连尝试", diagnostics.reconnectAttempts.toString())
-        DiagnosticMetric("连接成功", diagnostics.successfulConnections.toString())
-        DiagnosticMetric("连接失败", diagnostics.failedConnections.toString())
-        DiagnosticMetric("可重试失败", diagnostics.retryableFailures.toString())
-        DiagnosticMetric("收到语音帧", diagnostics.voiceFramesReceived.toString())
-        DiagnosticMetric("丢弃语音帧", diagnostics.voiceFramesDropped.toString())
-        DiagnosticMetric("麦克风错误", diagnostics.microphoneErrors.toString())
-        DiagnosticMetric("频道切换尝试", diagnostics.channelJoinAttempts.toString())
-        DiagnosticMetric("频道切换失败", diagnostics.channelJoinFailures.toString())
-        DiagnosticMetric("最近失败类型", diagnostics.lastFailure?.name ?: "NONE")
+        DiagnosticMetric(stringResource(R.string.diagnostics_uptime), formatDuration(diagnostics.uptimeMs))
+        DiagnosticMetric(stringResource(R.string.diagnostics_connection_attempts), diagnostics.connectionAttempts.toString())
+        DiagnosticMetric(stringResource(R.string.diagnostics_reconnect_attempts), diagnostics.reconnectAttempts.toString())
+        DiagnosticMetric(stringResource(R.string.diagnostics_successful_connections), diagnostics.successfulConnections.toString())
+        DiagnosticMetric(stringResource(R.string.diagnostics_failed_connections), diagnostics.failedConnections.toString())
+        DiagnosticMetric(stringResource(R.string.diagnostics_retryable_failures), diagnostics.retryableFailures.toString())
+        DiagnosticMetric(stringResource(R.string.diagnostics_voice_frames_received), diagnostics.voiceFramesReceived.toString())
+        DiagnosticMetric(stringResource(R.string.diagnostics_voice_frames_dropped), diagnostics.voiceFramesDropped.toString())
+        DiagnosticMetric(stringResource(R.string.diagnostics_microphone_errors), diagnostics.microphoneErrors.toString())
+        DiagnosticMetric(stringResource(R.string.diagnostics_channel_join_attempts), diagnostics.channelJoinAttempts.toString())
+        DiagnosticMetric(stringResource(R.string.diagnostics_channel_join_failures), diagnostics.channelJoinFailures.toString())
+        DiagnosticMetric(
+            stringResource(R.string.diagnostics_last_failure),
+            diagnostics.lastFailure?.name ?: stringResource(R.string.diagnostics_none),
+        )
     }
 }
 

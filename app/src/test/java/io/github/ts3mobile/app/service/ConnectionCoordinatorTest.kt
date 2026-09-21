@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -101,6 +102,54 @@ class ConnectionCoordinatorTest {
         host.advance()
 
         assertTrue(host.session.connectCalls >= 2)
+    }
+
+    @Test
+    fun networkLossSurfacesTheWaitingForNetworkMessageWithoutFormattingIt() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+
+        host.network.value = false
+        coordinator.onNetworkChanged(false)
+
+        assertEquals(UserMessage.WaitingForNetwork, host.state.value.statusMessage)
+    }
+
+    @Test
+    fun aReconnectMessageDoesNotOutliveTheStatusThatProducedIt() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+
+        host.network.value = false
+        coordinator.onNetworkChanged(false)
+        assertEquals(UserMessage.WaitingForNetwork, host.state.value.statusMessage)
+
+        host.network.value = true
+        coordinator.onNetworkChanged(true)
+        host.advance()
+
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        assertNull(host.state.value.statusMessage)
+    }
+
+    @Test
+    fun losingTheSessionDuringAChannelSwitchReportsNotConnectedRatherThanAnInternalMessage() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+
+        // The launched switch has not run yet on the test dispatcher, so
+        // dropping the connection first exercises the in-flight race path.
+        coordinator.joinChannel(channelId = 42, password = "")
+        host.mutableState.value =
+            host.mutableState.value.withStatus(ConnectionStatus(ConnectionPhase.DISCONNECTED))
+        host.advance()
+
+        assertEquals(UserMessage.NotConnected, host.state.value.channelError)
+        assertNull(host.state.value.switchingChannelId)
     }
 
     @Test

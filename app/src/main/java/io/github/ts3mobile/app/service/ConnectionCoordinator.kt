@@ -179,11 +179,11 @@ internal class ConnectionCoordinator(
         host.serviceScope.launch {
             try {
                 host.sessionMutex.withLock {
-                    check(host.mutableState.value.status.phase == ConnectionPhase.CONNECTED) {
-                        "当前未连接到服务器"
+                    if (host.mutableState.value.status.phase != ConnectionPhase.CONNECTED) {
+                        throw NotConnectedException()
                     }
-                    session?.joinChannel(channelId, password)
-                        ?: error("当前未连接到服务器")
+                    val active = session ?: throw NotConnectedException()
+                    active.joinChannel(channelId, password)
                 }
                 channelRestore.rememberManualJoin(channelId, password)
                 host.mutableState.update { state ->
@@ -195,7 +195,12 @@ internal class ConnectionCoordinator(
                 host.mutableState.update { state ->
                     state.copy(
                         switchingChannelId = null,
-                        channelError = "切换频道失败：${host.conciseMessage(error)}",
+                        channelError =
+                            if (error is NotConnectedException) {
+                                UserMessage.NotConnected
+                            } else {
+                                UserMessage.ChannelJoinFailed(host.conciseMessage(error))
+                            },
                     )
                 }
             }
@@ -209,7 +214,7 @@ internal class ConnectionCoordinator(
                     listener,
                     ConnectionStatus(
                         ConnectionPhase.DISCONNECTED,
-                        "网络连接已断开",
+                        NETWORK_LOST_DETAIL,
                         retryable = true,
                     ),
                 )
@@ -217,13 +222,12 @@ internal class ConnectionCoordinator(
         }
         if (!available && host.mutableState.value.status.phase == ConnectionPhase.RECONNECTING) {
             host.mutableState.update { current ->
-                current.copy(
-                    status =
-                        ConnectionStatus(
-                            ConnectionPhase.RECONNECTING,
-                            ReconnectEngine.WAITING_FOR_NETWORK_DETAIL,
-                            retryable = true,
-                        ),
+                current.withStatus(
+                    ConnectionStatus(
+                        ConnectionPhase.RECONNECTING,
+                        retryable = true,
+                    ),
+                    UserMessage.WaitingForNetwork,
                 )
             }
             host.updateNotification()
@@ -309,19 +313,18 @@ internal class ConnectionCoordinator(
                         retryable = error.isRetryableConnectionFailure(),
                     )
                 host.mutableState.update { current ->
-                    current.copy(
-                        status =
-                            if (reconnecting) {
-                                ConnectionStatus(
-                                    ConnectionPhase.RECONNECTING,
-                                    "重连失败：${status.detail.orEmpty()}".trimEnd('：'),
-                                    retryable = status.retryable,
-                                )
-                            } else {
-                                status
-                            },
-                        snapshot = SessionSnapshot.Empty,
-                    )
+                    if (reconnecting) {
+                        current.withStatus(
+                            ConnectionStatus(
+                                ConnectionPhase.RECONNECTING,
+                                status.detail,
+                                retryable = status.retryable,
+                            ),
+                            UserMessage.ReconnectFailed(status.detail?.takeIf(String::isNotBlank)),
+                        )
+                    } else {
+                        current.withStatus(status)
+                    }.copy(snapshot = SessionSnapshot.Empty)
                 }
                 host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
                 host.refreshDiagnostics()
@@ -359,7 +362,7 @@ internal class ConnectionCoordinator(
             if (!isListenerActive(this)) return
             when (status.phase) {
                 ConnectionPhase.CONNECTING -> {
-                    if (!reconnecting) host.mutableState.update { it.copy(status = status) }
+                    if (!reconnecting) host.mutableState.update { it.withStatus(status) }
                 }
 
                 ConnectionPhase.CONNECTED -> {
@@ -374,8 +377,7 @@ internal class ConnectionCoordinator(
                         onEstablishedSessionEnded(this, status)
                     } else {
                         host.mutableState.update { current ->
-                            current.copy(
-                                status = status,
+                            current.withStatus(status).copy(
                                 snapshot = SessionSnapshot.Empty,
                                 isTransmitting = false,
                             )
@@ -384,7 +386,7 @@ internal class ConnectionCoordinator(
                 }
 
                 ConnectionPhase.DISCONNECTING -> {
-                    host.mutableState.update { it.copy(status = status) }
+                    host.mutableState.update { it.withStatus(status) }
                     host.updateNotification()
                 }
 
@@ -417,8 +419,7 @@ internal class ConnectionCoordinator(
         connectedOnce = true
         host.diagnosticsRecorder.recordConnectionSuccess()
         host.mutableState.update { current ->
-            current.copy(
-                status = ConnectionStatus(ConnectionPhase.CONNECTED),
+            current.withStatus(ConnectionStatus(ConnectionPhase.CONNECTED)).copy(
                 switchingChannelId = null,
                 channelError = null,
             )
@@ -474,8 +475,7 @@ internal class ConnectionCoordinator(
         host.stopPlayback()
         host.stopAudioRouting()
         host.mutableState.update { current ->
-            current.copy(
-                status = status.copy(retryable = false),
+            current.withStatus(status.copy(retryable = false)).copy(
                 snapshot = SessionSnapshot.Empty,
                 isTransmitting = false,
                 switchingChannelId = null,
@@ -517,8 +517,11 @@ internal class ConnectionCoordinator(
         host.serviceScope.launch {
             try {
                 host.sessionMutex.withLock {
-                    check(isListenerActive(listener) && listener.connected) { "连接已失效" }
-                    session?.joinChannel(target.channelId, target.password) ?: error("连接已失效")
+                    if (!isListenerActive(listener) || !listener.connected) {
+                        throw SessionExpiredException()
+                    }
+                    val active = session ?: throw SessionExpiredException()
+                    active.joinChannel(target.channelId, target.password)
                 }
                 host.mutableState.update {
                     it.copy(switchingChannelId = null, channelError = null)
@@ -530,7 +533,12 @@ internal class ConnectionCoordinator(
                     host.mutableState.update {
                         it.copy(
                             switchingChannelId = null,
-                            channelError = "恢复频道失败：${host.conciseMessage(error)}",
+                            channelError =
+                                if (error is SessionExpiredException) {
+                                    UserMessage.SessionExpired
+                                } else {
+                                    UserMessage.ChannelRestoreFailed(host.conciseMessage(error))
+                                },
                         )
                     }
                 }
@@ -547,6 +555,9 @@ internal class ConnectionCoordinator(
     private companion object {
         const val STABLE_CONNECTION_MS = 30_000L
         const val DIAGNOSTICS_REFRESH_MS = 1_000L
+
+        /** Diagnostic detail only; the reconnect loop shows its own localized message. */
+        const val NETWORK_LOST_DETAIL = "network connection lost"
         val interruptibleConnectionPhases =
             setOf(
                 ConnectionPhase.CONNECTING,

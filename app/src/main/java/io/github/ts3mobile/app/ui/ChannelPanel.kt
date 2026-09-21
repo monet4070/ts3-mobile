@@ -39,10 +39,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.protocol.ChannelTree
 import io.github.ts3mobile.protocol.Ts3Channel
@@ -81,13 +83,13 @@ internal fun ChannelList(
                 channelPassword = ""
                 passwordVisible = false
             },
-            title = { Text("加入“${channel.name}”") },
+            title = { Text(stringResource(R.string.channel_join_title, channel.name)) },
             text = {
                 OutlinedTextField(
                     value = channelPassword,
                     onValueChange = { channelPassword = it },
                     singleLine = true,
-                    label = { Text("频道密码") },
+                    label = { Text(stringResource(R.string.field_channel_password)) },
                     leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
                     trailingIcon = {
                         IconButton(onClick = { passwordVisible = !passwordVisible }) {
@@ -98,7 +100,14 @@ internal fun ChannelList(
                                     } else {
                                         Icons.Outlined.Visibility
                                     },
-                                contentDescription = if (passwordVisible) "隐藏密码" else "显示密码",
+                                contentDescription =
+                                    stringResource(
+                                        if (passwordVisible) {
+                                            R.string.action_hide_password
+                                        } else {
+                                            R.string.action_show_password
+                                        },
+                                    ),
                             )
                         }
                     },
@@ -119,7 +128,7 @@ internal fun ChannelList(
                         passwordVisible = false
                     },
                 ) {
-                    Text("加入")
+                    Text(stringResource(R.string.action_join))
                 }
             },
             dismissButton = {
@@ -130,14 +139,14 @@ internal fun ChannelList(
                         passwordVisible = false
                     },
                 ) {
-                    Text("取消")
+                    Text(stringResource(R.string.action_cancel))
                 }
             },
         )
     }
 
     if (rows.isEmpty()) {
-        EmptyList("没有可见频道")
+        EmptyList(stringResource(R.string.empty_channels))
         return
     }
 
@@ -160,7 +169,14 @@ internal fun ChannelList(
                                 },
                             )
                             .combinedClickable(
-                                onClickLabel = if (isExpanded) "折叠频道" else "展开频道",
+                                onClickLabel =
+                                    stringResource(
+                                        if (isExpanded) {
+                                            R.string.action_collapse_channel
+                                        } else {
+                                            R.string.action_expand_channel
+                                        },
+                                    ),
                                 onClick = {
                                     expandedChannelIds =
                                         if (isExpanded) {
@@ -196,7 +212,10 @@ internal fun ChannelList(
                             } else {
                                 Icons.AutoMirrored.Outlined.KeyboardArrowRight
                             },
-                        contentDescription = if (isExpanded) "已展开" else "已折叠",
+                        contentDescription =
+                            stringResource(
+                                if (isExpanded) R.string.state_expanded else R.string.state_collapsed,
+                            ),
                         modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -228,7 +247,7 @@ internal fun ChannelList(
                         Spacer(Modifier.width(10.dp))
                         Icon(
                             Icons.Outlined.CheckCircle,
-                            contentDescription = "当前频道",
+                            contentDescription = stringResource(R.string.label_current_channel),
                             modifier = Modifier.size(20.dp),
                             tint = MaterialTheme.colorScheme.primary,
                         )
