@@ -27,6 +27,10 @@ and audio behavior is still being validated.
 
 ### Fixed
 
+- Password-protected servers rejected the connection because the server password
+  was handed to ts3j in plaintext. ts3j forwards `client_server_password`
+  verbatim, so it now receives the TeamSpeak Base64(SHA1) representation.
+  Thanks to @polleyr for the report and fix (#1).
 - Removed an accidentally pasted SVG data-URI line from the packet-sequence
   unwrapper test that broke Kotlin compilation.
 - The build-environment check no longer aborts on Windows PowerShell 5.1 when
