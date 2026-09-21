@@ -101,7 +101,7 @@ class Ts3jSessionClient : Ts3SessionClient {
                     normalized.port,
                 )
             logDiagnostic("starting TeamSpeak UDP connection")
-            client.connect(address, normalized.password.takeIf(String::isNotBlank), CONNECT_TIMEOUT_MS)
+            client.connect(address, normalized.password.toTs3jServerPassword(), CONNECT_TIMEOUT_MS)
             if (!generation.isCurrent(token)) {
                 runCatching { client.close() }
                 return
