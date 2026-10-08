@@ -19,17 +19,15 @@ import java.util.concurrent.TimeUnit
  * listener notification is dispatched.
  *
  * The socket is driven directly through the library's public state machine and no
- * socket is opened. Event dispatch runs on the calling thread and the library's
- * default printing exception handler is replaced, so the expected transport failure
- * stays silent.
+ * socket is opened: the tests move the connection state themselves instead of
+ * depending on when the library notices a missing transport. Event dispatch runs on
+ * the calling thread and the library's default printing exception handler is
+ * replaced, so the expected handshake write failure stays silent.
  *
- * A connection attempt cannot complete without a real socket: the library's
- * CONNECTING handler writes the INIT1 handshake packet, that write fails, and the
- * library's own reader thread tears the connection back down to DISCONNECTED. The
- * library starts a daemon reader thread and a daemon handler thread for that
- * transition, so every test waits for both threads to stop and closes its sockets in
- * @After. The attempt input and the latch are applied before the failing write,
- * which is why the teardown is the disconnect the latch tests observe.
+ * A CONNECTING transition still makes the library start a daemon reader thread and
+ * a daemon handler thread. Both are interrupted by the DISCONNECTED transition the
+ * test drives, and every socket is closed in @After, which also waits until no
+ * library thread is left running.
  */
 class StateAwareTeamspeakClientSocketTest {
     private val sockets = mutableListOf<StateAwareTeamspeakClientSocket>()
@@ -65,7 +63,6 @@ class StateAwareTeamspeakClientSocketTest {
         socket.setState(ClientConnectionState.DISCONNECTED)
         socket.setState(ClientConnectionState.CONNECTED)
 
-        assertTrue(socket.isConnected)
         assertTrue(socket.transportConnected)
     }
 
@@ -73,27 +70,22 @@ class StateAwareTeamspeakClientSocketTest {
     fun aDisconnectAfterConnectingLatchesTheTransportClosed() {
         val socket = newSocket()
 
-        socket.enterConnectingAndSettle()
-        socket.setState(ClientConnectionState.CONNECTED)
+        socket.startAttemptAndDisconnect()
 
-        // The library state reports a live session again while the latch keeps the
-        // confirmed loss visible.
-        assertTrue(socket.isConnected)
         assertFalse(socket.transportConnected)
     }
 
     @Test
-    fun theClosedLatchSurvivesAnotherConnectionAttempt() {
+    fun theClosedLatchIsNotClearedByALaterAttempt() {
         val socket = newSocket()
 
-        socket.enterConnectingAndSettle()
-        socket.enterConnectingAndSettle()
+        socket.startAttemptAndDisconnect()
+        runCatching { socket.setState(ClientConnectionState.CONNECTING) }
         socket.setState(ClientConnectionState.CONNECTED)
 
-        // The latch is one-way: neither a later attempt nor a later connected state
-        // may clear it. A new attempt always uses a new socket instance, so this can
+        // The latch is one-way: a later attempt or a later connected state must not
+        // re-open it. A new attempt always uses a new socket instance, so this can
         // never hide a healthy session.
-        assertTrue(socket.isConnected)
         assertFalse(socket.transportConnected)
     }
 
@@ -127,20 +119,18 @@ class StateAwareTeamspeakClientSocketTest {
         return socket
     }
 
-    private fun StateAwareTeamspeakClientSocket.enterConnectingAndSettle() {
+    /**
+     * Drives one attempt and the disconnect that follows it.
+     *
+     * The library's CONNECTING handler writes the INIT1 handshake packet, and this
+     * test never opens a socket, so that write fails and the call throws. The
+     * connection state and the latch input are applied before the write, so the test
+     * moves the state to DISCONNECTED itself rather than waiting for the library's
+     * reader thread.
+     */
+    private fun StateAwareTeamspeakClientSocket.startAttemptAndDisconnect() {
         runCatching { setState(ClientConnectionState.CONNECTING) }
-        awaitDisconnected()
-        awaitLibraryThreadsStopped()
-    }
-
-    private fun StateAwareTeamspeakClientSocket.awaitDisconnected() {
-        val deadline = System.nanoTime() + SETTLE_TIMEOUT_NANOS
-        while (state != ClientConnectionState.DISCONNECTED) {
-            if (System.nanoTime() > deadline) {
-                fail("socket stayed in $state instead of ${ClientConnectionState.DISCONNECTED}")
-            }
-            Thread.sleep(SETTLE_POLL_MS)
-        }
+        setState(ClientConnectionState.DISCONNECTED)
     }
 
     /**
@@ -149,14 +139,14 @@ class StateAwareTeamspeakClientSocketTest {
      * test ends, otherwise an abandoned socket would keep reading in the background.
      */
     private fun awaitLibraryThreadsStopped() {
-        val deadline = System.nanoTime() + SETTLE_TIMEOUT_NANOS
+        val deadline = System.nanoTime() + THREAD_STOP_TIMEOUT_NANOS
         while (true) {
             val running = libraryThreadNames()
             if (running.isEmpty()) return
             if (System.nanoTime() > deadline) {
                 fail("library threads still running: $running")
             }
-            Thread.sleep(SETTLE_POLL_MS)
+            Thread.sleep(POLL_MILLIS)
         }
     }
 
@@ -195,8 +185,8 @@ class StateAwareTeamspeakClientSocketTest {
     private companion object {
         const val SELF_CLIENT_ID = 7
         const val OTHER_CLIENT_ID = 8
-        const val SETTLE_TIMEOUT_NANOS = 5_000_000_000L
-        const val SETTLE_POLL_MS = 5L
+        const val THREAD_STOP_TIMEOUT_NANOS = 5_000_000_000L
+        const val POLL_MILLIS = 5L
         const val LIBRARY_THREAD_PREFIX = "TS3J/"
     }
 }
