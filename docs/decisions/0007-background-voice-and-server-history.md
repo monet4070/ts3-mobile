@@ -24,6 +24,9 @@ session. Re-entering a server address also makes the connection page cumbersome.
   timeout are introduced. Pending server disconnects and failures already
   reported by callbacks suppress this fallback so kick/ban semantics survive.
   Listener claiming and session/epoch checks reject duplicate or stale results.
+  The same watch records WATCH_EXECUTION_GAP once its own tick gap reaches ten
+  seconds on the injected monotonic clock. The event reports watch scheduling only
+  and never infers a Doze, freeze or lock cause.
 - Offer an optional CPU-awake setting in the background runtime check, off by
   default pending device/battery evidence. Connected, network-usable sessions
   renew timed leases. Connecting/recovery gets a two-minute total budget;
@@ -34,6 +37,13 @@ session. Re-entering a server address also makes the connection page cumbersome.
   Timed-lock expiry during release is tolerated only when the lock is no longer held.
   A wake lock does not bypass Doze. Link to the system battery settings rather
   than requesting exemptions at first launch.
+  The lock is a request, not a guarantee: Android and vendor battery policies can
+  disable an app's wake lock outside Doze. The API only exposes whether the app
+  requested the lock, and a paused process can keep publishing its last CONNECTED
+  state, so no public API reports a disabled lock. Label the state as requested,
+  keep that wording in diagnostics, and point at both the Android
+  battery-optimization page and the system app page that vendor builds use for
+  their own battery policy.
 - Preserve already-running continuous capture in the background. Once capture
   stops, start it only with the app visible. Background reconnection restores
   listening and explains how to resume the microphone. PTT still releases on
@@ -81,4 +91,7 @@ Use the repository quality, JVM test, Android Lint, debug-build and privacy
 gates. The device scenarios and Doze commands are recorded in
 [BACKGROUND_VOICE_ACCEPTANCE.md](../testing/BACKGROUND_VOICE_ACCEPTANCE.md).
 Automated results cannot establish OEM survival, wake-lock battery cost or
-Android microphone eligibility on physical hardware.
+Android microphone eligibility on physical hardware. Locked-session evidence must
+record whether the app's wake lock was disabled (platform dump), the per-UID traffic,
+the process freeze state and the diagnostic event sequence, not only a CONNECTED
+status.

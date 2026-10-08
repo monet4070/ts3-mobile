@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -128,6 +129,7 @@ class MainActivity : ComponentActivity() {
                     onKeepCpuAwakeChanged = { serviceBinder?.setKeepCpuAwake(it) },
                     onRefreshBackgroundRuntime = { serviceBinder?.refreshBackgroundRuntime() },
                     onBatterySettings = ::openBatterySettings,
+                    onAppSettings = ::openAppSettings,
                 )
             }
         }
@@ -197,6 +199,24 @@ class MainActivity : ComponentActivity() {
     private fun openBatterySettings() {
         try {
             startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        } catch (_: android.content.ActivityNotFoundException) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
+    }
+
+    /**
+     * Opens the system page for this app. Android and vendor builds expose their
+     * own background and battery policy there (for example the Xiaomi/HyperOS
+     * battery policy); the app cannot read or change that policy.
+     */
+    private fun openAppSettings() {
+        val intent =
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", packageName, null),
+            )
+        try {
+            startActivity(intent)
         } catch (_: android.content.ActivityNotFoundException) {
             startActivity(Intent(Settings.ACTION_SETTINGS))
         }

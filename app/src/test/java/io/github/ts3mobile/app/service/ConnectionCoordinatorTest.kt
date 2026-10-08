@@ -39,7 +39,12 @@ class ConnectionCoordinatorTest {
     @Before
     fun setUp() {
         host = FakeHost()
-        coordinator = ConnectionCoordinator(host, sessionFactory = { host.session })
+        coordinator =
+            ConnectionCoordinator(
+                host,
+                clockMs = host::readClockMs,
+                sessionFactory = { host.session },
+            )
     }
 
     @After
@@ -501,6 +506,87 @@ class ConnectionCoordinatorTest {
         assertEquals(ConnectionLivenessPolicy.TRANSPORT_LOST_DETAIL, host.connectionFailures.single().detail)
     }
 
+    @Test
+    fun watchExecutionGapIsReportedOnceWithIntegerSeconds() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.transportConnected = true
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+
+        host.nowMs = 5_000L
+        host.testScope.advanceTimeBy(1_001L)
+        assertTrue(host.watchGaps.isEmpty())
+
+        host.nowMs = 16_000L
+        host.testScope.advanceTimeBy(1_001L)
+        assertEquals(listOf(11L), host.watchGaps)
+
+        repeat(5) {
+            host.nowMs += 1_000L
+            host.testScope.advanceTimeBy(1_001L)
+        }
+
+        assertEquals(listOf(11L), host.watchGaps)
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        assertEquals(0, host.transportDisconnects)
+    }
+
+    @Test
+    fun aBackwardsClockReadingIsNotReportedAsAGap() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.transportConnected = true
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+
+        host.nowMs = 1_000L
+        host.testScope.advanceTimeBy(1_001L)
+        host.nowMs = 400L
+        host.testScope.advanceTimeBy(1_001L)
+        host.nowMs = 1_400L
+        host.testScope.advanceTimeBy(1_001L)
+
+        assertTrue(host.watchGaps.isEmpty())
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+    }
+
+    @Test
+    fun aGapFromAReplacedListenerIsNotRecorded() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.transportConnected = true
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+
+        host.clockAction = {
+            host.clockAction = {}
+            coordinator.requestDisconnect()
+        }
+        host.nowMs = 30_000L
+        host.testScope.advanceTimeBy(1_001L)
+
+        assertTrue(host.watchGaps.isEmpty())
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+    }
+
+    @Test
+    fun aNewSessionWatchStartsWithAFreshGapBaseline() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.transportConnected = true
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        coordinator.requestDisconnect()
+        host.advance()
+
+        host.nowMs = 600_000L
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+
+        host.nowMs += 1_000L
+        host.testScope.advanceTimeBy(1_001L)
+        assertTrue(host.watchGaps.isEmpty())
+    }
+
     private class FakeSession : Ts3SessionClient {
         private var transportSignal: Boolean? = null
         var transportReadAction: () -> Unit = {}
@@ -571,6 +657,14 @@ class ConnectionCoordinatorTest {
         var playbackStops = 0
         var microphoneStops = 0
         var manualSessionStarts = 0
+        var nowMs = 0L
+        var clockAction: () -> Unit = {}
+        val watchGaps = mutableListOf<Long>()
+
+        fun readClockMs(): Long {
+            clockAction()
+            return nowMs
+        }
 
         override fun onManualConnectionStarted() {
             manualSessionStarts++
@@ -631,6 +725,10 @@ class ConnectionCoordinatorTest {
 
         override fun onTransportDisconnected() {
             transportDisconnects++
+        }
+
+        override fun onWatchExecutionGap(gapSeconds: Long) {
+            watchGaps += gapSeconds
         }
 
         override fun onConnectionAttempt(reconnecting: Boolean) {

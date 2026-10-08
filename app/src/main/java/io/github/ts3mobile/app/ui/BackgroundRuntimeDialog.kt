@@ -24,6 +24,7 @@ internal fun BackgroundRuntimeDialog(
     state: BackgroundRuntimeState,
     onKeepCpuAwakeChanged: (Boolean) -> Unit,
     onBatterySettings: () -> Unit,
+    onAppSettings: () -> Unit,
     onCopyDiagnostics: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -40,6 +41,10 @@ internal fun BackgroundRuntimeDialog(
                 RuntimeStatus(R.string.background_power_save, state.powerSaveMode)
                 RuntimeStatus(R.string.background_device_idle, state.deviceIdle)
                 RuntimeStatus(R.string.background_cpu_lock, state.cpuLockHeld)
+                Text(
+                    stringResource(R.string.background_cpu_lock_note),
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -48,7 +53,9 @@ internal fun BackgroundRuntimeDialog(
                     Switch(checked = state.keepCpuAwake, onCheckedChange = onKeepCpuAwakeChanged)
                 }
                 Text(stringResource(R.string.background_keep_cpu_note), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.background_vendor_note), style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = onBatterySettings) { Text(stringResource(R.string.background_open_battery_settings)) }
+                TextButton(onClick = onAppSettings) { Text(stringResource(R.string.background_open_app_settings)) }
                 TextButton(onClick = onCopyDiagnostics) { Text(stringResource(R.string.background_copy_diagnostics)) }
             }
         },

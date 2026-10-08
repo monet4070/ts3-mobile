@@ -101,6 +101,13 @@ internal interface ConnectionCoordinatorHost {
 
     /** The transport closed without delivering a protocol failure callback. */
     fun onTransportDisconnected() = Unit
+
+    /**
+     * The connected watch did not execute for at least the gap threshold. This
+     * reports watch scheduling only: it never infers a CPU, freeze or network
+     * root cause and never changes connection behavior.
+     */
+    fun onWatchExecutionGap(gapSeconds: Long) = Unit
 }
 
 /**
@@ -111,6 +118,9 @@ internal interface ConnectionCoordinatorHost {
  */
 internal class ConnectionCoordinator(
     private val host: ConnectionCoordinatorHost,
+    // Monotonic milliseconds. The default stays JVM-only and does not count deep
+    // sleep; the Android service injects SystemClock.elapsedRealtime().
+    private val clockMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val sessionFactory: () -> Ts3SessionClient = { Ts3jSessionClient() },
 ) : ReconnectEngine.Delegate {
     @Volatile
@@ -645,7 +655,17 @@ internal class ConnectionCoordinator(
         connectedWatchJob?.cancel()
         connectedWatchJob =
             host.serviceScope.launch {
+                var previousTickMs = clockMs()
                 while (isActive && isListenerActive(listener)) {
+                    // Forward progress of this watch is the only local evidence
+                    // that the process is still being scheduled. A gap is
+                    // reported as data and never inferred as a specific cause.
+                    val nowMs = clockMs()
+                    val gapMs = nowMs - previousTickMs
+                    previousTickMs = nowMs
+                    if (gapMs >= WATCH_EXECUTION_GAP_THRESHOLD_MS && isListenerActive(listener)) {
+                        host.onWatchExecutionGap(gapMs / MILLIS_PER_SECOND)
+                    }
                     // ts3j can silently transition to DISCONNECTED after its
                     // PONG/ACK timeout. Observe that local state without sending
                     // extra keepalives or treating channel silence as failure.
@@ -719,6 +739,8 @@ internal class ConnectionCoordinator(
     private companion object {
         const val STABLE_CONNECTION_MS = 30_000L
         const val CONNECTED_WATCH_INTERVAL_MS = 1_000L
+        const val WATCH_EXECUTION_GAP_THRESHOLD_MS = 10_000L
+        const val MILLIS_PER_SECOND = 1_000L
 
         val interruptibleConnectionPhases =
             setOf(

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import io.github.ts3mobile.app.history.SuccessServerHistoryStore
 import io.github.ts3mobile.app.history.successServerHistoryStore
@@ -75,7 +76,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 recordEvent = { sessionDiagnostics.record(it) },
             )
         audioRouter = AudioDeviceRouter(applicationContext, ::onAudioRoutingChanged)
-        connectionCoordinator = ConnectionCoordinator(this)
+        connectionCoordinator = ConnectionCoordinator(this, clockMs = SystemClock::elapsedRealtime)
         networkMonitor =
             DefaultNetworkMonitor(applicationContext) { network ->
                 networkAvailable.value =
@@ -186,6 +187,8 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     override fun onConnectionFailure(status: ConnectionStatus) = sessionDiagnostics.recordFailure(status)
 
     override fun onTransportDisconnected() = sessionDiagnostics.record(DiagnosticEventKind.TRANSPORT_DISCONNECTED)
+
+    override fun onWatchExecutionGap(gapSeconds: Long) = sessionDiagnostics.record(DiagnosticEventKind.WATCH_EXECUTION_GAP, gapSeconds)
 
     override fun resetParticipantGains() {
         audioPlayer.replaceParticipantGains(emptyMap())

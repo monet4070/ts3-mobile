@@ -70,7 +70,7 @@ testing on important servers.
   Chinese system or app locale
 - localized service status, notification, audio-route and error messages
 - in-app diagnostics with thread-safe connection and audio counters
-- background voice runtime check with battery settings and an optional, session-scoped CPU wake lock
+- background voice runtime check with an Android battery-optimization entry, a system app-settings entry, and an optional, session-scoped CPU wake-lock request that the system or a vendor battery policy can disable
 - a bounded local event journal and Android process-exit reasons that survive process recreation
 - background reconnection restores listening; stopped microphone capture resumes when the app is visible
 - silent protocol transport closures trigger recovery even when the default network is unchanged; failed retries share one recovery wake-lock budget

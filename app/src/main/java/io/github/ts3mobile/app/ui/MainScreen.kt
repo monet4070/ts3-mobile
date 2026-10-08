@@ -67,6 +67,7 @@ fun MainScreen(
     onKeepCpuAwakeChanged: (Boolean) -> Unit,
     onRefreshBackgroundRuntime: () -> Unit,
     onBatterySettings: () -> Unit,
+    onAppSettings: () -> Unit,
 ) {
     var showBackgroundRuntime by rememberSaveable { mutableStateOf(false) }
     if (showBackgroundRuntime) {
@@ -74,6 +75,7 @@ fun MainScreen(
             state = serviceState.backgroundRuntime,
             onKeepCpuAwakeChanged = onKeepCpuAwakeChanged,
             onBatterySettings = onBatterySettings,
+            onAppSettings = onAppSettings,
             onCopyDiagnostics = onCopyDiagnostics,
             onDismiss = { showBackgroundRuntime = false },
         )

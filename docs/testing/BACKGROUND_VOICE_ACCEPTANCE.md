@@ -9,8 +9,8 @@ Use disposable test credentials and omit endpoints and personal data from report
 | Scenario | Procedure | Expected result |
 | --- | --- | --- |
 | Bright-screen background | Connect, leave microphone off, use another app for 10 minutes | Session remains available; notification disconnect works |
-| Silent locked channel | Lock for 30 minutes with no remote speakers; repeat with CPU-awake setting enabled | Silence never triggers liveness failure; compare connection and battery evidence |
-| Long session | Background listening for more than six hours on Android 15+ | No dataSync service type or dataSync timeout |
+| Silent locked channel | Record the Android battery-optimization exemption and the vendor battery policy separately, then lock for 30 minutes with no remote speakers; repeat with CPU-awake enabled and disabled | Silence never triggers liveness failure. Record per variant whether the watch kept executing (WATCH_EXECUTION_GAP), whether UID traffic continued and whether the app's wake lock was requested and, if so, disabled; compare the variants and settings instead of requiring either one |
+| Long session | Record the applied battery settings, then listen in the background for more than six hours on Android 15+ | No dataSync service type or dataSync timeout; the connected watch keeps executing (no WATCH_EXECUTION_GAP) |
 | Wi-Fi/mobile handover | Switch the default network ten times, including a switch where both remain available | Bounded control check preserves a healthy session or reconnects an expired session |
 | Silent transport loss | With unchanged default network, drop UDP in both directions for at least 35 seconds, then restore it | ts3j watchdog closure produces one TRANSPORT_DISCONNECTED event and retryable recovery; the UI does not remain CONNECTED |
 | Recovery power budget | Keep a connected, CPU-awake session's transport unreachable for three minutes; include failed retries | Within 120 seconds of entering recovery the CPU lock releases and stays released; transient ERROR and settings changes cannot restart the budget; restoring connectivity still allows recovery |
@@ -51,6 +51,44 @@ Always restore device power simulation after the test. A wake lock can be
 ignored in Doze; a restricted network must result in bounded waiting/recovery,
 not a promise of continuous connectivity.
 
+## Wake-lock requests and vendor battery policy
+
+The optional CPU-awake setting only requests a wake lock. Android and vendor
+battery policies can disable that request outside Doze: a locked HyperOS session
+has been observed with the app's PARTIAL_WAKE_LOCK entry carrying a DISABLED marker
+while the app still reported the lock as held, the device was charging,
+mDeviceIdleMode=false, the standby bucket was ACTIVE and the app held a foreground
+service. No app-facing API reports that disabled state; inspect the platform dump
+and use server-side observation to confirm connection loss. The app export cannot report a disabled
+lock or a frozen process; what it can report is that the connected watch stopped
+executing (WATCH_EXECUTION_GAP).
+
+Before a locked-session scenario, record both settings and compare them between
+runs; neither is a precondition:
+
+- the Android battery-optimization exemption (isIgnoringBatteryOptimizations). An
+  exemption is not sufficient on its own: a deviceidle whitelist entry has been
+  measured without clearing the DISABLED state.
+- the vendor battery policy, for example the Xiaomi/HyperOS battery policy set to
+  No restrictions. The menu path varies by device; autostart and background-popup
+  permissions are not required by this checklist unless a device demonstrates it.
+
+While locked, verify at least:
+
+```powershell
+adb shell dumpsys power | Select-String -Pattern 'Wake Locks' -Context 0,6
+adb shell am get-standby-bucket io.github.ts3mobile.app
+adb shell dumpsys activity processes | Select-String -Pattern 'io.github.ts3mobile.app' -Context 0,4
+```
+
+For a CPU-awake run the app lock line must appear without a DISABLED marker; a
+listed tag alone is not evidence that the lock is honoured. With CPU-awake
+disabled no app lock is requested, so that check does not apply to the control.
+Sample per-UID traffic and the platform freeze state (freezer FZ/THAW lines, or
+frozen= in dumpsys activity processes) for the same window. A CONNECTED status, or
+a notification that did not change, is not sufficient: while a process is paused
+the last published state can stay CONNECTED until the watch runs again.
+
 ## Evidence to retain
 
 Record commit, Android version, device model, test duration, start/end battery
@@ -69,6 +107,19 @@ Keep a reachable, quiet session for at least 60 seconds to check for false posit
 Test-only UDP relays verify timeout/recovery, but cannot establish that an OEM
 allows the app UID's network access in the background. Use direct connections
 for background and Doze tests, and always restore device settings.
+
+Locked-session evidence must record the wake-lock dump line (including whether it
+carries a DISABLED marker, for a CPU-awake run), the app-standby bucket, the
+freeze/thaw state and the per-UID traffic counters for the same window. A session
+that only reports CONNECTED while the process is frozen or UID traffic has stopped
+does not pass.
+
+WATCH_EXECUTION_GAP records that the connected watch resumed after a gap of at
+least ten seconds on the injected monotonic clock (SystemClock.elapsedRealtime on
+Android); its code is the whole gap in seconds. It states only that the watch did
+not execute. It does not identify Doze, a platform or vendor freeze, or a disabled
+wake lock, and it never changes connection behavior. Treat it as the signal to
+collect the platform evidence above.
 
 The delayed server-disconnect race is covered by deterministic protocol and
 coordinator regression tests: transport polling defers to pending terminal
