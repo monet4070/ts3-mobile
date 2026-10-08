@@ -72,6 +72,11 @@
     <string name="action_cancel_reconnect">Cancel reconnect</string>
     <string name="action_disconnecting">Disconnecting</string>
 
+    <!-- Server history -->
+    <string name="history_title">Recent servers</string>
+    <string name="action_remove_history_entry">Remove %1$s from history</string>
+    <string name="history_remove_failed">Saved servers are unavailable. Please try again.</string>
+
     <!-- Connected header and tabs -->
     <plurals name="connected_channel_count">
         <item quantity="one">%d channel</item>
@@ -140,4 +145,22 @@
     <string name="diagnostics_channel_join_failures">Channel switch failures</string>
     <string name="diagnostics_last_failure">Last failure type</string>
     <string name="diagnostics_none" translatable="false">NONE</string>
+    <string name="microphone_resume_in_app">Listening is available. Return to the app to resume microphone transmission.</string>
+    <string name="microphone_state_deferred">Microphone paused</string>
+    <string name="notification_resume_microphone">Connected for listening · Open the app to resume speaking</string>
+    <string name="notification_mute_microphone">Mute microphone</string>
+    <string name="background_runtime_title">Background voice check</string>
+    <string name="background_runtime_explanation">If voice disconnects with the screen off, check Android battery restrictions and compare with CPU awake enabled.</string>
+    <string name="background_battery_exempt">Battery optimization exemption</string>
+    <string name="background_power_save">Power saving mode</string>
+    <string name="background_device_idle">Device idle mode</string>
+    <string name="background_cpu_lock">Session CPU lock held</string>
+    <string name="background_keep_cpu_awake">Keep CPU awake for voice</string>
+    <string name="background_keep_cpu_note">Optional; uses more battery. Applies only to connected sessions and short recovery with a usable network. Android Doze and device restrictions can still limit the network.</string>
+    <string name="background_open_battery_settings">Open battery settings</string>
+    <string name="background_copy_diagnostics">Copy local connection diagnostics</string>
+    <string name="background_status_value">%1$s: %2$s</string>
+    <string name="background_yes">Yes</string>
+    <string name="background_no">No</string>
+    <string name="action_close">Close</string>
 </resources>

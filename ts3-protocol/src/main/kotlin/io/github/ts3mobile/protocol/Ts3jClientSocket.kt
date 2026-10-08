@@ -1,14 +1,20 @@
 package io.github.ts3mobile.protocol
 
 import com.github.manevolent.ts3j.audio.Microphone
+import com.github.manevolent.ts3j.command.CommandException
+import com.github.manevolent.ts3j.command.SingleCommand
+import com.github.manevolent.ts3j.command.parameter.CommandSingleParameter
 import com.github.manevolent.ts3j.event.TS3Listener
 import com.github.manevolent.ts3j.identity.LocalIdentity
 import com.github.manevolent.ts3j.protocol.PacketKind
+import com.github.manevolent.ts3j.protocol.ProtocolRole
 import com.github.manevolent.ts3j.protocol.packet.PacketBody0Voice
 import com.github.manevolent.ts3j.protocol.packet.PacketBody1VoiceWhisper
 import com.github.manevolent.ts3j.protocol.packet.statistics.PacketStatistics
 import com.github.manevolent.ts3j.protocol.socket.client.LocalTeamspeakClientSocket
+import java.io.IOException
 import java.net.InetSocketAddress
+import java.util.concurrent.TimeoutException
 
 internal interface Ts3jClientSocket {
     fun setIdentity(identity: LocalIdentity)
@@ -34,6 +40,16 @@ internal interface Ts3jClientSocket {
     )
 
     fun subscribeAll()
+
+    /**
+     * Runs one bounded, read-only control round trip.
+     *
+     * Returns true when the server answered within [timeoutMs], including an
+     * error response such as a permission refusal: any response proves the
+     * session is alive. Returns false only on timeout or a transport failure.
+     * The request never changes server state.
+     */
+    fun probeLiveness(timeoutMs: Long): Boolean
 
     val isConnected: Boolean
 
@@ -100,6 +116,33 @@ internal class LocalTeamspeakClientSocketAdapter(
 
     override fun subscribeAll() {
         delegate.subscribeAll()
+    }
+
+    override fun probeLiveness(timeoutMs: Long): Boolean {
+        return try {
+            // clientinfo is read-only, so a probe cannot rename or otherwise
+            // mutate the client even when the server enforces a different
+            // nickname than the one requested.
+            val command =
+                SingleCommand(
+                    "clientinfo",
+                    ProtocolRole.CLIENT,
+                    CommandSingleParameter("clid", clientId.toString()),
+                )
+            delegate.executeCommand(command).get(timeoutMs)
+            true
+        } catch (_: CommandException) {
+            // The server answered with an error: it is alive, the command was
+            // merely refused.
+            true
+        } catch (_: TimeoutException) {
+            false
+        } catch (_: IOException) {
+            false
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
     }
 
     override val isConnected: Boolean

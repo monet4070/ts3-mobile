@@ -8,6 +8,9 @@ import com.github.manevolent.ts3j.event.TS3Listener
 import com.github.manevolent.ts3j.protocol.PacketKind
 import com.github.manevolent.ts3j.protocol.packet.PacketBody0Voice
 import com.github.manevolent.ts3j.protocol.packet.PacketBody1VoiceWhisper
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -167,6 +170,27 @@ class Ts3jSessionClient : Ts3SessionClient {
     override fun setVoiceSource(source: EncodedVoiceSource?) {
         voiceSource = source
         socket?.setMicrophone(source?.toMicrophone())
+    }
+
+    override suspend fun verifyLiveness(timeoutMs: Long): Boolean {
+        require(timeoutMs > 0L) { "Liveness timeout must be positive" }
+        val token = generation.currentToken()
+        val current =
+            generation.withCurrent(token) {
+                socket?.takeIf { it.isConnected }
+            } ?: return false
+        return try {
+            // The socket call is blocking, so it runs off the caller's thread and
+            // is bounded by the protocol timeout. Cancellation is rethrown and no
+            // state is written here, so a cancelled probe cannot revive a
+            // replaced or user-disconnected session.
+            withContext(Dispatchers.IO) { current.probeLiveness(timeoutMs) }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            logFailure("liveness probe failed", error)
+            false
+        }
     }
 
     override fun joinChannel(

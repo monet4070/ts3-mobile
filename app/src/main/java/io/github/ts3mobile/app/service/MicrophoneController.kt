@@ -24,10 +24,13 @@ internal class MicrophoneController(
     private val updateForegroundType: (includeMicrophone: Boolean) -> Unit,
     private val updateNotification: () -> Unit,
     private val conciseMessage: (Throwable) -> String,
+    private val recordEvent: (DiagnosticEventKind) -> Unit = {},
 ) : AutoCloseable {
     private val applicationContext = context.applicationContext
     private val transmitMutex = Mutex()
     private val pushToTalkPressed = AtomicBoolean(false)
+    private val appVisible = AtomicBoolean(false)
+    private val closed = AtomicBoolean(false)
     private val microphone = OpusMicrophoneCapture(applicationContext, ::onMicrophoneFailure)
 
     fun attachTo(session: Ts3SessionClient) {
@@ -40,6 +43,11 @@ internal class MicrophoneController(
 
     fun resetForConnection() {
         pushToTalkPressed.set(false)
+    }
+
+    fun setAppVisible(visible: Boolean) {
+        appVisible.set(visible)
+        if (visible) reconcile()
     }
 
     fun setMode(mode: MicrophoneMode) {
@@ -73,6 +81,7 @@ internal class MicrophoneController(
     }
 
     fun reconcile() {
+        if (closed.get()) return
         scope.launch {
             transmitMutex.withLock {
                 if (!shouldCapture()) {
@@ -82,6 +91,7 @@ internal class MicrophoneController(
 
                 if (!hasPermission()) {
                     pushToTalkPressed.set(false)
+                    stopLocked()
                     state.update {
                         it.copy(
                             isTransmitting = false,
@@ -91,8 +101,28 @@ internal class MicrophoneController(
                     return@withLock
                 }
 
+                if (!MicrophoneCapturePolicy.canStartCapture(appVisible.get(), microphone.isCapturing)) {
+                    updateForegroundType(false)
+                    pushToTalkPressed.set(false)
+                    state.update {
+                        it.copy(isTransmitting = false, microphoneError = UserMessage.MicrophoneResumeInApp)
+                    }
+                    recordEvent(DiagnosticEventKind.MICROPHONE_DEFERRED)
+                    updateNotification()
+                    return@withLock
+                }
+
+                if (microphone.isCapturing) return@withLock
+
                 try {
                     updateForegroundType(true)
+                    // Visibility may have changed while promoting the service type.
+                    if (!appVisible.get()) {
+                        updateForegroundType(false)
+                        state.update { it.copy(microphoneError = UserMessage.MicrophoneResumeInApp) }
+                        recordEvent(DiagnosticEventKind.MICROPHONE_DEFERRED)
+                        return@withLock
+                    }
                     microphone.start()
                     if (!shouldCapture()) {
                         stopLocked()
@@ -103,12 +133,20 @@ internal class MicrophoneController(
                         updateNotification()
                     }
                 } catch (error: Throwable) {
+                    diagnosticsRecorder.recordMicrophoneError()
+                    refreshDiagnostics()
+                    recordEvent(DiagnosticEventKind.MICROPHONE_FAILED)
                     pushToTalkPressed.set(false)
                     microphone.stop()
                     state.update {
                         it.copy(
                             isTransmitting = false,
-                            microphoneError = UserMessage.MicrophoneFailed(conciseMessage(error)),
+                            microphoneError =
+                                if (!appVisible.get()) {
+                                    UserMessage.MicrophoneResumeInApp
+                                } else {
+                                    UserMessage.MicrophoneFailed(conciseMessage(error))
+                                },
                         )
                     }
                     updateForegroundType(false)
@@ -121,6 +159,7 @@ internal class MicrophoneController(
         pushToTalkPressed.set(false)
         microphone.stop()
         state.update { it.copy(isTransmitting = false) }
+        updateForegroundType(false)
     }
 
     suspend fun stopSerialized() {
@@ -141,11 +180,14 @@ internal class MicrophoneController(
     }
 
     override fun close() {
+        closed.set(true)
+        appVisible.set(false)
         pushToTalkPressed.set(false)
         microphone.close()
     }
 
     private fun shouldCapture(): Boolean {
+        if (closed.get()) return false
         val current = state.value
         return MicrophoneCapturePolicy.shouldCapture(
             phase = current.status.phase,
@@ -167,6 +209,7 @@ internal class MicrophoneController(
     }
 
     private fun onMicrophoneFailure(error: Throwable) {
+        recordEvent(DiagnosticEventKind.MICROPHONE_FAILED)
         diagnosticsRecorder.recordMicrophoneError()
         refreshDiagnostics()
         pushToTalkPressed.set(false)

@@ -17,7 +17,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -29,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,19 +45,25 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.ConnectionFormState
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.protocol.ConnectionPhase
 
 @Composable
 internal fun ConnectionForm(
     form: ConnectionFormState,
+    history: List<ServerHistoryEntry>,
+    historyError: Boolean,
     phase: ConnectionPhase,
     onHostChanged: (String) -> Unit,
     onPortChanged: (String) -> Unit,
     onNicknameChanged: (String) -> Unit,
     onPasswordChanged: (String) -> Unit,
+    onHistorySelected: (ServerHistoryEntry) -> Unit,
+    onHistoryRemoved: (ServerHistoryEntry) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -181,6 +190,16 @@ internal fun ConnectionForm(
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         )
 
+        if (history.isNotEmpty() || historyError) {
+            ServerHistorySection(
+                history = history,
+                historyError = historyError,
+                enabled = !isConnecting,
+                onSelected = onHistorySelected,
+                onRemoved = onHistoryRemoved,
+            )
+        }
+
         Spacer(Modifier.height(4.dp))
 
         if (isConnecting) {
@@ -223,6 +242,59 @@ internal fun ConnectionForm(
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(if (phase == ConnectionPhase.ERROR) R.string.action_reconnect else R.string.action_connect))
             }
+        }
+    }
+}
+
+@Composable
+private fun ServerHistorySection(
+    history: List<ServerHistoryEntry>,
+    historyError: Boolean,
+    enabled: Boolean,
+    onSelected: (ServerHistoryEntry) -> Unit,
+    onRemoved: (ServerHistoryEntry) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = stringResource(R.string.history_title),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        history.forEach { entry ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = { onSelected(entry) },
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Outlined.History, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = entry.label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                IconButton(
+                    onClick = { onRemoved(entry) },
+                    enabled = enabled,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Delete,
+                        contentDescription = stringResource(R.string.action_remove_history_entry, entry.label),
+                    )
+                }
+            }
+        }
+        if (historyError) {
+            Text(
+                text = stringResource(R.string.history_remove_failed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }

@@ -9,6 +9,7 @@ import io.github.ts3mobile.protocol.Ts3SessionListener
 import io.github.ts3mobile.protocol.Ts3jSessionClient
 import io.github.ts3mobile.protocol.VoiceFrame
 import io.github.ts3mobile.protocol.isRetryableConnectionFailure
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -19,6 +20,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Service-side collaborators the connection state machine needs, exposed as
@@ -73,6 +75,25 @@ internal interface ConnectionCoordinatorHost {
     fun removeForegroundNotification()
 
     fun requestStopSelf()
+
+    /**
+     * Called once per attempt, before the socket is opened, so a diagnostics
+     * journal can record attempts even when short-lived states are conflated.
+     */
+    fun onConnectionAttempt(reconnecting: Boolean) = Unit
+
+    /**
+     * Called only for the current listener once an attempt is confirmed
+     * established. The service persists the connected server here.
+     */
+    fun onConnectionSucceeded(config: ServerConfig) = Unit
+
+    /**
+     * Called with the failure the coordinator is acting on, after the active
+     * listener and session epoch have been checked. Detail stays protocol text;
+     * callers must map it to a closed category before persisting it.
+     */
+    fun onConnectionFailure(status: ConnectionStatus) = Unit
 }
 
 /**
@@ -101,6 +122,13 @@ internal class ConnectionCoordinator(
     private var connectionJob: Job? = null
     private var stableConnectionJob: Job? = null
     private var diagnosticsRefreshJob: Job? = null
+
+    @Volatile
+    private var livenessJob: Job? = null
+
+    @Volatile
+    private var lastNetworkState = DefaultNetworkState.Unknown
+    private var lastAvailableNetworkGeneration: Long? = null
     private val reconnectEngine = ReconnectEngine(host, this)
     private val channelRestore = ChannelRestoreTracker()
 
@@ -114,6 +142,7 @@ internal class ConnectionCoordinator(
         channelRestore.reset()
         activeListener = null
         stableConnectionJob?.cancel()
+        livenessJob?.cancel()
         reconnectEngine.cancel()
         connectionJob?.cancel()
 
@@ -129,6 +158,7 @@ internal class ConnectionCoordinator(
                 playbackMuted = selectedPlaybackMuted,
                 audioRouting = host.mutableState.value.audioRouting,
                 diagnostics = host.diagnosticsRecorder.snapshot(),
+                backgroundRuntime = host.mutableState.value.backgroundRuntime,
             )
         if (session != null) session?.close()
 
@@ -158,6 +188,7 @@ internal class ConnectionCoordinator(
         reconnectEngine.cancel()
         stableConnectionJob?.cancel()
         diagnosticsRefreshJob?.cancel()
+        livenessJob?.cancel()
         if (host.mutableState.value.status.phase in interruptibleConnectionPhases) {
             session?.close()
         }
@@ -207,20 +238,63 @@ internal class ConnectionCoordinator(
         }
     }
 
+    /**
+     * Identity-aware default-network update fed by [DefaultNetworkMonitor].
+     *
+     * A pending identity (capabilities not reported yet) is never a loss, so the
+     * brief `onAvailable` -> `onCapabilitiesChanged` gap cannot force a healthy
+     * session to reconnect. Confirmed availability loss reuses the existing
+     * reconnect path; a confirmed identity change only triggers a bounded
+     * liveness check, never a blind reconnect.
+     */
+    fun onNetworkChanged(state: DefaultNetworkState) {
+        lastNetworkState = state
+        if (state.isPending && !state.isBlocked) return
+        if (!state.isAvailable) {
+            lastAvailableNetworkGeneration = null
+            onNetworkUnavailable()
+            return
+        }
+        val previousAvailableGeneration = lastAvailableNetworkGeneration
+        lastAvailableNetworkGeneration = state.generation
+        if (previousAvailableGeneration != null && previousAvailableGeneration != state.generation) {
+            verifySessionAfterNetworkSwitch(state.generation)
+        }
+    }
+
+    /**
+     * Boolean compatibility path for callers that do not track network identity
+     * yet. Only a genuine availability transition advances the generation, so a
+     * duplicate capability callback cannot be mistaken for a network switch.
+     */
     fun onNetworkChanged(available: Boolean) {
-        if (!available && host.mutableState.value.status.phase == ConnectionPhase.CONNECTED) {
+        val previous = lastNetworkState
+        val generation =
+            if (available && !previous.isAvailable) previous.generation + 1 else previous.generation
+        onNetworkChanged(
+            DefaultNetworkState(
+                isAvailable = available,
+                isBlocked = previous.isBlocked,
+                networkKey = previous.networkKey,
+                generation = generation,
+            ),
+        )
+    }
+
+    private fun onNetworkUnavailable() {
+        if (host.mutableState.value.status.phase == ConnectionPhase.CONNECTED) {
             activeListener?.takeIf { it.connected }?.let { listener ->
                 onEstablishedSessionEnded(
                     listener,
                     ConnectionStatus(
                         ConnectionPhase.DISCONNECTED,
-                        NETWORK_LOST_DETAIL,
+                        ConnectionLivenessPolicy.NETWORK_LOST_DETAIL,
                         retryable = true,
                     ),
                 )
             }
         }
-        if (!available && host.mutableState.value.status.phase == ConnectionPhase.RECONNECTING) {
+        if (host.mutableState.value.status.phase == ConnectionPhase.RECONNECTING) {
             host.mutableState.update { current ->
                 current.withStatus(
                     ConnectionStatus(
@@ -234,6 +308,51 @@ internal class ConnectionCoordinator(
         }
     }
 
+    /**
+     * Verifies a session that survived a default-network switch with one bounded
+     * control round trip. The result is discarded when the listener was replaced
+     * or the user disconnected first, so a late probe can never revive a session
+     * that is already gone.
+     */
+    private fun verifySessionAfterNetworkSwitch(generation: Long) {
+        val listener = activeListener?.takeIf { it.connected } ?: return
+        if (host.mutableState.value.status.phase != ConnectionPhase.CONNECTED) return
+        val probeSession = session ?: return
+        livenessJob?.cancel()
+        livenessJob =
+            host.serviceScope.launch {
+                val alive =
+                    try {
+                        // withTimeoutOrNull bounds a suspend implementation; the
+                        // blocking socket call keeps its own protocol timeout.
+                        withTimeoutOrNull(ConnectionLivenessPolicy.PROBE_TIMEOUT_MS) {
+                            probeSession.verifyLiveness(ConnectionLivenessPolicy.PROBE_TIMEOUT_MS)
+                        } ?: false
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Throwable) {
+                        false
+                    }
+                if (!isActive) return@launch
+                if (!isListenerActive(listener) || !listener.connected) return@launch
+                // A second switch (B -> C) must not let a stale B probe end a
+                // healthy C session.
+                if (session !== probeSession) return@launch
+                val current = lastNetworkState
+                if (current.generation != generation || current.isPending || !current.isAvailable) return@launch
+                if (!alive) {
+                    onEstablishedSessionEnded(
+                        listener,
+                        ConnectionStatus(
+                            ConnectionPhase.DISCONNECTED,
+                            ConnectionLivenessPolicy.NETWORK_SWITCH_UNVERIFIED_DETAIL,
+                            retryable = true,
+                        ),
+                    )
+                }
+            }
+    }
+
     fun close() {
         host.sessionGeneration.invalidate()
         activeListener = null
@@ -241,6 +360,7 @@ internal class ConnectionCoordinator(
         reconnectEngine.cancel()
         stableConnectionJob?.cancel()
         diagnosticsRefreshJob?.cancel()
+        livenessJob?.cancel()
         session?.close()
         session = null
     }
@@ -259,6 +379,7 @@ internal class ConnectionCoordinator(
             if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
 
             host.diagnosticsRecorder.recordConnectionAttempt(reconnecting)
+            host.onConnectionAttempt(reconnecting)
             host.refreshDiagnostics()
 
             activeListener = null
@@ -327,6 +448,7 @@ internal class ConnectionCoordinator(
                     }.copy(snapshot = SessionSnapshot.Empty)
                 }
                 host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
+                host.onConnectionFailure(status)
                 host.refreshDiagnostics()
                 AttemptResult.Failed(status, status.retryable && reconnecting)
             }
@@ -345,7 +467,11 @@ internal class ConnectionCoordinator(
                 host.clearPlaybackMuted()
                 host.stopAudioRouting()
                 diagnosticsRefreshJob?.cancel()
-                host.mutableState.value = TeamSpeakServiceState()
+                host.mutableState.value =
+                    TeamSpeakServiceState(
+                        diagnostics = host.diagnosticsRecorder.snapshot(),
+                        backgroundRuntime = host.mutableState.value.backgroundRuntime,
+                    )
                 host.removeForegroundNotification()
                 if (userInitiated) host.requestStopSelf()
             }
@@ -424,6 +550,7 @@ internal class ConnectionCoordinator(
                 channelError = null,
             )
         }
+        desiredConfig?.let { host.onConnectionSucceeded(it) }
         channelRestore.seedFromCurrentChannel(host.mutableState.value.snapshot.currentChannelId)
         scheduleStableConnectionReset(listener)
         startDiagnosticsRefresh(listener)
@@ -441,7 +568,9 @@ internal class ConnectionCoordinator(
         activeListener = null
         stableConnectionJob?.cancel()
         diagnosticsRefreshJob?.cancel()
+        livenessJob?.cancel()
         host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
+        host.onConnectionFailure(status)
         host.refreshDiagnostics()
         host.stopMicrophoneImmediately()
         host.stopPlayback()
@@ -466,6 +595,7 @@ internal class ConnectionCoordinator(
         activeListener = null
         stableConnectionJob?.cancel()
         diagnosticsRefreshJob?.cancel()
+        livenessJob?.cancel()
         host.sessionMutex.withLock {
             if (!isEpochActive(epoch)) return@withLock
             session?.close()
@@ -556,8 +686,6 @@ internal class ConnectionCoordinator(
         const val STABLE_CONNECTION_MS = 30_000L
         const val DIAGNOSTICS_REFRESH_MS = 1_000L
 
-        /** Diagnostic detail only; the reconnect loop shows its own localized message. */
-        const val NETWORK_LOST_DETAIL = "network connection lost"
         val interruptibleConnectionPhases =
             setOf(
                 ConnectionPhase.CONNECTING,

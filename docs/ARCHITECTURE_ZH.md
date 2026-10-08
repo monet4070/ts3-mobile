@@ -67,11 +67,43 @@
 
 ### 3.3 Android 生命周期、安全性与前台服务
 
-![生命周期与安全图](images/04_lifecycle_security.png)
+```mermaid
+flowchart TB
+    subgraph FSLifecycle["Foreground Service Lifecycle"]
+        Connect["User Connects"]
+        FS["Start Foreground Service"]
+        Types["Listening: MEDIA_PLAYBACK"]
+        PTTPress["PTT Pressed / Continuous Active"]
+        AddMic["Dynamically Append: MICROPHONE Type"]
+        PTTRelease["PTT Released"]
+        RemoveMic["Remove MICROPHONE Type"]
+        NetDrop["Network Lost"]
+        RecLoop["ReconnectPolicy (1-30s Exponential Backoff)"]
+        NetBack["Network Recovered"]
+        Rejoin["ChannelRestorePolicy (Rejoin Previous Channel)"]
+        Connect --> FS --> Types
+        PTTPress --> AddMic
+        PTTRelease --> RemoveMic
+        NetDrop --> RecLoop --> NetBack --> Rejoin
+    end
+
+    subgraph Identity["Identity & Security"]
+        Keystore["Android Keystore (Hardware Backed)"]
+        AES["AES-GCM-NoPadding Cipher"]
+        PrivKey["Generate/Retrieve AES-256"]
+        EncBlob["Encrypted Blob"]
+        IdentityMat["TeamSpeak Identity Material"]
+        DataStore["Preferences DataStore"]
+        Keystore --> PrivKey --> AES --> EncBlob --> DataStore
+        DataStore -.->|"decrypt on use"| IdentityMat
+    end
+```
 
 - **硬件级身份保管库 (`IdentityVault.kt`)**：TeamSpeak 客户端身份私钥由 Android Keystore 硬件生成的 AES-256 密钥保护，采用 AES-GCM 加密存储于 DataStore，不落地明文，不向外上传。
-- **Android 14+ 前台服务合规**：常驻连接时仅声明 `mediaPlayback | dataSync` 类型；仅在用户真正按下 PTT 发话或开启持续推流时，才动态附加 `microphone` 服务类型，严格遵循 Google Play 最新隐私规范。
-- **网络感知智能重连 (`ReconnectPolicy.kt`)**：实时监听 `ConnectivityManager.NetworkCallback`。设备离线时挂起重连计时器，检测到网络恢复时以 1~30 秒指数退避立即触发重连。
+- **前台服务类型 (`SessionNotifications.kt`)**：收听使用 `mediaPlayback`，实际 PTT 或持续采集时才附加 `microphone`，长期语音会话已移除 `dataSync`。后台已停止的麦克风采集须回到应用后恢复。
+- **网络感知重连**：`DefaultNetworkMonitor` 跟踪身份、能力、待确认和阻止状态。切换后先执行有时限的只读控制请求，失活才重连；离线时等待可用网络，再按 1–30 秒退避恢复。
+- **后台诊断与电源**：有界本地事件记录在进程重启后保留。后台运行检查提供电池设置和可选限时 CPU 唤醒锁，连接恢复总预算为两分钟；参见 [ADR-0007](decisions/0007-background-voice-and-server-history.md)。
+- **成功地址历史**：共享 DataStore 仅保存最近十个成功地址与端口，支持选择、删除，不保存密码或昵称。
 - **频道现场记忆与恢复 (`ChannelRestorePolicy.kt`)**：在服务内存中暂存用户断线前所在的频道 ID 与密码，重连成功后全自动切回原频道。
 
 ---

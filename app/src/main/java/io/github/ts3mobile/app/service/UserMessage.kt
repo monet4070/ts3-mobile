@@ -36,6 +36,8 @@ sealed interface UserMessage {
 
     data object MicrophonePermissionForVoice : UserMessage
 
+    data object MicrophoneResumeInApp : UserMessage
+
     data class MicrophoneFailed(val cause: String) : UserMessage
 
     data class AudioRouting(val error: AudioRoutingError) : UserMessage

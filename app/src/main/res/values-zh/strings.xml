@@ -66,6 +66,11 @@
     <string name="action_cancel_reconnect">取消重连</string>
     <string name="action_disconnecting">正在断开</string>
 
+    <!-- 服务器历史记录 -->
+    <string name="history_title">最近连接</string>
+    <string name="action_remove_history_entry">从历史记录中移除 %1$s</string>
+    <string name="history_remove_failed">读取或修改服务器历史失败，请稍后重试。</string>
+
     <!-- 已连接界面 -->
     <plurals name="connected_channel_count">
         <item quantity="other">%d 个频道</item>
@@ -130,4 +135,22 @@
     <string name="diagnostics_channel_join_attempts">频道切换尝试</string>
     <string name="diagnostics_channel_join_failures">频道切换失败</string>
     <string name="diagnostics_last_failure">最近失败类型</string>
+    <string name="microphone_resume_in_app">收听已恢复。请回到应用恢复麦克风发言。</string>
+    <string name="microphone_state_deferred">麦克风已暂停</string>
+    <string name="notification_resume_microphone">已连接，可收听 · 打开应用恢复发言</string>
+    <string name="notification_mute_microphone">关闭麦克风</string>
+    <string name="background_runtime_title">后台语音运行检查</string>
+    <string name="background_runtime_explanation">如果锁屏后语音掉线，可检查 Android 电池限制，并对比开启 CPU 唤醒后的表现。</string>
+    <string name="background_battery_exempt">已豁免电池优化</string>
+    <string name="background_power_save">省电模式</string>
+    <string name="background_device_idle">设备休眠模式</string>
+    <string name="background_cpu_lock">正在持有会话 CPU 锁</string>
+    <string name="background_keep_cpu_awake">语音会话保持 CPU 唤醒</string>
+    <string name="background_keep_cpu_note">可选，启用后会增加耗电。仅在可用网络下的有效会话及短时恢复中使用。Android 深度休眠和厂商限制仍可能限制网络。</string>
+    <string name="background_open_battery_settings">打开电池设置</string>
+    <string name="background_copy_diagnostics">复制本地连接诊断</string>
+    <string name="background_status_value">%1$s：%2$s</string>
+    <string name="background_yes">是</string>
+    <string name="background_no">否</string>
+    <string name="action_close">关闭</string>
 </resources>

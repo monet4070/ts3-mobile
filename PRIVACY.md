@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: 2026-08-10
+Last updated: 2026-10-08
 
 TS3 Mobile is an unofficial client that connects directly from the Android
 device to TeamSpeak servers selected by the user. The maintainers do not
@@ -8,9 +8,10 @@ operate an intermediary service for those connections.
 
 ## Data handled on the device
 
-- Server address, port, nickname, and server password remain in app/service
-  memory while needed for the active connection workflow. The project does not
-  deliberately persist them to app storage.
+- The ten most recent successfully connected server addresses and ports are
+  saved in app-private local storage for connection-page prefill and selection.
+  Failed connection attempts are not saved. Each saved address can be deleted
+  from the connection page. Nicknames and server passwords remain in memory.
 - The generated TeamSpeak identity is encrypted locally with AES-GCM using a key
   protected by Android Keystore.
 - Server and channel passwords are used only for the requested connection or
@@ -20,6 +21,11 @@ operate an intermediary service for those connections.
   transmitting. It is encoded and sent directly to the connected server.
 - Incoming voice traffic is decoded and played locally. The app does not record
   or archive voice traffic.
+- A local journal retains at most 128 service, network, power, microphone and
+  reconnect events. It stores timestamps, fixed categories, numeric system
+  flags and Android process-exit reason codes, without addresses, identities,
+  exception text or audio. Diagnostics leave the app only when the user chooses
+  to copy and share them. The CPU-awake preference is also stored locally.
 - Per-user mute and volume preferences are stored locally and keyed by the
   participant's stable TeamSpeak identity when available.
 
@@ -40,11 +46,14 @@ voice transmission, Bluetooth/audio-device permissions for route selection,
 notification access for the foreground connection service, and the Android
 permissions required to keep that service active. Denying optional permissions
 may disable the related feature.
+An optional CPU wake lock supports screen-off voice sessions and bounded
+recovery while a usable network exists. It is off by default and does not
+bypass Doze; the background runtime check links to Android battery settings.
 
 ## Deletion
 
-Uninstalling the app removes its app-private per-user audio preferences and
-encrypted identity under normal Android behavior. Clearing the app's storage
+Uninstalling the app removes its saved server history, local diagnostics,
+preferences and encrypted identity under normal Android behavior. Clearing the app's storage
 has the same effect. Data already received by a TeamSpeak server or other
 participants is outside the project's control.
 

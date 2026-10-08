@@ -3,6 +3,12 @@ package io.github.ts3mobile.app.service
 import io.github.ts3mobile.protocol.ConnectionPhase
 
 internal object MicrophoneCapturePolicy {
+    /** An existing foreground capture can continue; a stopped capture needs visible user interaction. */
+    fun canStartCapture(
+        appVisible: Boolean,
+        alreadyCapturing: Boolean,
+    ): Boolean = appVisible || alreadyCapturing
+
     fun shouldCapture(
         phase: ConnectionPhase,
         mode: MicrophoneMode,

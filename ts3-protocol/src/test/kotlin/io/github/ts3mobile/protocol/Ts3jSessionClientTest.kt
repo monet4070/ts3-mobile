@@ -9,6 +9,7 @@ import com.github.manevolent.ts3j.protocol.PacketKind
 import com.github.manevolent.ts3j.protocol.packet.PacketBody0Voice
 import com.github.manevolent.ts3j.protocol.packet.PacketBody1VoiceWhisper
 import com.github.manevolent.ts3j.protocol.packet.statistics.PacketStatistics
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -120,6 +121,37 @@ class Ts3jSessionClientTest {
         assertEquals(1, listener.statuses.count { it.phase == ConnectionPhase.ERROR })
     }
 
+    @Test
+    fun verifyLivenessReportsAliveWhenTheReadOnlyRoundTripAnswers() {
+        val socket = FakeSocket()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+
+        assertTrue(runBlocking { client.verifyLiveness(100L) })
+        assertEquals(1, socket.livenessProbes)
+    }
+
+    @Test
+    fun verifyLivenessReportsDeadWhenTheRoundTripTimesOut() {
+        val socket = FakeSocket()
+        socket.livenessResult = false
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+
+        assertFalse(runBlocking { client.verifyLiveness(100L) })
+    }
+
+    @Test
+    fun verifyLivenessAfterCloseDoesNotProbeAStaleSocket() {
+        val socket = FakeSocket()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+        client.close()
+
+        assertFalse(runBlocking { client.verifyLiveness(100L) })
+        assertEquals(0, socket.livenessProbes)
+    }
+
     private fun testConfig() =
         ServerConfig(
             host = "localhost",
@@ -205,6 +237,14 @@ class Ts3jSessionClientTest {
 
         override fun close() {
             connected = false
+        }
+
+        var livenessResult = true
+        var livenessProbes = 0
+
+        override fun probeLiveness(timeoutMs: Long): Boolean {
+            livenessProbes++
+            return livenessResult
         }
 
         override fun getStatistics(packetKind: PacketKind): PacketStatistics = PacketStatistics()
