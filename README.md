@@ -39,9 +39,11 @@ testing on important servers.
 - TeamSpeak identity generation with AES-GCM storage backed by Android Keystore
 - foreground UDP connection service with a notification disconnect action
 - server address, port, TeamSpeak server password and nickname input
+- up to ten successfully connected addresses and ports, with recent-address prefill and individual deletion
 - correct TeamSpeak Base64(SHA1) server-password authentication
 - connection, cancellation, disconnection and error states
 - cancellable automatic reconnection with network-aware 1–30 second backoff
+- default-network identity and blocked-state tracking, with a bounded control-response check on network switches
 - stale-session callback rejection and in-memory restoration of the last channel
 - hierarchical channel view with direct channel-member rosters
 - single-tap channel expansion and double-tap channel joining
@@ -68,6 +70,10 @@ testing on important servers.
   Chinese system or app locale
 - localized service status, notification, audio-route and error messages
 - in-app diagnostics with thread-safe connection and audio counters
+- background voice runtime check with an Android battery-optimization entry, a system app-settings entry, and an optional, session-scoped CPU wake-lock request that the system or a vendor battery policy can disable
+- a bounded local event journal and Android process-exit reasons that survive process recreation
+- background reconnection restores listening; stopped microphone capture resumes when the app is visible
+- silent protocol transport closures trigger recovery even when the default network is unchanged; failed retries share one recovery wake-lock budget
 - redacted JSON export that excludes server, password, nickname, channel and
   participant data
 - fixture-based protocol mapping regression tests and sanitized failure logging
@@ -81,9 +87,11 @@ bookmarks and multi-server tabs are also not implemented.
 The project includes no analytics, advertising, telemetry, crash-reporting SDK
 or project-operated backend. The app connects directly to servers selected by
 the user. The TeamSpeak identity is encrypted locally using Android Keystore.
-Connection details are kept in app/service memory while needed by the
-connection workflow; they are not deliberately persisted. A password used to
-restore a channel remains in the foreground service's memory only.
+Only successfully connected server addresses and ports are saved locally, up
+to ten entries. Nicknames and passwords remain in app/service memory. A
+password used to restore a channel remains in the foreground service's memory
+only. Local diagnostics retain at most 128 events with fixed categories and
+numeric system state; they exclude connection details and audio.
 
 See [PRIVACY.md](PRIVACY.md) for the complete data-handling statement.
 

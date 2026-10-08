@@ -11,12 +11,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BatteryStd
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -27,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.ts3mobile.app.ConnectionFormState
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.service.UserMessage
@@ -36,11 +45,15 @@ import io.github.ts3mobile.protocol.ConnectionPhase
 @Composable
 fun MainScreen(
     form: ConnectionFormState,
+    history: List<ServerHistoryEntry>,
+    historyError: Boolean,
     serviceState: TeamSpeakServiceState,
     onHostChanged: (String) -> Unit,
     onPortChanged: (String) -> Unit,
     onNicknameChanged: (String) -> Unit,
     onPasswordChanged: (String) -> Unit,
+    onHistorySelected: (ServerHistoryEntry) -> Unit,
+    onHistoryRemoved: (ServerHistoryEntry) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onPlaybackMutedChange: (Boolean) -> Unit,
@@ -51,7 +64,22 @@ fun MainScreen(
     onPushToTalkChanged: (Boolean) -> Unit,
     onJoinChannel: (Int, String) -> Unit,
     onCopyDiagnostics: () -> Unit,
+    onKeepCpuAwakeChanged: (Boolean) -> Unit,
+    onRefreshBackgroundRuntime: () -> Unit,
+    onBatterySettings: () -> Unit,
+    onAppSettings: () -> Unit,
 ) {
+    var showBackgroundRuntime by rememberSaveable { mutableStateOf(false) }
+    if (showBackgroundRuntime) {
+        BackgroundRuntimeDialog(
+            state = serviceState.backgroundRuntime,
+            onKeepCpuAwakeChanged = onKeepCpuAwakeChanged,
+            onBatterySettings = onBatterySettings,
+            onAppSettings = onAppSettings,
+            onCopyDiagnostics = onCopyDiagnostics,
+            onDismiss = { showBackgroundRuntime = false },
+        )
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -63,6 +91,12 @@ fun MainScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = {
+                        onRefreshBackgroundRuntime()
+                        showBackgroundRuntime = true
+                    }) {
+                        Icon(Icons.Outlined.BatteryStd, contentDescription = stringResource(R.string.background_runtime_title))
+                    }
                     StatusIndicator(serviceState.status.phase)
                     Spacer(Modifier.width(16.dp))
                 },
@@ -107,11 +141,15 @@ fun MainScreen(
             } else {
                 ConnectionForm(
                     form = form,
+                    history = history,
+                    historyError = historyError,
                     phase = serviceState.status.phase,
                     onHostChanged = onHostChanged,
                     onPortChanged = onPortChanged,
                     onNicknameChanged = onNicknameChanged,
                     onPasswordChanged = onPasswordChanged,
+                    onHistorySelected = onHistorySelected,
+                    onHistoryRemoved = onHistoryRemoved,
                     onConnect = onConnect,
                     onDisconnect = onDisconnect,
                 )

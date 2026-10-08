@@ -8,9 +8,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -35,24 +37,23 @@ class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MainViewModel>()
     private var serviceBinder by mutableStateOf<TeamSpeakService.SessionBinder?>(null)
     private var isBound = false
-    private var pendingConnection: ServerConfig? = null
-    private var pendingMicrophoneMode: MicrophoneMode? = null
     private var pushToTalkPressed = false
+    private var activityVisible = false
 
     private val notificationPermission =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) {
-            pendingConnection?.let { TeamSpeakService.connect(this, it) }
-            pendingConnection = null
+            viewModel.notificationPermissionResolved = true
+            launchPendingConnectionIfVisible()
         }
 
     private val microphonePermission =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) { granted ->
-            val requestedMode = pendingMicrophoneMode
-            pendingMicrophoneMode = null
+            val requestedMode = viewModel.pendingMicrophoneMode
+            viewModel.pendingMicrophoneMode = null
             if (granted && requestedMode != null) {
                 serviceBinder?.setMicrophoneMode(requestedMode)
             } else if (granted && pushToTalkPressed) {
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
                 binder: IBinder?,
             ) {
                 serviceBinder = binder as? TeamSpeakService.SessionBinder
+                serviceBinder?.setAppVisible(activityVisible)
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -86,14 +88,20 @@ class MainActivity : ComponentActivity() {
                 val serviceState by (serviceBinder?.state ?: fallbackState)
                     .collectAsStateWithLifecycle()
                 val form by viewModel.form.collectAsStateWithLifecycle()
+                val history by viewModel.history.collectAsStateWithLifecycle()
+                val historyError by viewModel.historyError.collectAsStateWithLifecycle()
 
                 MainScreen(
                     form = form,
+                    history = history,
+                    historyError = historyError,
                     serviceState = serviceState,
                     onHostChanged = viewModel::setHost,
                     onPortChanged = viewModel::setPort,
                     onNicknameChanged = viewModel::setNickname,
                     onPasswordChanged = viewModel::setPassword,
+                    onHistorySelected = viewModel::applyHistoryEntry,
+                    onHistoryRemoved = viewModel::removeHistoryEntry,
                     onConnect = {
                         viewModel.submit()?.let(::requestConnection)
                     },
@@ -118,6 +126,10 @@ class MainActivity : ComponentActivity() {
                         serviceBinder?.joinChannel(channelId, password)
                     },
                     onCopyDiagnostics = ::copyDiagnostics,
+                    onKeepCpuAwakeChanged = { serviceBinder?.setKeepCpuAwake(it) },
+                    onRefreshBackgroundRuntime = { serviceBinder?.refreshBackgroundRuntime() },
+                    onBatterySettings = ::openBatterySettings,
+                    onAppSettings = ::openAppSettings,
                 )
             }
         }
@@ -134,12 +146,23 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        activityVisible = false
+        serviceBinder?.setAppVisible(false)
         pushToTalkPressed = false
         serviceBinder?.releasePushToTalk()
         super.onPause()
     }
 
+    override fun onResume() {
+        super.onResume()
+        activityVisible = true
+        serviceBinder?.setAppVisible(true)
+        launchPendingConnectionIfVisible()
+    }
+
     override fun onStop() {
+        activityVisible = false
+        serviceBinder?.setAppVisible(false)
         pushToTalkPressed = false
         serviceBinder?.releasePushToTalk()
         if (isBound) {
@@ -158,10 +181,44 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            pendingConnection = config
+            viewModel.pendingConnection = config
+            viewModel.notificationPermissionResolved = false
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
             TeamSpeakService.connect(this, config)
+        }
+    }
+
+    private fun launchPendingConnectionIfVisible() {
+        if (!activityVisible || !viewModel.notificationPermissionResolved) return
+        val config = viewModel.pendingConnection ?: return
+        viewModel.pendingConnection = null
+        TeamSpeakService.connect(this, config)
+    }
+
+    private fun openBatterySettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        } catch (_: android.content.ActivityNotFoundException) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
+    }
+
+    /**
+     * Opens the system page for this app. Android and vendor builds expose their
+     * own background and battery policy there (for example the Xiaomi/HyperOS
+     * battery policy); the app cannot read or change that policy.
+     */
+    private fun openAppSettings() {
+        val intent =
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", packageName, null),
+            )
+        try {
+            startActivity(intent)
+        } catch (_: android.content.ActivityNotFoundException) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
         }
     }
 
@@ -194,10 +251,10 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.RECORD_AUDIO,
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            pendingMicrophoneMode = mode
+            viewModel.pendingMicrophoneMode = mode
             microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
         } else {
-            pendingMicrophoneMode = null
+            viewModel.pendingMicrophoneMode = null
             serviceBinder?.setMicrophoneMode(mode)
         }
     }

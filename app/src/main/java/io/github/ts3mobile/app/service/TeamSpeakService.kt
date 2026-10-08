@@ -1,34 +1,24 @@
 package io.github.ts3mobile.app.service
 
-import android.annotation.SuppressLint
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
 import android.os.Binder
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
-import io.github.ts3mobile.app.MainActivity
-import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.history.SuccessServerHistoryStore
+import io.github.ts3mobile.app.history.successServerHistoryStore
 import io.github.ts3mobile.app.identity.IdentityVault
-import io.github.ts3mobile.app.ui.resolve
 import io.github.ts3mobile.audio.opus.AudioDeviceRouter
 import io.github.ts3mobile.audio.opus.AudioRoutingState
 import io.github.ts3mobile.audio.opus.OpusAudioPlayer
-import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ServerConfig
 import io.github.ts3mobile.protocol.SessionSnapshot
 import io.github.ts3mobile.protocol.Ts3SessionClient
 import io.github.ts3mobile.protocol.VoiceFrame
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 
 internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
@@ -55,30 +46,21 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     private lateinit var audioPlayer: OpusAudioPlayer
     private lateinit var microphoneController: MicrophoneController
     private lateinit var audioRouter: AudioDeviceRouter
-    private lateinit var connectivityManager: ConnectivityManager
-
-    private val networkCallback =
-        object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                updateNetworkAvailability(true)
-            }
-
-            override fun onLost(network: Network) {
-                updateNetworkAvailability(hasUsableNetwork())
-            }
-
-            override fun onCapabilitiesChanged(
-                network: Network,
-                capabilities: NetworkCapabilities,
-            ) {
-                updateNetworkAvailability(
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
-                )
-            }
-        }
+    private lateinit var historyStore: SuccessServerHistoryStore
+    private lateinit var sessionDiagnostics: SessionDiagnostics
+    private lateinit var backgroundRuntime: BackgroundRuntimeController
+    private lateinit var notifications: SessionNotifications
+    private lateinit var networkMonitor: DefaultNetworkMonitor
 
     override fun onCreate() {
         super.onCreate()
+        sessionDiagnostics = SessionDiagnostics(applicationContext, serviceScope)
+        sessionDiagnostics.start(state)
+        historyStore = successServerHistoryStore(applicationContext)
+        notifications =
+            SessionNotifications(this) { types ->
+                sessionDiagnostics.record(DiagnosticEventKind.FOREGROUND_TYPES, types.toLong())
+            }
         identityVault = IdentityVault(applicationContext)
         audioPlayer = OpusAudioPlayer(applicationContext)
         microphoneController =
@@ -91,13 +73,40 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 updateForegroundType = ::updateForegroundType,
                 updateNotification = ::updateNotification,
                 conciseMessage = { conciseMessage(it) },
+                recordEvent = { sessionDiagnostics.record(it) },
             )
         audioRouter = AudioDeviceRouter(applicationContext, ::onAudioRoutingChanged)
-        connectionCoordinator = ConnectionCoordinator(this)
-        connectivityManager = getSystemService(ConnectivityManager::class.java)
-        networkAvailable.value = hasUsableNetwork()
-        connectivityManager.registerDefaultNetworkCallback(networkCallback)
-        createNotificationChannel()
+        connectionCoordinator = ConnectionCoordinator(this, clockMs = SystemClock::elapsedRealtime)
+        networkMonitor =
+            DefaultNetworkMonitor(applicationContext) { network ->
+                networkAvailable.value =
+                    when {
+                        network.isBlocked -> false
+                        network.isPending -> networkAvailable.value
+                        else -> network.isAvailable
+                    }
+                val kind =
+                    when {
+                        network.isBlocked -> DiagnosticEventKind.NETWORK_BLOCKED
+                        network.isPending -> DiagnosticEventKind.NETWORK_PENDING
+                        !network.isAvailable -> DiagnosticEventKind.NETWORK_UNAVAILABLE
+                        else -> DiagnosticEventKind.NETWORK_CHANGED
+                    }
+                sessionDiagnostics.record(kind, network.generation)
+                connectionCoordinator.onNetworkChanged(network)
+            }
+        networkMonitor.start()
+        backgroundRuntime =
+            BackgroundRuntimeController(
+                applicationContext,
+                serviceScope,
+                mutableState,
+                networkAvailable,
+                sessionGeneration,
+                { kind, code -> sessionDiagnostics.record(kind, code) },
+            )
+        backgroundRuntime.start()
+        notifications.createChannel()
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -110,24 +119,26 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         when (intent?.action) {
             ACTION_CONNECT -> {
                 val config = intent.toServerConfig() ?: return START_NOT_STICKY
-                startForegroundWithTypes(
-                    buildNotification(
-                        host = config.host,
-                        status = ConnectionStatus(ConnectionPhase.CONNECTING),
-                    ),
-                    includeMicrophone = false,
-                )
+                sessionDiagnostics.record(DiagnosticEventKind.CONNECT_REQUESTED)
+                notifications.startConnecting(config.host)
                 connectionCoordinator.beginConnection(config)
             }
 
-            ACTION_DISCONNECT -> connectionCoordinator.requestDisconnect()
+            ACTION_DISCONNECT -> {
+                sessionDiagnostics.record(DiagnosticEventKind.USER_DISCONNECT)
+                connectionCoordinator.requestDisconnect()
+                backgroundRuntime.releaseForDisconnect()
+            }
+            ACTION_MUTE_MICROPHONE -> microphoneController.setMode(MicrophoneMode.OFF)
         }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         connectionCoordinator.close()
-        runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+        backgroundRuntime.close()
+        sessionDiagnostics.close()
+        networkMonitor.close()
         microphoneController.close()
         audioPlayer.close()
         audioRouter.close()
@@ -149,22 +160,35 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         mutableState.update { current -> current.copy(diagnostics = snapshot) }
     }
 
-    override fun updateNotification() {
-        val current = mutableState.value
-        if (current.status.phase !in foregroundPhases) return
-        val manager = getSystemService(NotificationManager::class.java)
-        val host = current.serverLabel ?: return
-        manager.notify(
-            NOTIFICATION_ID,
-            buildNotification(
-                host = host,
-                status = current.status,
-                statusMessage = current.statusMessage,
-                onlineCount = current.snapshot.participants.size,
-                microphoneActive = current.isTransmitting,
-            ),
+    override fun updateNotification() = notifications.update(mutableState.value)
+
+    private fun updateForegroundType(includeMicrophone: Boolean) = notifications.updateType(mutableState.value, includeMicrophone)
+
+    override fun onConnectionSucceeded(config: ServerConfig) {
+        sessionDiagnostics.record(DiagnosticEventKind.CONNECTED)
+        serviceScope.launch {
+            try {
+                historyStore.recordSuccess(config.host, config.port)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                sessionDiagnostics.record(DiagnosticEventKind.HISTORY_WRITE_FAILED)
+            }
+        }
+    }
+
+    override fun onConnectionAttempt(reconnecting: Boolean) {
+        sessionDiagnostics.record(
+            if (reconnecting) DiagnosticEventKind.RECONNECT_ATTEMPT else DiagnosticEventKind.CONNECTION_ATTEMPT,
         )
     }
+
+    override fun onManualConnectionStarted() = backgroundRuntime.startManualSession()
+
+    override fun onConnectionFailure(status: ConnectionStatus) = sessionDiagnostics.recordFailure(status)
+
+    override fun onTransportDisconnected() = sessionDiagnostics.record(DiagnosticEventKind.TRANSPORT_DISCONNECTED)
+
+    override fun onWatchExecutionGap(gapSeconds: Long) = sessionDiagnostics.record(DiagnosticEventKind.WATCH_EXECUTION_GAP, gapSeconds)
 
     override fun resetParticipantGains() {
         audioPlayer.replaceParticipantGains(emptyMap())
@@ -230,22 +254,12 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     }
 
     override fun removeForegroundNotification() {
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        backgroundRuntime.releaseForDisconnect()
+        notifications.stop()
     }
 
     override fun requestStopSelf() {
         stopSelf()
-    }
-
-    private fun hasUsableNetwork(): Boolean {
-        val network = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-    }
-
-    private fun updateNetworkAvailability(available: Boolean) {
-        networkAvailable.value = available
-        connectionCoordinator.onNetworkChanged(available)
     }
 
     private fun setParticipantMuted(
@@ -290,107 +304,6 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         mutableState.update { it.copy(audioRouting = routing) }
     }
 
-    private fun updateForegroundType(includeMicrophone: Boolean) {
-        val current = mutableState.value
-        if (current.status.phase !in foregroundPhases) return
-        val host = current.serverLabel ?: return
-        startForegroundWithTypes(
-            notification =
-                buildNotification(
-                    host = host,
-                    status = current.status,
-                    statusMessage = current.statusMessage,
-                    onlineCount = current.snapshot.participants.size,
-                    microphoneActive = includeMicrophone,
-                ),
-            includeMicrophone = includeMicrophone,
-        )
-    }
-
-    @SuppressLint("InlinedApi")
-    private fun startForegroundWithTypes(
-        notification: android.app.Notification,
-        includeMicrophone: Boolean,
-    ) {
-        val baseTypes =
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-        val types =
-            baseTypes or
-                if (includeMicrophone) {
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                } else {
-                    0
-                }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types)
-    }
-
-    private fun buildNotification(
-        host: String,
-        status: ConnectionStatus,
-        statusMessage: UserMessage? = null,
-        onlineCount: Int = 0,
-        microphoneActive: Boolean = false,
-    ) = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-        .setSmallIcon(R.drawable.ic_app)
-        .setContentTitle(getString(R.string.app_name))
-        .setContentText(
-            if (microphoneActive) {
-                getString(R.string.notification_microphone_active, host, onlineCount)
-            } else {
-                when (status.phase) {
-                    ConnectionPhase.CONNECTING -> getString(R.string.notification_connecting, host)
-                    ConnectionPhase.RECONNECTING ->
-                        statusMessage?.let { it.resolve(this) }
-                            ?: getString(R.string.notification_reconnecting, host)
-                    ConnectionPhase.DISCONNECTING -> getString(R.string.notification_disconnecting, host)
-                    ConnectionPhase.CONNECTED ->
-                        resources.getQuantityString(
-                            R.plurals.notification_connected,
-                            onlineCount,
-                            host,
-                            onlineCount,
-                        )
-                    ConnectionPhase.DISCONNECTED,
-                    ConnectionPhase.ERROR,
-                    -> host
-                }
-            },
-        )
-        .setContentIntent(
-            PendingIntent.getActivity(
-                this,
-                0,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            ),
-        )
-        .addAction(
-            0,
-            getString(R.string.notification_disconnect),
-            PendingIntent.getService(
-                this,
-                1,
-                Intent(this, TeamSpeakService::class.java).setAction(ACTION_DISCONNECT),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            ),
-        )
-        .setOngoing(true)
-        .setOnlyAlertOnce(true)
-        .setCategory(NotificationCompat.CATEGORY_SERVICE)
-        .build()
-
-    private fun createNotificationChannel() {
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                getString(R.string.notification_channel_name),
-                NotificationManager.IMPORTANCE_LOW,
-            ),
-        )
-    }
-
     private fun Intent.toServerConfig(): ServerConfig? {
         val host = getStringExtra(EXTRA_HOST) ?: return null
         val nickname = getStringExtra(EXTRA_NICKNAME) ?: return null
@@ -405,6 +318,15 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     inner class SessionBinder : Binder() {
         val state: StateFlow<TeamSpeakServiceState>
             get() = this@TeamSpeakService.state
+
+        fun setAppVisible(visible: Boolean) {
+            microphoneController.setAppVisible(visible)
+            if (visible) backgroundRuntime.refresh()
+        }
+
+        fun setKeepCpuAwake(enabled: Boolean) = backgroundRuntime.setKeepCpuAwake(enabled)
+
+        fun refreshBackgroundRuntime() = backgroundRuntime.refresh()
 
         fun setPlaybackMuted(muted: Boolean) {
             audioPlayer.setMuted(muted)
@@ -450,7 +372,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
         fun diagnosticSnapshot(): DiagnosticsSnapshot = diagnosticsRecorder.snapshot()
 
-        fun redactedDiagnosticsJson(): String = diagnosticSnapshot().toRedactedJson()
+        fun redactedDiagnosticsJson(): String = sessionDiagnostics.export(diagnosticSnapshot())
 
         fun reportMicrophonePermissionDenied() {
             microphoneController.reportPermissionDenied()
@@ -459,21 +381,13 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
     companion object {
         private const val ACTION_CONNECT = "io.github.ts3mobile.action.CONNECT"
-        private const val ACTION_DISCONNECT = "io.github.ts3mobile.action.DISCONNECT"
+        internal const val ACTION_DISCONNECT = "io.github.ts3mobile.action.DISCONNECT"
+        internal const val ACTION_MUTE_MICROPHONE = "io.github.ts3mobile.action.MUTE_MICROPHONE"
+        private const val MAX_PARTICIPANT_VOLUME_PERCENT = 200
         private const val EXTRA_HOST = "host"
         private const val EXTRA_PORT = "port"
         private const val EXTRA_NICKNAME = "nickname"
         private const val EXTRA_PASSWORD = "password"
-        private const val NOTIFICATION_CHANNEL_ID = "ts3_connection"
-        private const val NOTIFICATION_ID = 4103
-        private const val MAX_PARTICIPANT_VOLUME_PERCENT = 200
-        private val foregroundPhases =
-            setOf(
-                ConnectionPhase.CONNECTING,
-                ConnectionPhase.RECONNECTING,
-                ConnectionPhase.CONNECTED,
-                ConnectionPhase.DISCONNECTING,
-            )
 
         fun connect(
             context: Context,
