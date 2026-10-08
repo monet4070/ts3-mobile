@@ -152,6 +152,111 @@ class Ts3jSessionClientTest {
         assertEquals(0, socket.livenessProbes)
     }
 
+    @Test
+    fun transportConnectedTracksTheLiveSocketWithoutProbing() {
+        val socket = FakeSocket()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+
+        assertEquals(true, client.transportConnected)
+        assertEquals(0, socket.livenessProbes)
+    }
+
+    @Test
+    fun transportConnectedReportsASilentSocketLossWithoutCallbacksOrProbes() {
+        val socket = FakeSocket()
+        val listener = RecordingListener()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), listener)
+
+        // ts3j's idle watchdog clears its own connection state without emitting a
+        // listener callback or an exception, so only this read-only property can
+        // observe the silent loss.
+        socket.markTransportDown()
+
+        assertEquals(false, client.transportConnected)
+        assertEquals(
+            listOf(ConnectionPhase.CONNECTING, ConnectionPhase.CONNECTED),
+            listener.statuses.map(ConnectionStatus::phase),
+        )
+        assertEquals(0, socket.livenessProbes)
+    }
+
+    @Test
+    fun transportConnectedIsFalseWithoutASocketOrAfterClose() {
+        val socket = FakeSocket()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+
+        assertEquals(false, client.transportConnected)
+
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+        assertEquals(true, client.transportConnected)
+
+        client.close()
+        assertEquals(false, client.transportConnected)
+    }
+
+    @Test
+    fun transportConnectedIsNullForImplementationsThatDoNotExposeIt() {
+        assertNull(MinimalSessionClient().transportConnected)
+    }
+
+    @Test
+    fun transportConnectedIsNullWhileAServerDisconnectNotificationIsPending() {
+        val socket = FakeSocket()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+
+        // The transport already accepted the server's disconnect command while the
+        // matching listener notification is still being dispatched.
+        socket.pendingDisconnectNotification = true
+
+        assertNull(client.transportConnected)
+    }
+
+    @Test
+    fun transportConnectedIsNullAfterAReportedServerDisconnect() {
+        val socket = FakeSocket()
+        val listener = RecordingListener()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), listener)
+
+        socket.fireDisconnected(reasonId = 4)
+
+        assertTrue(listener.statuses.any { it.phase == ConnectionPhase.DISCONNECTED })
+        assertNull(client.transportConnected)
+    }
+
+    @Test
+    fun transportConnectedIsNullAfterAReportedProtocolFailure() {
+        val socket = FakeSocket()
+        val listener = RecordingListener()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), listener)
+
+        socket.emitException(IllegalStateException("background failure"))
+
+        assertEquals(ConnectionPhase.ERROR, listener.statuses.last().phase)
+        assertNull(client.transportConnected)
+    }
+
+    @Test
+    fun aNewConnectionAttemptClearsTheReportedFailure() {
+        val firstSocket = FakeSocket()
+        val secondSocket = FakeSocket()
+        val sockets = ConcurrentLinkedQueue(listOf(firstSocket, secondSocket))
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { sockets.remove() })
+        val identity = Ts3IdentityCodec.generate()
+
+        client.connect(testConfig(), identity, RecordingListener())
+        firstSocket.fireDisconnected(reasonId = 4)
+        assertNull(client.transportConnected)
+
+        client.connect(testConfig(), identity, RecordingListener())
+
+        assertEquals(true, client.transportConnected)
+    }
+
     private fun testConfig() =
         ServerConfig(
             host = "localhost",
@@ -174,6 +279,25 @@ class Ts3jSessionClientTest {
         }
 
         override fun onVoiceFrame(frame: VoiceFrame) = Unit
+    }
+
+    private class MinimalSessionClient : Ts3SessionClient {
+        override fun connect(
+            config: ServerConfig,
+            identityMaterial: String,
+            listener: Ts3SessionListener,
+        ) = Unit
+
+        override fun setVoiceSource(source: EncodedVoiceSource?) = Unit
+
+        override fun joinChannel(
+            channelId: Int,
+            password: String,
+        ) = Unit
+
+        override fun disconnect(reason: String) = Unit
+
+        override fun close() = Unit
     }
 
     private class FakeSocket(
@@ -248,6 +372,15 @@ class Ts3jSessionClientTest {
         }
 
         override fun getStatistics(packetKind: PacketKind): PacketStatistics = PacketStatistics()
+
+        var pendingDisconnectNotification = false
+
+        override val disconnectNotificationPending: Boolean
+            get() = pendingDisconnectNotification
+
+        fun markTransportDown() {
+            connected = false
+        }
 
         fun emitException(error: Throwable) {
             exceptionHandler?.invoke(error)

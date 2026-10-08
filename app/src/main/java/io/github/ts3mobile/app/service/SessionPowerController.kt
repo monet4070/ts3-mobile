@@ -8,8 +8,11 @@ import kotlinx.coroutines.launch
 
 /** A bounded recovery budget, independent of Android and of individual retry attempts. */
 internal class SessionPowerPolicy(private val recoveryBudgetMs: Long = 120_000L) {
-    private var previousPhase = ConnectionPhase.DISCONNECTED
     private var recoveryStartedAtMs: Long? = null
+
+    fun beginSession() {
+        recoveryStartedAtMs = null
+    }
 
     fun leaseMs(
         enabled: Boolean,
@@ -17,12 +20,12 @@ internal class SessionPowerPolicy(private val recoveryBudgetMs: Long = 120_000L)
         networkAvailable: Boolean,
         nowMs: Long,
     ): Long {
-        if (phase == ConnectionPhase.CONNECTED || phase !in recoveryPhases) {
+        if (phase == ConnectionPhase.CONNECTED || phase in disconnectedPhases) {
             recoveryStartedAtMs = null
-        } else if (previousPhase !in recoveryPhases) {
+        } else if (phase in recoveryPhases && recoveryStartedAtMs == null) {
             recoveryStartedAtMs = nowMs
         }
-        previousPhase = phase
+        // ERROR releases the lock but retains the budget across failed retries.
         if (!enabled || !networkAvailable) return 0L
         return when (phase) {
             ConnectionPhase.CONNECTED -> MAX_LEASE_MS
@@ -36,6 +39,7 @@ internal class SessionPowerPolicy(private val recoveryBudgetMs: Long = 120_000L)
     companion object {
         const val MAX_LEASE_MS = 600_000L
         private val recoveryPhases = setOf(ConnectionPhase.CONNECTING, ConnectionPhase.RECONNECTING)
+        private val disconnectedPhases = setOf(ConnectionPhase.DISCONNECTING, ConnectionPhase.DISCONNECTED)
     }
 }
 
@@ -62,6 +66,18 @@ internal class SessionPowerController(
     private var renewalJob: Job? = null
     private var closed = false
     private var lastReportedHeld = false
+
+    @Synchronized
+    fun startManualSession(
+        enabled: Boolean,
+        networkAvailable: Boolean,
+    ) {
+        if (closed) return
+        policy.beginSession()
+        // Start the lease before the collector observes CONNECTING; use current
+        // inputs because explicit disconnect clears the controller's cache.
+        update(enabled, ConnectionPhase.CONNECTING, networkAvailable)
+    }
 
     @Synchronized
     fun update(
@@ -92,7 +108,7 @@ internal class SessionPowerController(
         if (lease > 0L) {
             cpuLock.acquire(lease)
         } else if (heldBefore) {
-            cpuLock.release()
+            releaseIfHeld()
         }
         reportHeldState()
         return lease
@@ -102,10 +118,19 @@ internal class SessionPowerController(
     override fun close() {
         closed = true
         renewalJob?.cancel()
-        if (cpuLock.isHeld) {
-            cpuLock.release()
-        }
+        releaseIfHeld()
         reportHeldState()
+    }
+
+    private fun releaseIfHeld() {
+        if (!cpuLock.isHeld) return
+        try {
+            cpuLock.release()
+        } catch (error: RuntimeException) {
+            // A timed Android lock may expire between isHeld and release.
+            // Only tolerate that race; a still-held lock is a real failure.
+            if (cpuLock.isHeld) throw error
+        }
     }
 
     private fun reportHeldState() {

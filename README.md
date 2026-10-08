@@ -73,6 +73,7 @@ testing on important servers.
 - background voice runtime check with battery settings and an optional, session-scoped CPU wake lock
 - a bounded local event journal and Android process-exit reasons that survive process recreation
 - background reconnection restores listening; stopped microphone capture resumes when the app is visible
+- silent protocol transport closures trigger recovery even when the default network is unchanged; failed retries share one recovery wake-lock budget
 - redacted JSON export that excludes server, password, nickname, channel and
   participant data
 - fixture-based protocol mapping regression tests and sanitized failure logging

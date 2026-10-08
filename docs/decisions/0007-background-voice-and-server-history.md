@@ -19,11 +19,19 @@ session. Re-entering a server address also makes the connection page cumbersome.
   and generation. Ignore callbacks from superseded networks. Check protocol
   control responses on an identity change before reconnecting; voice silence
   is never a failure signal. Session generations reject stale results.
+- Observe the pinned ts3j transport's silent watchdog closure once per second,
+  using a per-attempt volatile closure latch. No extra keepalives or voice-based
+  timeout are introduced. Pending server disconnects and failures already
+  reported by callbacks suppress this fallback so kick/ban semantics survive.
+  Listener claiming and session/epoch checks reject duplicate or stale results.
 - Offer an optional CPU-awake setting in the background runtime check, off by
   default pending device/battery evidence. Connected, network-usable sessions
   renew timed leases. Connecting/recovery gets a two-minute total budget;
   individual retries and network flaps do not renew that budget. Network loss,
   terminal exit, explicit disconnect and service destruction release the lock.
+  Transient ERROR releases the lock but retains the recovery start time. Only
+  a new manual connection, a confirmed live session or disconnection resets it.
+  Timed-lock expiry during release is tolerated only when the lock is no longer held.
   A wake lock does not bypass Doze. Link to the system battery settings rather
   than requesting exemptions at first launch.
 - Preserve already-running continuous capture in the background. Once capture
@@ -49,6 +57,9 @@ CPU-awake preference disabled. Password and identity storage formats do not
 change. The diagnostic report becomes v2 and contains the existing v1 counter
 object plus a bounded event journal. Existing protocol implementations keep
 compatible defaults for the optional liveness operation.
+The optional nullable transport-state property also has a compatible default;
+implementations that cannot distinguish pending callbacks return null. No
+dependency upgrade or stored-data migration is required for watchdog recovery.
 
 START_NOT_STICKY remains deliberate: no evidence currently justifies saving
 credentials or reviving a service after an explicit system stop. Core-Telecom

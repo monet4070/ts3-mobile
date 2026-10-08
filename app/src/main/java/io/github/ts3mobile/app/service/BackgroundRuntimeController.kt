@@ -96,6 +96,12 @@ internal class BackgroundRuntimeController(
         state.update { it.copy(backgroundRuntime = it.backgroundRuntime.copy(keepCpuAwake = enabled)) }
     }
 
+    fun startManualSession() =
+        powerController.startManualSession(
+            enabled = state.value.backgroundRuntime.keepCpuAwake,
+            networkAvailable = networkAvailable.value && !sessionGeneration.isDisconnectRequested,
+        )
+
     fun releaseForDisconnect() {
         powerController.update(false, state.value.status.phase, false)
     }

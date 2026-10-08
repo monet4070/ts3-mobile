@@ -1,7 +1,7 @@
 # Background voice and server history acceptance
 
-Date: 2026-10-08. This is a reproducible device checklist, not a claim that the
-device scenarios have passed. No Android device was attached for this change.
+Date: 2026-10-08. This is a reproducible device checklist, not a claim that all
+device scenarios have passed. Record each device run and its limitations separately.
 Use disposable test credentials and omit endpoints and personal data from reports.
 
 ## Device scenarios
@@ -12,6 +12,8 @@ Use disposable test credentials and omit endpoints and personal data from report
 | Silent locked channel | Lock for 30 minutes with no remote speakers; repeat with CPU-awake setting enabled | Silence never triggers liveness failure; compare connection and battery evidence |
 | Long session | Background listening for more than six hours on Android 15+ | No dataSync service type or dataSync timeout |
 | Wi-Fi/mobile handover | Switch the default network ten times, including a switch where both remain available | Bounded control check preserves a healthy session or reconnects an expired session |
+| Silent transport loss | With unchanged default network, drop UDP in both directions for at least 35 seconds, then restore it | ts3j watchdog closure produces one TRANSPORT_DISCONNECTED event and retryable recovery; the UI does not remain CONNECTED |
+| Recovery power budget | Keep a connected, CPU-awake session's transport unreachable for three minutes; include failed retries | Within 120 seconds of entering recovery the CPU lock releases and stays released; transient ERROR and settings changes cannot restart the budget; restoring connectivity still allows recovery |
 | Network blocked | Restrict this app's background network, then restore it | Wait without spinning; reconnect after usable network returns |
 | Offline recovery | Remove all networks for five minutes | No CPU lock during offline wait; retry resumes only with usable network |
 | Disconnect during recovery | Disconnect while waiting/backing off or checking liveness, then restore network | No old callback or probe restarts the connection |
@@ -58,3 +60,18 @@ Failure code 1 denotes timeout, 2 network, 0 other. Process-exit codes follow
 Android ApplicationExitInfo (or -1 for unavailable inspection). Foreground
 type codes are Android ServiceInfo flags. Event timestamps establish lock-held
 durations without recording user or server details.
+
+TRANSPORT_DISCONNECTED means the local transport closed without a protocol
+failure callback. It does not identify the root cause; its failure category is
+0 (other), even when a controlled test demonstrates a watchdog timeout. Polling
+adds at most one second to detection after the pinned ts3j 30-second watchdog.
+Keep a reachable, quiet session for at least 60 seconds to check for false positives.
+Test-only UDP relays verify timeout/recovery, but cannot establish that an OEM
+allows the app UID's network access in the background. Use direct connections
+for background and Doze tests, and always restore device settings.
+
+The delayed server-disconnect race is covered by deterministic protocol and
+coordinator regression tests: transport polling defers to pending terminal
+callbacks, so no silent-loss event or retry is fabricated for kick/ban. During
+the recovery budget, a transient ERROR may release and reacquire the lock;
+after budget expiry, failed retries must not reacquire it.

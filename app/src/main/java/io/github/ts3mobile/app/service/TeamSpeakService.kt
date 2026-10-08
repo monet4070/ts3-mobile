@@ -181,7 +181,11 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         )
     }
 
+    override fun onManualConnectionStarted() = backgroundRuntime.startManualSession()
+
     override fun onConnectionFailure(status: ConnectionStatus) = sessionDiagnostics.recordFailure(status)
+
+    override fun onTransportDisconnected() = sessionDiagnostics.record(DiagnosticEventKind.TRANSPORT_DISCONNECTED)
 
     override fun resetParticipantGains() {
         audioPlayer.replaceParticipantGains(emptyMap())

@@ -385,7 +385,133 @@ class ConnectionCoordinatorTest {
             generation = generation,
         )
 
+    @Test
+    fun silentTransportCloseStartsRecoveryWithoutNetworkChange() {
+        host.network.value = false // Keep recovery waiting so it cannot obscure the failure.
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.transportConnected = true
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+
+        host.session.transportConnected = false
+        host.testScope.advanceTimeBy(1_001L)
+
+        assertEquals(ConnectionPhase.RECONNECTING, host.state.value.status.phase)
+        assertTrue(host.state.value.status.retryable)
+        assertEquals(1, host.transportDisconnects)
+        assertEquals(0, host.session.livenessCalls)
+        assertEquals(1, host.session.connectCalls)
+        assertEquals(1, host.microphoneStops)
+        assertTrue(host.playbackStops >= 1)
+        host.testScope.advanceTimeBy(31_000L)
+        assertEquals(1, host.transportDisconnects)
+    }
+
+    @Test
+    fun healthyOrUnknownTransportDoesNotProbeOrReconnectAnIdleChannel() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        host.testScope.advanceTimeBy(31_000L)
+        host.session.transportConnected = true
+        host.testScope.advanceTimeBy(31_000L)
+
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        assertEquals(0, host.transportDisconnects)
+        assertEquals(0, host.session.livenessCalls)
+        assertEquals(1, host.session.connectCalls)
+    }
+
+    @Test
+    fun disconnectBeforeTransportPollDoesNotRestartOrRecordAStaleFailure() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        host.session.transportConnected = false
+        coordinator.requestDisconnect()
+        host.testScope.advanceTimeBy(1_001L)
+
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(0, host.transportDisconnects)
+        assertEquals(1, host.session.connectCalls)
+    }
+
+    @Test
+    fun disconnectDuringTransportReadDiscardsTheObservedFailure() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.transportConnected = true
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        host.session.transportReadAction = {
+            host.session.transportReadAction = {}
+            coordinator.requestDisconnect()
+        }
+        host.session.transportConnected = false
+        host.testScope.advanceTimeBy(1_001L)
+
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(0, host.transportDisconnects)
+        assertTrue(host.connectionFailures.isEmpty())
+    }
+
+    @Test
+    fun pendingServerDisconnectRetainsTerminalCallbackSemantics() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.transportConnected = true
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        // The protocol masks its closed socket until the kick/ban callback arrives.
+        host.session.transportConnected = null
+        host.testScope.advanceTimeBy(1_001L)
+        host.session.listener!!.onStatusChanged(ConnectionStatus(ConnectionPhase.DISCONNECTED, retryable = false))
+        host.advance()
+
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(0, host.transportDisconnects)
+        assertEquals(1, host.session.connectCalls)
+        assertTrue(host.stopSelfRequested)
+    }
+
+    @Test
+    fun silentLossIsReportedOnceAndAHealthyReplacementSurvives() {
+        val lost =
+            FakeSession().apply {
+                transportConnected = true
+                emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+            }
+        val healthy =
+            FakeSession().apply {
+                transportConnected = true
+                emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+            }
+        var factories = 0
+        coordinator = ConnectionCoordinator(host) { if (factories++ == 0) lost else healthy }
+        host.network.value = true
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        lost.transportConnected = false
+        host.testScope.advanceTimeBy(32_000L)
+
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        assertEquals(1, host.transportDisconnects)
+        assertEquals(1, lost.connectCalls)
+        assertEquals(1, healthy.connectCalls)
+        assertEquals(1, host.manualSessionStarts)
+        assertEquals(ConnectionLivenessPolicy.TRANSPORT_LOST_DETAIL, host.connectionFailures.single().detail)
+    }
+
     private class FakeSession : Ts3SessionClient {
+        private var transportSignal: Boolean? = null
+        var transportReadAction: () -> Unit = {}
+        override var transportConnected: Boolean?
+            get() {
+                transportReadAction()
+                return transportSignal
+            }
+            set(value) {
+                transportSignal = value
+            }
         var connectAction: () -> Unit = {}
         var emittedStatusOnConnect: ConnectionStatus? =
             ConnectionStatus(ConnectionPhase.CONNECTING)
@@ -442,6 +568,13 @@ class ConnectionCoordinatorTest {
         val scope = serviceScope
         var stopSelfRequested = false
         var removeForegroundNotificationCalls = 0
+        var playbackStops = 0
+        var microphoneStops = 0
+        var manualSessionStarts = 0
+
+        override fun onManualConnectionStarted() {
+            manualSessionStarts++
+        }
 
         override fun conciseMessage(error: Throwable): String = error::class.java.simpleName
 
@@ -465,13 +598,17 @@ class ConnectionCoordinatorTest {
 
         override fun startPlayback() = Unit
 
-        override fun stopPlayback() = Unit
+        override fun stopPlayback() {
+            playbackStops++
+        }
 
         override fun clearPlaybackMuted() = Unit
 
         override fun attachMicrophoneTo(session: Ts3SessionClient) = Unit
 
-        override fun stopMicrophoneImmediately() = Unit
+        override fun stopMicrophoneImmediately() {
+            microphoneStops++
+        }
 
         override fun reconcileMicrophone() = Unit
 
@@ -490,6 +627,11 @@ class ConnectionCoordinatorTest {
         val connectionAttempts = mutableListOf<Boolean>()
         val connectionSucceeded = mutableListOf<ServerConfig>()
         val connectionFailures = mutableListOf<ConnectionStatus>()
+        var transportDisconnects = 0
+
+        override fun onTransportDisconnected() {
+            transportDisconnects++
+        }
 
         override fun onConnectionAttempt(reconnecting: Boolean) {
             connectionAttempts += reconnecting

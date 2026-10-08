@@ -30,6 +30,14 @@ class Ts3jSessionClient : Ts3SessionClient {
     @Volatile
     private var socket: Ts3jClientSocket? = null
 
+    /**
+     * Set inside the session gate whenever a failure or server-issued disconnect is
+     * reported for the current generation, so [transportConnected] cannot report
+     * the same event a second time as an unexplained transport loss.
+     */
+    @Volatile
+    private var failureReported = false
+
     @Volatile
     private var listener: Ts3SessionListener? = null
 
@@ -49,6 +57,7 @@ class Ts3jSessionClient : Ts3SessionClient {
             generation.begin { nextToken ->
                 val previous = socket
                 socket = null
+                failureReported = false
                 this.listener = listener
                 snapshotStore.clear()
                 nextToken to previous
@@ -139,6 +148,7 @@ class Ts3jSessionClient : Ts3SessionClient {
             reportConnectionFailure(token, connectionAttempt, reportedError)
             runCatching { client.close() }
             generation.withCurrent(token) {
+                failureReported = true
                 if (socket === client) socket = null
             }
             throw reportedError
@@ -192,6 +202,34 @@ class Ts3jSessionClient : Ts3SessionClient {
             false
         }
     }
+
+    /**
+     * Transport-level view of the current attempt, or null when there is no usable
+     * signal.
+     *
+     * The ts3j socket flips its own state to disconnected on its idle watchdog
+     * without delivering a listener callback or an exception, so a latched
+     * transport read is the only non-blocking way to observe that failure. A null
+     * means the caller must not act: either the implementation does not expose
+     * transport state, or a failure or server-issued disconnect for the current
+     * generation is already being reported through the listener callbacks.
+     *
+     * It never probes the network and never writes to the socket.
+     */
+    override val transportConnected: Boolean?
+        get() {
+            val current = socket
+            val transportState =
+                when {
+                    current == null -> false
+                    current.disconnectNotificationPending -> null
+                    else -> current.isConnected
+                }
+            // Re-check after reading the transport state so a failure reported while
+            // we were reading wins. The gate rejects stale callbacks, so an older
+            // session cannot set the flag for a newer one.
+            return if (failureReported) null else transportState
+        }
 
     override fun joinChannel(
         channelId: Int,
@@ -249,6 +287,7 @@ class Ts3jSessionClient : Ts3SessionClient {
     ) {
         val targetListener =
             generation.withCurrent(token) {
+                failureReported = true
                 socket = null
                 snapshotStore.clear()
                 listener
@@ -359,8 +398,14 @@ class Ts3jSessionClient : Ts3SessionClient {
         token: Long,
         error: Throwable,
     ) {
-        emitStatus(
-            token,
+        // Mark and fetch inside one gate block so a replacement generation can
+        // never inherit the failure report of the session it replaced.
+        val targetListener =
+            generation.withCurrent(token) {
+                failureReported = true
+                listener
+            } ?: return
+        targetListener.onStatusChanged(
             ConnectionStatus(
                 ConnectionPhase.ERROR,
                 error.conciseMessage(),

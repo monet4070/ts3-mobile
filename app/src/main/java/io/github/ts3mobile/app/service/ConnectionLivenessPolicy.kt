@@ -1,7 +1,7 @@
 package io.github.ts3mobile.app.service
 
 /**
- * Fixed budgets and closed failure details for the post-switch liveness check.
+ * Fixed budgets and closed failure details for local and post-switch checks.
  *
  * Details are constants, never formatted text, so the diagnostics layer can map
  * them to a closed category without ever storing protocol or network payloads.
@@ -20,4 +20,7 @@ internal object ConnectionLivenessPolicy {
 
     /** The default network changed and the session failed the bounded liveness check. */
     const val NETWORK_SWITCH_UNVERIFIED_DETAIL = "network switched and the session did not respond"
+
+    /** The protocol transport closed without a failure callback. */
+    const val TRANSPORT_LOST_DETAIL = "TeamSpeak transport is disconnected"
 }

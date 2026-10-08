@@ -47,6 +47,79 @@ class SessionPowerControllerTest {
         }
 
     @Test
+    fun failedRetriesAndPreferenceChangesCannotRenewRecoveryBudget() =
+        runTest {
+            val lock = FakeLock()
+            val controller = SessionPowerController(backgroundScope, lock, { testScheduler.currentTime }, {})
+            controller.update(true, ConnectionPhase.RECONNECTING, true)
+            advanceTimeBy(60_000)
+            controller.update(true, ConnectionPhase.ERROR, true)
+            assertFalse(lock.isHeld)
+            advanceTimeBy(30_000)
+            controller.update(false, ConnectionPhase.RECONNECTING, true)
+            controller.update(true, ConnectionPhase.RECONNECTING, true)
+            assertEquals(30_000L, lock.lastLease)
+            advanceTimeBy(30_001)
+            runCurrent()
+            controller.update(true, ConnectionPhase.ERROR, true)
+            controller.update(true, ConnectionPhase.RECONNECTING, true)
+            assertFalse(lock.isHeld)
+            controller.close()
+        }
+
+    @Test
+    fun aNewUserSessionGetsAFreshBudgetAfterRecoveryWasExhausted() =
+        runTest {
+            val lock = FakeLock()
+            val controller = SessionPowerController(backgroundScope, lock, { testScheduler.currentTime }, {})
+            controller.update(true, ConnectionPhase.RECONNECTING, true)
+            advanceTimeBy(120_001)
+            runCurrent()
+            controller.update(true, ConnectionPhase.ERROR, true)
+            assertFalse(lock.isHeld)
+            controller.startManualSession(true, true)
+            assertTrue(lock.isHeld)
+            assertEquals(120_000L, lock.lastLease)
+            controller.update(true, ConnectionPhase.CONNECTING, true)
+            assertEquals(120_000L, lock.lastLease)
+            controller.close()
+        }
+
+    @Test
+    fun manualSessionUsesCurrentInputsAndCannotRestartAfterClose() =
+        runTest {
+            val lock = FakeLock()
+            val controller = SessionPowerController(backgroundScope, lock, { testScheduler.currentTime }, {})
+            controller.update(false, ConnectionPhase.DISCONNECTED, false)
+            controller.startManualSession(false, true)
+            assertFalse(lock.isHeld)
+            controller.startManualSession(true, false)
+            assertFalse(lock.isHeld)
+            controller.startManualSession(true, true)
+            assertTrue(lock.isHeld)
+            assertEquals(120_000L, lock.lastLease)
+            controller.close()
+            controller.startManualSession(true, true)
+            assertFalse(lock.isHeld)
+        }
+
+    @Test
+    fun expiryDuringReleaseDoesNotKillSubsequentLockUpdatesOrClose() =
+        runTest {
+            val lock = FakeLock()
+            val reports = mutableListOf<Boolean>()
+            val controller = SessionPowerController(backgroundScope, lock, { testScheduler.currentTime }, { reports += it })
+            controller.update(true, ConnectionPhase.CONNECTED, true)
+            lock.expireOnRelease = true
+            controller.update(true, ConnectionPhase.ERROR, true)
+            assertFalse(lock.isHeld)
+            controller.update(true, ConnectionPhase.CONNECTED, true)
+            assertTrue(lock.isHeld)
+            controller.close()
+            assertEquals(listOf(true, false, true, false), reports)
+        }
+
+    @Test
     fun systemTimeoutStillReportsAReleasedLock() =
         runTest {
             val lock = FakeLock()
@@ -98,6 +171,7 @@ class SessionPowerControllerTest {
         override var isHeld = false
         var acquisitions = 0
         var lastLease = 0L
+        var expireOnRelease = false
 
         override fun acquire(timeoutMs: Long) {
             isHeld = true
@@ -107,6 +181,7 @@ class SessionPowerControllerTest {
 
         override fun release() {
             isHeld = false
+            if (expireOnRelease) throw RuntimeException("timed lock already expired")
         }
     }
 }

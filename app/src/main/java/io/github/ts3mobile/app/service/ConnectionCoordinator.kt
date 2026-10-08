@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Service-side collaborators the connection state machine needs, exposed as
@@ -82,6 +83,9 @@ internal interface ConnectionCoordinatorHost {
      */
     fun onConnectionAttempt(reconnecting: Boolean) = Unit
 
+    /** A new user-requested session starts a fresh recovery power budget. */
+    fun onManualConnectionStarted() = Unit
+
     /**
      * Called only for the current listener once an attempt is confirmed
      * established. The service persists the connected server here.
@@ -94,6 +98,9 @@ internal interface ConnectionCoordinatorHost {
      * callers must map it to a closed category before persisting it.
      */
     fun onConnectionFailure(status: ConnectionStatus) = Unit
+
+    /** The transport closed without delivering a protocol failure callback. */
+    fun onTransportDisconnected() = Unit
 }
 
 /**
@@ -109,8 +116,10 @@ internal class ConnectionCoordinator(
     @Volatile
     private var session: Ts3SessionClient? = null
 
-    @Volatile
-    private var activeListener: SessionListener? = null
+    private val listenerRef = AtomicReference<SessionListener?>(null)
+    private var activeListener: SessionListener?
+        get() = listenerRef.get()
+        set(value) = listenerRef.set(value)
 
     @Volatile
     private var connectedOnce = false
@@ -121,7 +130,7 @@ internal class ConnectionCoordinator(
     private var identityMaterial: String? = null
     private var connectionJob: Job? = null
     private var stableConnectionJob: Job? = null
-    private var diagnosticsRefreshJob: Job? = null
+    private var connectedWatchJob: Job? = null
 
     @Volatile
     private var livenessJob: Job? = null
@@ -134,6 +143,7 @@ internal class ConnectionCoordinator(
 
     fun beginConnection(config: ServerConfig) {
         val epoch = host.sessionGeneration.beginSession()
+        host.onManualConnectionStarted()
         connectedOnce = false
         reconnectEngine.resetAttemptCount()
         host.diagnosticsRecorder.resetSession()
@@ -142,6 +152,7 @@ internal class ConnectionCoordinator(
         channelRestore.reset()
         activeListener = null
         stableConnectionJob?.cancel()
+        connectedWatchJob?.cancel()
         livenessJob?.cancel()
         reconnectEngine.cancel()
         connectionJob?.cancel()
@@ -187,7 +198,7 @@ internal class ConnectionCoordinator(
         connectionJob?.cancel()
         reconnectEngine.cancel()
         stableConnectionJob?.cancel()
-        diagnosticsRefreshJob?.cancel()
+        connectedWatchJob?.cancel()
         livenessJob?.cancel()
         if (host.mutableState.value.status.phase in interruptibleConnectionPhases) {
             session?.close()
@@ -359,7 +370,7 @@ internal class ConnectionCoordinator(
         connectionJob?.cancel()
         reconnectEngine.cancel()
         stableConnectionJob?.cancel()
-        diagnosticsRefreshJob?.cancel()
+        connectedWatchJob?.cancel()
         livenessJob?.cancel()
         session?.close()
         session = null
@@ -466,7 +477,7 @@ internal class ConnectionCoordinator(
                 host.stopPlayback()
                 host.clearPlaybackMuted()
                 host.stopAudioRouting()
-                diagnosticsRefreshJob?.cancel()
+                connectedWatchJob?.cancel()
                 host.mutableState.value =
                     TeamSpeakServiceState(
                         diagnostics = host.diagnosticsRecorder.snapshot(),
@@ -553,7 +564,7 @@ internal class ConnectionCoordinator(
         desiredConfig?.let { host.onConnectionSucceeded(it) }
         channelRestore.seedFromCurrentChannel(host.mutableState.value.snapshot.currentChannelId)
         scheduleStableConnectionReset(listener)
-        startDiagnosticsRefresh(listener)
+        startConnectedWatch(listener)
         host.refreshDiagnostics()
         host.updateNotification()
         host.reconcileMicrophone()
@@ -563,11 +574,14 @@ internal class ConnectionCoordinator(
     private fun onEstablishedSessionEnded(
         listener: SessionListener,
         status: ConnectionStatus,
+        transportSession: Ts3SessionClient? = null,
     ) {
-        if (!isListenerActive(listener)) return
-        activeListener = null
+        if (transportSession != null && session !== transportSession) return
+        if (!isEpochActive(listener.epoch) || !listenerRef.compareAndSet(listener, null)) return
+        if (!isEpochActive(listener.epoch)) return
+        if (transportSession != null) host.onTransportDisconnected()
         stableConnectionJob?.cancel()
-        diagnosticsRefreshJob?.cancel()
+        connectedWatchJob?.cancel()
         livenessJob?.cancel()
         host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
         host.onConnectionFailure(status)
@@ -592,9 +606,9 @@ internal class ConnectionCoordinator(
         epoch: Long,
     ) {
         if (!isEpochActive(epoch)) return
-        activeListener = null
+        activeListener?.takeIf { it.epoch == epoch }?.let { listenerRef.compareAndSet(it, null) }
         stableConnectionJob?.cancel()
-        diagnosticsRefreshJob?.cancel()
+        connectedWatchJob?.cancel()
         livenessJob?.cancel()
         host.sessionMutex.withLock {
             if (!isEpochActive(epoch)) return@withLock
@@ -627,13 +641,33 @@ internal class ConnectionCoordinator(
             }
     }
 
-    private fun startDiagnosticsRefresh(listener: SessionListener) {
-        diagnosticsRefreshJob?.cancel()
-        diagnosticsRefreshJob =
+    private fun startConnectedWatch(listener: SessionListener) {
+        connectedWatchJob?.cancel()
+        connectedWatchJob =
             host.serviceScope.launch {
                 while (isActive && isListenerActive(listener)) {
+                    // ts3j can silently transition to DISCONNECTED after its
+                    // PONG/ACK timeout. Observe that local state without sending
+                    // extra keepalives or treating channel silence as failure.
+                    val observedSession = session ?: return@launch
+                    if (observedSession.transportConnected == false &&
+                        session === observedSession && isListenerActive(listener)
+                    ) {
+                        // Ending the session cancels this watch. Keep this
+                        // transition synchronous; recovery has its own job.
+                        onEstablishedSessionEnded(
+                            listener,
+                            ConnectionStatus(
+                                ConnectionPhase.ERROR,
+                                ConnectionLivenessPolicy.TRANSPORT_LOST_DETAIL,
+                                retryable = true,
+                            ),
+                            transportSession = observedSession,
+                        )
+                        return@launch
+                    }
                     host.refreshDiagnostics()
-                    delay(DIAGNOSTICS_REFRESH_MS)
+                    delay(CONNECTED_WATCH_INTERVAL_MS)
                 }
             }
     }
@@ -684,7 +718,7 @@ internal class ConnectionCoordinator(
 
     private companion object {
         const val STABLE_CONNECTION_MS = 30_000L
-        const val DIAGNOSTICS_REFRESH_MS = 1_000L
+        const val CONNECTED_WATCH_INTERVAL_MS = 1_000L
 
         val interruptibleConnectionPhases =
             setOf(

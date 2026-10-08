@@ -83,9 +83,14 @@ the existing counters and the persistent event history, including power flags
 and Android 11+ process-exit reason codes. `SessionNotifications` owns foreground
 types and notification actions. `BackgroundRuntimeController` connects Android
 power state and an opt-in preference to the JVM-tested `SessionPowerController`;
-timed leases renew for connected sessions, and recovery has a two-minute budget.
+timed leases renew for connected sessions, and recovery has a two-minute budget
+that survives transient ERROR states and resets for a new manual connection.
 `DefaultNetworkMonitor` retains default-network identity, capability and blocked
 state for switch-aware liveness checks and reconnect waiting.
+The connected-session watch also observes silent transport closure. A per-attempt
+volatile latch publishes ts3j watchdog disconnects; pending server disconnects
+defer to callbacks, preserving terminal kick/ban behavior. Atomic listener claiming
+and session/epoch checks prevent duplicate and stale loss reports.
 
 `SuccessServerHistoryStore` shares one preferences DataStore between the service
 and the view model. Only an accepted current-session success stores host/port,
