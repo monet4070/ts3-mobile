@@ -67,6 +67,51 @@ outside the session callback implementation. A reconnect snapshot cannot replace
 that target while restoration is pending, and an already-restored channel is not
 joined again.
 
+## Task removal and bounded exit
+
+Task removal, UI disconnect and notification disconnect use one coordinator
+request path. `SessionRequestOwnership` assigns a monotonically increasing
+request revision; a newer connection invalidates an exit's right to clear state
+or stop the service. `SessionExitRunner` executes cleanup for a captured socket
+without owning the active session. Registered exit jobs form a barrier before
+new attempts start shared audio, including exits queued after a new connection.
+Terminal failure cleanup holds the attempt mutex and guards state mutation with
+`SessionGeneration.withActive`; both terminal and explicit-exit service teardown
+re-check ownership in one main-thread notification/`stopSelfResult` action.
+
+One monotonic two-second target covers parallel audio stops, lock waiting and
+protocol exit. Native/scheduler overruns are reported and final local audio
+cleanup completes before new audio starts. Handshake sockets close before lock
+waiting. `close()` keeps its local-release meaning; the optional protocol
+`disconnectBounded` method has a no-I/O `UNSUPPORTED` default for other adapters.
+The pinned ts3j adapter sends the existing encrypted reliable command and requires
+this socket's own server leave notification for `SERVER_CONFIRMED`. Per-socket
+`SocketOperations` interrupts and reclaims registered blocking writers, including
+writers queued behind the library's command monitor, inside the same deadline.
+A local close or UDP ACK cannot serve as confirmation.
+
+`onTaskRemoved` only registers work and appends an in-memory journal category.
+Explicit `stopWithTask=false` preserves the callback opportunity and retains the
+Android default; `START_NOT_STICKY` stays unchanged. Home/lock/Activity lifecycle
+does not invoke this path. Android process killing can bypass callbacks entirely.
+See [ADR-0008](docs/decisions/0008-task-removal-bounded-exit.md).
+
+## First-connect identity-limit recovery
+
+`ConnectionFailure` owns a cycle-safe classifier shared by category and
+retryability, with terminal command precedence. A defaulted trailing category
+field in `ConnectionStatus` preserves constructor source compatibility.
+`ClonesRecoveryPolicy` and `ClonesRecoveryEngine` handle a user-started,
+explicitly refused first connection, separately from established-session
+`ReconnectEngine` behavior. A per-epoch immutable 60-second window starts its
+independent watchdog at first rejection, not when the original connect returns.
+Offline waits, backoff and blocking attempts share that deadline. The watchdog
+captures and closes the correct socket/job before cancellation; callback success
+is arbitrated against the same deadline. Failed sockets close before retry.
+Shared expiry cleanup holds the attempt mutex and state/notification updates
+check the epoch. Identity and the existing CPU-awake budget are reused; microphone
+eligibility remains unchanged. See [ADR-0009](docs/decisions/0009-first-connect-clones-recovery.md).
+
 ## Diagnostics
 
 `DiagnosticsRecorder` is a thread-safe, in-memory counter owned by the service.

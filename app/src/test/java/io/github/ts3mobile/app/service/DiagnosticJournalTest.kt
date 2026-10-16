@@ -53,4 +53,50 @@ class DiagnosticJournalTest {
         assertTrue(journal.failedWrites > 0)
         assertTrue(journal.toRedactedJson().contains("CONNECTED"))
     }
+
+    @Test
+    fun exitCategoriesRoundTripWithoutCarryingText() {
+        val file = temporaryFolder.newFile("events.tsv")
+        val exitKinds =
+            listOf(
+                DiagnosticEventKind.TASK_REMOVED,
+                DiagnosticEventKind.EXIT_STARTED,
+                DiagnosticEventKind.EXIT_REQUEST_SENT,
+                DiagnosticEventKind.EXIT_SERVER_CONFIRMED,
+                DiagnosticEventKind.EXIT_TIMED_OUT,
+                DiagnosticEventKind.EXIT_FAILED,
+                DiagnosticEventKind.EXIT_NO_ACTIVE_SESSION,
+                DiagnosticEventKind.EXIT_UNSUPPORTED,
+                DiagnosticEventKind.EXIT_CLEANUP_OVERRUN,
+            )
+        val journal = DiagnosticJournal(file)
+        exitKinds.forEach { journal.record(it) }
+        journal.persist()
+
+        val export = DiagnosticJournal(file).toRedactedJson()
+
+        exitKinds.forEach { assertTrue(export.contains("\"kind\":\"${it.name}\"")) }
+        // Only fixed categories and numbers survive: no reason text, address or name.
+        assertFalse(export.contains("Task removed"))
+        assertFalse(export.contains("Disconnected by user"))
+    }
+
+    @Test
+    fun clonesRecoveryCategoriesCarryOnlyFixedNumbers() {
+        val file = temporaryFolder.newFile("events.tsv")
+        val journal = DiagnosticJournal(file)
+        journal.record(DiagnosticEventKind.CLONES_RECOVERY_STARTED)
+        ClonesRecoveryResult.entries.forEach { journal.record(DiagnosticEventKind.CLONES_RECOVERY_ENDED, it.code) }
+        journal.persist()
+
+        val export = DiagnosticJournal(file).toRedactedJson()
+
+        assertTrue(export.contains("\"kind\":\"CLONES_RECOVERY_STARTED\""))
+        ClonesRecoveryResult.entries.forEach {
+            assertTrue(export.contains("\"kind\":\"CLONES_RECOVERY_ENDED\",\"code\":${it.code}"))
+        }
+        // Only categories and numbers: never the refusal text or any identity.
+        assertFalse(export.contains("clones already connected"))
+        assertFalse(export.contains("example.invalid"))
+    }
 }

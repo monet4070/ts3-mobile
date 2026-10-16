@@ -8,11 +8,9 @@ import com.github.manevolent.ts3j.event.TS3Listener
 import com.github.manevolent.ts3j.identity.LocalIdentity
 import com.github.manevolent.ts3j.protocol.PacketKind
 import com.github.manevolent.ts3j.protocol.ProtocolRole
-import com.github.manevolent.ts3j.protocol.client.ClientConnectionState
 import com.github.manevolent.ts3j.protocol.packet.PacketBody0Voice
 import com.github.manevolent.ts3j.protocol.packet.PacketBody1VoiceWhisper
 import com.github.manevolent.ts3j.protocol.packet.statistics.PacketStatistics
-import com.github.manevolent.ts3j.protocol.socket.client.AbstractTeamspeakClientSocket
 import com.github.manevolent.ts3j.protocol.socket.client.LocalTeamspeakClientSocket
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -73,6 +71,21 @@ internal interface Ts3jClientSocket {
 
     fun disconnect(reason: String)
 
+    /**
+     * Leaves the current session inside [timeoutMs] and reports how far it got.
+     *
+     * Implementations must send the protocol leave request through the library's
+     * reliable command path, never treat a UDP acknowledgement as confirmation,
+     * and release the transport before the budget expires. The default reports
+     * [DisconnectOutcome.UNSUPPORTED] and performs no I/O so transports without a
+     * graceful leave stay source-compatible.
+     */
+    fun disconnectBounded(
+        timeoutMs: Long,
+        reason: String,
+        onRequestSent: () -> Unit = {},
+    ): DisconnectOutcome = DisconnectOutcome.UNSUPPORTED
+
     fun close()
 
     fun getStatistics(packetKind: PacketKind): PacketStatistics
@@ -80,69 +93,6 @@ internal interface Ts3jClientSocket {
 
 internal fun interface Ts3jClientSocketFactory {
     fun create(): Ts3jClientSocket
-}
-
-/**
- * Default delegate that mirrors the socket's own connection state behind a
- * one-way latch.
- *
- * ts3j exposes its connection state as a plain field and its idle watchdog can
- * flip that field without delivering a listener callback or an exception, so a
- * caller reading it from another thread has no visibility guarantee. The latch is
- * written after the library call returns, which publishes the confirmed
- * disconnect to every later reader. A socket instance is created per connection
- * attempt, so the latch never has to be cleared.
- *
- * The library's own isConnected is deliberately not overridden so internal ts3j
- * flows keep their original behavior.
- */
-internal class StateAwareTeamspeakClientSocket : LocalTeamspeakClientSocket() {
-    @Volatile
-    private var attemptStarted = false
-
-    @Volatile
-    private var closed = false
-
-    @Volatile
-    private var disconnectNotificationPending = false
-
-    /** Volatile-backed transport state for callers outside ts3j. */
-    val transportConnected: Boolean
-        get() = !closed && super.isConnected
-
-    /** Latched once a server-issued disconnect for this client is accepted. */
-    val isDisconnectNotificationPending: Boolean
-        get() = disconnectNotificationPending
-
-    override fun setState(state: ClientConnectionState) {
-        if (state == ClientConnectionState.CONNECTING) attemptStarted = true
-        try {
-            super.setState(state)
-        } finally {
-            // The library sets DISCONNECTED from its own constructor, before an
-            // attempt exists; only a disconnect after CONNECTING is a lost session.
-            if (state == ClientConnectionState.DISCONNECTED && attemptStarted) closed = true
-        }
-    }
-
-    override fun process(
-        client: AbstractTeamspeakClientSocket,
-        command: SingleCommand,
-    ) {
-        if (command.isSelfDisconnectNotification()) disconnectNotificationPending = true
-        super.process(client, command)
-    }
-
-    private fun SingleCommand.isSelfDisconnectNotification(): Boolean {
-        if (name != SELF_DISCONNECT_COMMAND) return false
-        if (!has(CLIENT_ID_PARAMETER)) return false
-        return get(CLIENT_ID_PARAMETER)?.value?.toIntOrNull() == clientId
-    }
-
-    private companion object {
-        const val SELF_DISCONNECT_COMMAND = "notifyclientleftview"
-        const val CLIENT_ID_PARAMETER = "clid"
-    }
 }
 
 internal class LocalTeamspeakClientSocketAdapter(
@@ -185,37 +135,39 @@ internal class LocalTeamspeakClientSocketAdapter(
         password: String?,
         timeoutMs: Long,
     ) {
-        delegate.connect(address, password, timeoutMs)
+        withOperation { delegate.connect(address, password, timeoutMs) }
     }
 
     override fun subscribeAll() {
-        delegate.subscribeAll()
+        withOperation { delegate.subscribeAll() }
     }
 
     override fun probeLiveness(timeoutMs: Long): Boolean {
-        return try {
-            // clientinfo is read-only, so a probe cannot rename or otherwise
-            // mutate the client even when the server enforces a different
-            // nickname than the one requested.
-            val command =
-                SingleCommand(
-                    "clientinfo",
-                    ProtocolRole.CLIENT,
-                    CommandSingleParameter("clid", clientId.toString()),
-                )
-            delegate.executeCommand(command).get(timeoutMs)
-            true
-        } catch (_: CommandException) {
-            // The server answered with an error: it is alive, the command was
-            // merely refused.
-            true
-        } catch (_: TimeoutException) {
-            false
-        } catch (_: IOException) {
-            false
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-            false
+        return withOperation {
+            try {
+                // clientinfo is read-only, so a probe cannot rename or otherwise
+                // mutate the client even when the server enforces a different
+                // nickname than the one requested.
+                val command =
+                    SingleCommand(
+                        "clientinfo",
+                        ProtocolRole.CLIENT,
+                        CommandSingleParameter("clid", clientId.toString()),
+                    )
+                delegate.executeCommand(command).get(timeoutMs)
+                true
+            } catch (_: CommandException) {
+                // The server answered with an error: it is alive, the command was
+                // merely refused.
+                true
+            } catch (_: TimeoutException) {
+                false
+            } catch (_: IOException) {
+                false
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            }
         }
     }
 
@@ -232,11 +184,22 @@ internal class LocalTeamspeakClientSocketAdapter(
         channelId: Int,
         password: String,
     ) {
-        delegate.joinChannel(channelId, password)
+        withOperation { delegate.joinChannel(channelId, password) }
     }
 
     override fun disconnect(reason: String) {
         delegate.disconnect(reason)
+    }
+
+    override fun disconnectBounded(
+        timeoutMs: Long,
+        reason: String,
+        onRequestSent: () -> Unit,
+    ): DisconnectOutcome {
+        val target =
+            delegate as? StateAwareTeamspeakClientSocket
+                ?: return DisconnectOutcome.UNSUPPORTED
+        return BOUNDED_DISCONNECT.run(target, reason, timeoutMs, onRequestSent)
     }
 
     override fun close() {
@@ -244,4 +207,13 @@ internal class LocalTeamspeakClientSocketAdapter(
     }
 
     override fun getStatistics(packetKind: PacketKind): PacketStatistics = delegate.getStatistics(packetKind)
+
+    private fun <T> withOperation(block: () -> T): T {
+        val target = delegate as? StateAwareTeamspeakClientSocket
+        return if (target == null) block() else target.withOperation(block)
+    }
+
+    private companion object {
+        val BOUNDED_DISCONNECT = BoundedClientDisconnect()
+    }
 }

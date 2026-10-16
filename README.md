@@ -43,6 +43,8 @@ testing on important servers.
 - correct TeamSpeak Base64(SHA1) server-password authentication
 - connection, cancellation, disconnection and error states
 - cancellable automatic reconnection with network-aware 1–30 second backoff
+- active session exit when Android delivers a task-removal callback, with a two-second protocol budget
+- cancellable first-connect recovery after an explicit identity connection-limit refusal, within one 60-second window
 - default-network identity and blocked-state tracking, with a bounded control-response check on network switches
 - stale-session callback rejection and in-memory restoration of the last channel
 - hierarchical channel view with direct channel-member rosters
@@ -81,6 +83,25 @@ testing on important servers.
 There is currently no in-app language selector. Whisper transmission, automatic
 voice activation, text chat, file transfer, permissions administration,
 bookmarks and multi-server tabs are also not implemented.
+
+## Removing the task
+
+Removing the app from recents requests a disconnect if Android delivers the
+callback. Home, app switching and locking the screen keep the existing background
+session. The exit result distinguishes a request sent from server-confirmed
+release; if the network is unavailable, the server may retain the session until
+its own timeout. Force stop and vendor process killing may provide no callback.
+Reopening the app does not connect automatically.
+
+If a user-started connection receives the observed identity connection-limit
+refusal, the app retries with 1/2/4/8-second backoff (then 8 seconds), for at most
+60 seconds from the first refusal. Offline waiting consumes the same window.
+Cancel stops recovery; expiry suggests checking other clients using the same
+identity and retrying manually. The app does not remove another client.
+
+Local regressions and a debug build cover the implementation. Callback delivery,
+actual microphone stop time and server release still require device acceptance:
+see [the review and device matrix](docs/testing/TASK_REMOVAL_DISCONNECT_REVIEW_2026-10-13.md).
 
 ## Privacy
 

@@ -182,6 +182,66 @@ class Ts3jSessionClient : Ts3SessionClient {
         socket?.setMicrophone(source?.toMicrophone())
     }
 
+    /**
+     * Bounded, server-confirmed disconnect.
+     *
+     * The current session is captured and invalidated before anything else, so
+     * the old listener, generation and microphone stop being used immediately and
+     * a replacement session started meanwhile is never touched. Only the captured
+     * socket is closed afterwards, even when the caller cancels the surrounding
+     * coroutine: the exit is already in flight, and leaving the socket open would
+     * keep the server-side session alive.
+     *
+     * The result is the transport's own outcome, so a local close, a watchdog
+     * transition or a lost acknowledgement is never reported as
+     * [DisconnectOutcome.SERVER_CONFIRMED]. No status is emitted here; the caller
+     * owns the user-visible state once the session is gone.
+     */
+    override suspend fun disconnectBounded(
+        timeoutMs: Long,
+        reason: String,
+        onRequestSent: () -> Unit,
+    ): DisconnectOutcome {
+        val startedAt = System.nanoTime()
+        require(timeoutMs > 0L) { "Disconnect timeout must be positive" }
+        val captured =
+            generation.invalidate {
+                val previous = socket
+                socket = null
+                snapshotStore.clear()
+                listener = null
+                previous
+            }
+        if (captured == null) return DisconnectOutcome.NO_ACTIVE_SESSION
+
+        // Stop the old socket's microphone before the exit, so no further voice
+        // frame can be sent even if the server never answers the leave request.
+        try {
+            captured.setMicrophone(null)
+        } catch (error: Throwable) {
+            // The exit must not be blocked by a microphone that cannot be stopped,
+            // but the failure is reported instead of hidden.
+            logFailure("stopping the old microphone failed", error)
+        }
+        return try {
+            withContext(Dispatchers.IO) {
+                val remaining = timeoutMs - (System.nanoTime() - startedAt) / 1_000_000L
+                if (remaining <= 0) {
+                    DisconnectOutcome.TIMED_OUT
+                } else {
+                    captured.disconnectBounded(remaining, reason, onRequestSent)
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            logFailure("bounded disconnect failed", error)
+            DisconnectOutcome.FAILED
+        } finally {
+            runCatching { captured.close() }
+        }
+    }
+
     override suspend fun verifyLiveness(timeoutMs: Long): Boolean {
         require(timeoutMs > 0L) { "Liveness timeout must be positive" }
         val token = generation.currentToken()
@@ -410,6 +470,7 @@ class Ts3jSessionClient : Ts3SessionClient {
                 ConnectionPhase.ERROR,
                 error.conciseMessage(),
                 retryable = error.isRetryableConnectionFailure(),
+                category = error.connectionFailureCategory(),
             ),
         )
     }

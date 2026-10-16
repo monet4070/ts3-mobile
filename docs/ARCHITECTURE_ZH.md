@@ -103,6 +103,8 @@ flowchart TB
 - **前台服务类型 (`SessionNotifications.kt`)**：收听使用 `mediaPlayback`，实际 PTT 或持续采集时才附加 `microphone`，长期语音会话已移除 `dataSync`。后台已停止的麦克风采集须回到应用后恢复。
 - **网络感知重连**：`DefaultNetworkMonitor` 跟踪身份、能力、待确认和阻止状态。切换后先执行有时限的只读控制请求，失活才重连；离线时等待可用网络，再按 1–30 秒退避恢复。
 - **后台诊断与电源**：有界本地事件记录在进程重启后保留。后台运行检查提供电池设置和可选限时 CPU 唤醒锁，连接恢复总预算为两分钟；参见 [ADR-0007](decisions/0007-background-voice-and-server-history.md)。
+- **任务移除退出**：`onTaskRemoved` 只登记退出与固定诊断事件，UI/通知断开共用同一路径。`SessionRequestOwnership` 校验请求代次，`SessionExitRunner` 释放捕获的旧 socket；新尝试等待已登记退出完成后才启动音频。协议退出目标预算两秒，服务器自身退出通知才算确认；本地关闭和 UDP ACK 均不算。服务主线程收尾再次校验所有权，避免旧退出停止新连接。Home/锁屏不触发退出，系统强杀不保证回调；参见 [ADR-0008](decisions/0008-task-removal-bounded-exit.md)。
+- **首次连接数量限制恢复**：协议层集中识别已观察的 clones 拒绝，并保持终止命令错误优先。独立的 `ClonesRecoveryEngine` 从首次拒绝起登记固定 60 秒窗口与 watchdog，覆盖原握手、退避、离线和后续握手；到期先关闭捕获 socket 再取消任务，成功回调也校验期限。身份、电源预算和后台麦克风资格沿用既有规则，参见 [ADR-0009](decisions/0009-first-connect-clones-recovery.md)。
 - **成功地址历史**：共享 DataStore 仅保存最近十个成功地址与端口，支持选择、删除，不保存密码或昵称。
 - **频道现场记忆与恢复 (`ChannelRestorePolicy.kt`)**：在服务内存中暂存用户断线前所在的频道 ID 与密码，重连成功后全自动切回原频道。
 

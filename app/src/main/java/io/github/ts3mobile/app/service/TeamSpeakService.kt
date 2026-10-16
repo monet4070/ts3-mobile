@@ -4,7 +4,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import io.github.ts3mobile.app.history.SuccessServerHistoryStore
@@ -51,6 +53,10 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     private lateinit var backgroundRuntime: BackgroundRuntimeController
     private lateinit var notifications: SessionNotifications
     private lateinit var networkMonitor: DefaultNetworkMonitor
+
+    /** Re-checks request ownership on the main thread before teardown side effects. */
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var latestStartId = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -116,6 +122,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         flags: Int,
         startId: Int,
     ): Int {
+        latestStartId = startId
         when (intent?.action) {
             ACTION_CONNECT -> {
                 val config = intent.toServerConfig() ?: return START_NOT_STICKY
@@ -134,7 +141,22 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         return START_NOT_STICKY
     }
 
+    /**
+     * The task was removed from the recents list.
+     *
+     * Only the fixed category is recorded here; the journal append is in-memory and
+     * the exit request is registered synchronously, so neither disk nor network
+     * blocks the main thread. The bounded exit itself runs on IO.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        sessionDiagnostics.record(DiagnosticEventKind.TASK_REMOVED)
+        connectionCoordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        // A queued exit teardown must not touch a destroyed service.
+        mainHandler.removeCallbacksAndMessages(null)
         connectionCoordinator.close()
         backgroundRuntime.close()
         sessionDiagnostics.close()
@@ -256,6 +278,50 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     override fun removeForegroundNotification() {
         backgroundRuntime.releaseForDisconnect()
         notifications.stop()
+    }
+
+    override fun recordDiagnostic(
+        kind: DiagnosticEventKind,
+        code: Long,
+    ) {
+        sessionDiagnostics.record(kind, code)
+    }
+
+    /**
+     * The exit asked to remove the notification and stop the service.
+     *
+     * The exit token is re-checked here, on the main thread, in the same action
+     * that performs both side effects: a connect the main thread already processed
+     * (or a later exit) owns the service now, and an older exit whose teardown was
+     * still queued must not stop it. The newest start id is used, so a
+     * notification action that arrived in between keeps the service alive.
+     */
+    override fun finishExitOnMainThread(exitToken: Long) {
+        mainHandler.post {
+            if (!connectionCoordinator.isLatestExit(exitToken)) return@post
+            removeForegroundNotification()
+            stopSelfResult(latestStartId)
+        }
+    }
+
+    override fun finishTerminalOnMainThread(epoch: Long) {
+        mainHandler.post {
+            if (!sessionGeneration.isActive(epoch)) return@post
+            removeForegroundNotification()
+            stopSelfResult(latestStartId)
+        }
+    }
+
+    /**
+     * The bounded clone-limit recovery gave up. The epoch is re-checked on the main
+     * thread; the service keeps running so the explanation stays readable and the
+     * user can retry manually, and only the foreground notification is removed.
+     */
+    override fun removeForegroundNotificationOnMainThread(epoch: Long) {
+        mainHandler.post {
+            if (!sessionGeneration.isActive(epoch)) return@post
+            removeForegroundNotification()
+        }
     }
 
     override fun requestStopSelf() {

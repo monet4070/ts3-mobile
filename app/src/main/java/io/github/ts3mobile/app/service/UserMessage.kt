@@ -26,6 +26,24 @@ sealed interface UserMessage {
 
     data class Reconnecting(val attempt: Int) : UserMessage
 
+    /**
+     * The server refused a first connection because this identity already has too
+     * many clones, and a bounded retry is under way.
+     */
+    data object ClonesLimitRetrying : UserMessage
+
+    /** Same refusal, with the next attempt scheduled after a backoff. */
+    data class ClonesLimitRetryScheduled(
+        val seconds: Long,
+        val attempt: Int,
+    ) : UserMessage
+
+    /** Same refusal, waiting for a usable network; the window keeps draining. */
+    data object ClonesLimitWaitingForNetwork : UserMessage
+
+    /** The bounded window elapsed; the user has to check and retry manually. */
+    data object ClonesLimitExpired : UserMessage
+
     data class ChannelJoinFailed(val cause: String) : UserMessage
 
     data class ChannelRestoreFailed(val cause: String) : UserMessage

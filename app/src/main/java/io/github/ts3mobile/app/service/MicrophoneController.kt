@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
@@ -164,7 +165,7 @@ internal class MicrophoneController(
 
     suspend fun stopSerialized() {
         pushToTalkPressed.set(false)
-        transmitMutex.withLock { stopLocked() }
+        transmitMutex.withLock { runInterruptible { stopLocked() } }
     }
 
     fun reportPermissionDenied() {

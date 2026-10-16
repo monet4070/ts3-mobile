@@ -36,7 +36,8 @@
         <service
             android:name=".service.TeamSpeakService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback|microphone" />
+            android:foregroundServiceType="mediaPlayback|microphone"
+            android:stopWithTask="false" />
     </application>
 
 </manifest>

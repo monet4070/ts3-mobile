@@ -32,6 +32,10 @@
     <string name="status_reconnect_failed_cause">Reconnect failed: %1$s</string>
     <string name="status_reconnect_scheduled">Reconnect attempt %2$d in %1$d s</string>
     <string name="status_reconnecting_attempt">Reconnect attempt %1$d under way</string>
+    <string name="status_clones_limit_retrying">The server\'s connection limit for this identity is reached. Retrying…</string>
+    <string name="status_clones_limit_retry_scheduled">The server\'s connection limit for this identity is reached. Retry %2$d in %1$d s.</string>
+    <string name="status_clones_limit_waiting_for_network">The server\'s connection limit for this identity is reached. Retrying once the network is back.</string>
+    <string name="status_clones_limit_expired">Could not connect within 60 s after the server reported too many connections for this identity. Check whether another client with the same identity is online, then retry manually.</string>
     <string name="channel_join_failed">Could not switch channel: %1$s</string>
     <string name="channel_restore_failed">Could not restore the channel: %1$s</string>
     <string name="microphone_permission_continuous">Microphone permission is required for always-on mode</string>

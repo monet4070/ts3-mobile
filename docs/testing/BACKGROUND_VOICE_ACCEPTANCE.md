@@ -126,3 +126,65 @@ coordinator regression tests: transport polling defers to pending terminal
 callbacks, so no silent-loss event or retry is fabricated for kick/ban. During
 the recovery budget, a transient ERROR may release and reacquire the lock;
 after budget expiry, failed retries must not reacquire it.
+
+## Task-removal exit acceptance
+
+Added 2026-10-13. Device/server runs are pending; local JVM regressions and a
+successful debug build do not establish Android callback delivery or server
+release. Use the original effective clones limit throughout acceptance. Follow
+[the task-removal matrix](TASK_REMOVAL_DISCONNECT_REVIEW_2026-10-13.md), including
+20 normal-network repetitions on the problem phone, continuous transmission,
+handshake/backoff removal, immediate reopen/connect, lost exit traffic, force stop,
+another legitimate same-identity client, and Home/lock/manual-disconnect controls.
+
+Retain the callback, send, confirmation and next-attempt timestamps separately:
+
+| Journal category | Meaning |
+| --- | --- |
+| TASK_REMOVED | Service callback ran; it does not identify a particular user gesture |
+| EXIT_STARTED | Registered captured-session exit began |
+| EXIT_REQUEST_SENT | First clientdisconnect datagram was written |
+| EXIT_SERVER_CONFIRMED | This captured socket received its own server leave notification |
+| EXIT_TIMED_OUT | Exit deadline elapsed without confirmation |
+| EXIT_FAILED | Protocol or local reclamation failed |
+| EXIT_NO_ACTIVE_SESSION | No established local session; partial server-side handshake acceptance remains possible |
+| EXIT_UNSUPPORTED | Transport has no bounded exit implementation |
+| EXIT_CLEANUP_OVERRUN | Numeric milliseconds spent past the exit deadline during local cleanup |
+
+Only EXIT_SERVER_CONFIRMED proves the client's observation of server exit. An
+EXIT_REQUEST_SENT event, removal of the notification, local socket closure or
+Android previous-process-exit reason cannot replace server-side observation.
+Native audio cleanup that ignores cancellation can exceed the two-second target;
+report that duration separately. No callback in a force-stop/vendor-kill run is
+not an active-exit success. Reopening alone must never initiate a connection.
+
+## First-connect clones recovery acceptance
+
+Keep the same identity and the original server limit. First record the actual
+refusal type/text using disposable fixtures and sanitized evidence; do not infer
+server error codes. From the first clones refusal, measure one 60-second monotonic
+window covering 1/2/4/8-second backoff (then 8 seconds), offline waiting and active
+handshakes. Measure server and client timings independently.
+
+| Scenario | Required observation |
+| --- | --- |
+| Old server session eventually expires | Same-identity attempts recover within the fixed window; no new identity is generated |
+| Another legitimate same-identity client stays connected | Recovery stops at the fixed deadline with an actionable message; the other client remains untouched |
+| Offline after clones refusal | Offline wait consumes the same budget without attempts or spinning; late network restoration does not reopen the window |
+| Attempt still handshaking at deadline | Captured attempt socket closes and the real worker stops; no late success becomes the active session |
+| Cancel, task removal or replacement connection | Old window ends and old callbacks cannot mutate the replacement or remove its notification |
+| Password/ban/kick during recovery | Recovery ends immediately; no generic protocol retry loop |
+| First failure is ordinary network error | Existing first-connect terminal behavior is preserved |
+| Success after returning to the background | Listening can resume; stopped capture still follows foreground/microphone eligibility rules |
+
+Retry count is distinct from time since the first refusal. A fresh failure,
+network switch or failed retry must not reset either this window or the existing
+CPU-awake recovery budget. Capture the localized retry/expiry message, cancel
+entry and fixed-category numeric diagnostics without sensitive server details.
+
+CLONES_RECOVERY_STARTED records the first recognized refusal for the active
+request. CLONES_RECOVERY_ENDED records exactly one numeric outcome: 0 connected,
+1 cancelled/replaced, 2 expired, 3 terminal refusal, 4 unexpected recovery failure.
+The start is recorded even if the initial handshake has not returned; cancellation
+before the retry job starts still produces its paired end. These are client-side
+observations, not evidence that another client was stale or removed.

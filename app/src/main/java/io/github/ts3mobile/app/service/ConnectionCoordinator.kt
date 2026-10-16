@@ -1,5 +1,6 @@
 package io.github.ts3mobile.app.service
 
+import io.github.ts3mobile.protocol.ConnectionFailureCategory
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ServerConfig
@@ -8,9 +9,11 @@ import io.github.ts3mobile.protocol.Ts3SessionClient
 import io.github.ts3mobile.protocol.Ts3SessionListener
 import io.github.ts3mobile.protocol.Ts3jSessionClient
 import io.github.ts3mobile.protocol.VoiceFrame
+import io.github.ts3mobile.protocol.connectionFailureCategory
 import io.github.ts3mobile.protocol.isRetryableConnectionFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -78,6 +82,43 @@ internal interface ConnectionCoordinatorHost {
     fun requestStopSelf()
 
     /**
+     * Records one fixed-category journal event. Categories and numeric results
+     * only: no message text, address, nickname, identity or password may reach it.
+     */
+    fun recordDiagnostic(
+        kind: DiagnosticEventKind,
+        code: Long = 0L,
+    ) = Unit
+
+    /**
+     * Removes the foreground notification and stops the service while [exitToken]
+     * is still the newest exit request.
+     *
+     * The service performs the ownership check and both side effects inside one
+     * main-thread action, so an exit that a newer connect or a newer exit already
+     * replaced cannot stop the service under it. The default keeps hosts without a
+     * main-thread seam working and delegates to the unconditional teardown.
+     */
+    fun finishExitOnMainThread(exitToken: Long) {
+        removeForegroundNotification()
+        requestStopSelf()
+    }
+
+    /** Re-checks the failed session epoch in the main-thread teardown action. */
+    fun finishTerminalOnMainThread(epoch: Long) {
+        removeForegroundNotification()
+        requestStopSelf()
+    }
+
+    /**
+     * Removes the foreground notification after a bounded recovery gave up.
+     *
+     * The service re-checks [epoch] on the main thread and keeps running, so the
+     * user can still read the explanation and retry manually.
+     */
+    fun removeForegroundNotificationOnMainThread(epoch: Long) = removeForegroundNotification()
+
+    /**
      * Called once per attempt, before the socket is opened, so a diagnostics
      * journal can record attempts even when short-lived states are conflated.
      */
@@ -121,8 +162,11 @@ internal class ConnectionCoordinator(
     // Monotonic milliseconds. The default stays JVM-only and does not count deep
     // sleep; the Android service injects SystemClock.elapsedRealtime().
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000L },
+    // Product parameters by default; tests may inject a short window.
+    clonesPolicy: ClonesRecoveryPolicy = ClonesRecoveryPolicy(),
     private val sessionFactory: () -> Ts3SessionClient = { Ts3jSessionClient() },
-) : ReconnectEngine.Delegate {
+) : ReconnectEngine.Delegate,
+    ClonesRecoveryEngine.Delegate {
     @Volatile
     private var session: Ts3SessionClient? = null
 
@@ -142,6 +186,22 @@ internal class ConnectionCoordinator(
     private var stableConnectionJob: Job? = null
     private var connectedWatchJob: Job? = null
 
+    private val ownership = SessionRequestOwnership()
+    private val exitLock = Any()
+    private var exitJob: Job? = null
+    private var activeExitToken: Long? = null
+    private val exitJobs = mutableSetOf<Job>()
+
+    @Volatile
+    private var closed = false
+    private val exitRunner = SessionExitRunner(host, ownership, clockMs) { closed }
+
+    @Volatile
+    private var exitSession: Ts3SessionClient? = null
+
+    /** True while [exitToken] is still the newest exit request. */
+    fun isLatestExit(exitToken: Long): Boolean = ownership.isLatestExit(exitToken)
+
     @Volatile
     private var livenessJob: Job? = null
 
@@ -149,9 +209,15 @@ internal class ConnectionCoordinator(
     private var lastNetworkState = DefaultNetworkState.Unknown
     private var lastAvailableNetworkGeneration: Long? = null
     private val reconnectEngine = ReconnectEngine(host, this)
+    private val clonesRecovery = ClonesRecoveryEngine(host, this, clonesPolicy, clockMs)
     private val channelRestore = ChannelRestoreTracker()
 
     fun beginConnection(config: ServerConfig) {
+        if (closed) return
+        // Registered first and synchronously: a connect always takes ownership away
+        // from an exit that is still finishing, so that exit can no longer stop the
+        // service or clear this request's state.
+        ownership.beginConnect()
         val epoch = host.sessionGeneration.beginSession()
         host.onManualConnectionStarted()
         connectedOnce = false
@@ -165,6 +231,7 @@ internal class ConnectionCoordinator(
         connectedWatchJob?.cancel()
         livenessJob?.cancel()
         reconnectEngine.cancel()
+        clonesRecovery.cancel()
         connectionJob?.cancel()
 
         val selectedMicrophoneMode = host.mutableState.value.microphoneMode
@@ -181,39 +248,113 @@ internal class ConnectionCoordinator(
                 diagnostics = host.diagnosticsRecorder.snapshot(),
                 backgroundRuntime = host.mutableState.value.backgroundRuntime,
             )
-        if (session != null) session?.close()
+        // A session captured by an in-flight exit is already out of `session`, so
+        // this never closes the socket that exit is still using.
+        val previousSession = synchronized(exitLock) { session.also { session = null } }
+        runCatching { previousSession?.close() }
 
         connectionJob =
             host.serviceScope.launch {
+                // Request order is established before IO scheduling, not by which
+                // coroutine happens to acquire the session mutex first.
+                synchronized(exitLock) { exitJob }?.join()
+                if (!isEpochActive(epoch)) return@launch
                 host.stopMicrophoneCapture()
                 when (val result = performConnectionAttempt(config, epoch, reconnecting = false)) {
                     AttemptResult.Success,
                     AttemptResult.Stale,
+                    AttemptResult.Expired,
                     -> Unit
 
                     is AttemptResult.Failed -> {
-                        if (connectedOnce && result.retryable) {
-                            reconnectEngine.launch(result.status, epoch)
-                        } else {
-                            finishTerminalFailure(result.status, epoch)
+                        when {
+                            // A first connect that the server refused because this
+                            // identity already has too many clones: bounded recovery.
+                            // The refusal is the one the protocol classified, not a
+                            // retryable flag on its own.
+                            !connectedOnce && clonesRecovery.isRejectedFor(epoch) ->
+                                clonesRecovery.launch(epoch, result.status)
+
+                            connectedOnce && result.retryable -> reconnectEngine.launch(result.status, epoch)
+                            else -> finishTerminalFailure(result.status, epoch)
                         }
                     }
                 }
             }
     }
 
-    fun requestDisconnect() {
+    /** User-visible disconnect; the same single exit as task removal. */
+    fun requestDisconnect() = requestExit(ExitTrigger.USER_DISCONNECT)
+
+    /**
+     * Starts the one bounded exit for the current session.
+     *
+     * Everything up to the job launch runs synchronously on the caller's thread —
+     * the main thread for task removal and notification actions — so the exit is
+     * registered before any IO starts and a connect that arrives immediately after
+     * is registered after it and owns the service again.
+     *
+     * The captured session leaves [session] here: from this point only this exit
+     * may touch it, so [beginConnection] cannot close the socket it is using and
+     * cannot cancel this job. Reconnect, liveness, the stable-connection reset and
+     * the connected watch are cancelled at once, and no further voice frame can
+     * leave the captured socket. The blocking capture stop, the protocol exit and
+     * the local release then run on IO inside one monotonic budget.
+     */
+    fun requestExit(trigger: ExitTrigger) {
+        if (closed) return
+        val captured: Ts3SessionClient?
+        val handshaking: Boolean
+        val deadlineMs: Long
+        val firstExit: Boolean
+        val exitToken: Long
+        synchronized(exitLock) {
+            exitToken = ownership.beginExit()
+            captured = session
+            session = null
+            if (captured != null) exitSession = captured
+            handshaking = host.mutableState.value.status.phase in interruptibleConnectionPhases
+            deadlineMs = clockMs() + EXIT_BUDGET_MS
+            // A second request for the same session joins the running exit instead
+            // of sending a second leave command.
+            firstExit = exitToken != activeExitToken || exitJob == null
+        }
+        if (!firstExit) return
         host.sessionGeneration.invalidate()
         activeListener = null
         connectionJob?.cancel()
         reconnectEngine.cancel()
+        clonesRecovery.cancel()
         stableConnectionJob?.cancel()
         connectedWatchJob?.cancel()
         livenessJob?.cancel()
-        if (host.mutableState.value.status.phase in interruptibleConnectionPhases) {
-            session?.close()
+        // Best effort and non-blocking: detaching the voice source stops the old
+        // socket's microphone timer, so no further frame can be sent while the
+        // exit is still being prepared. A failure here is not fatal because the
+        // socket is closed unconditionally below.
+        runCatching { captured?.setVoiceSource(null) }
+        host.mutableState.update { current ->
+            current
+                .withStatus(ConnectionStatus(ConnectionPhase.DISCONNECTING))
+                .copy(isTransmitting = false, snapshot = SessionSnapshot.Empty)
         }
-        host.serviceScope.launch { disconnect(userInitiated = true) }
+        host.updateNotification()
+        val job =
+            synchronized(exitLock) {
+                val previous = exitJob
+                host.serviceScope.launch(start = CoroutineStart.LAZY) {
+                    previous?.join()
+                    exitRunner.run(trigger, captured, handshaking, deadlineMs, exitToken) {
+                        if (exitSession === captured) exitSession = null
+                    }
+                }.also {
+                    exitJob = it
+                    activeExitToken = exitToken
+                    exitJobs += it
+                }
+            }
+        job.invokeOnCompletion { synchronized(exitLock) { exitJobs.remove(job) } }
+        job.start()
     }
 
     fun joinChannel(
@@ -375,20 +516,64 @@ internal class ConnectionCoordinator(
     }
 
     fun close() {
+        closed = true
+        ownership.invalidate()
         host.sessionGeneration.invalidate()
         activeListener = null
         connectionJob?.cancel()
         reconnectEngine.cancel()
+        clonesRecovery.cancel()
         stableConnectionJob?.cancel()
         connectedWatchJob?.cancel()
         livenessJob?.cancel()
-        session?.close()
-        session = null
+        synchronized(exitLock) { exitJobs.toList() }.forEach { it.cancel() }
+        // Destruction releases local resources only: the session an exit captured is
+        // closed here instead of starting a new network exit on a scope that is
+        // about to be cancelled, and nothing waits for the server.
+        val capturedExit = synchronized(exitLock) { exitSession.also { exitSession = null } }
+        runCatching { capturedExit?.close() }
+        val current = synchronized(exitLock) { session.also { session = null } }
+        runCatching { current?.close() }
     }
 
     override suspend fun performAttempt(epoch: Long): AttemptResult {
         val config = desiredConfig ?: return AttemptResult.Stale
         return performConnectionAttempt(config, epoch, reconnecting = true)
+    }
+
+    /** The independent recovery watchdog bounds initial and retry attempts alike. */
+    override suspend fun performAttemptWithin(
+        epoch: Long,
+        remainingMs: Long,
+    ): AttemptResult {
+        val config = desiredConfig ?: return AttemptResult.Stale
+        if (remainingMs <= 0 || !clonesRecovery.allowsCallbacks(epoch)) return AttemptResult.Expired
+        return performConnectionAttempt(config, epoch, reconnecting = true)
+    }
+
+    override fun abortRecoveryAttempt(epoch: Long) {
+        val captured =
+            synchronized(exitLock) {
+                if (!isEpochActive(epoch)) return
+                activeListener?.takeIf { it.epoch == epoch }?.let { listenerRef.compareAndSet(it, null) }
+                val previous = session.also { session = null }
+                previous to connectionJob
+            }
+        // No mutex acquisition or cancellation join before the socket is closed.
+        runCatching { captured.first?.close() }
+        captured.second?.cancel()
+    }
+
+    override suspend fun finishRecoveryExpiry(epoch: Long) {
+        host.sessionMutex.withLock {
+            if (!isEpochActive(epoch)) return@withLock
+            host.stopMicrophoneCapture()
+            runInterruptible {
+                host.stopPlayback()
+                host.clearPlaybackMuted()
+                host.stopAudioRouting()
+            }
+        }
     }
 
     private suspend fun performConnectionAttempt(
@@ -398,6 +583,7 @@ internal class ConnectionCoordinator(
     ): AttemptResult =
         host.sessionMutex.withLock {
             if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
+            if (!clonesRecovery.allowsCallbacks(epoch)) return@withLock AttemptResult.Expired
 
             host.diagnosticsRecorder.recordConnectionAttempt(reconnecting)
             host.onConnectionAttempt(reconnecting)
@@ -409,10 +595,10 @@ internal class ConnectionCoordinator(
 
             try {
                 host.startAudioRouting()
-                val identity =
-                    identityMaterial ?: host.createIdentity().also {
-                        identityMaterial = it
-                    }
+                val identity = identityMaterial ?: host.createIdentity()
+                if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
+                if (!clonesRecovery.allowsCallbacks(epoch)) return@withLock AttemptResult.Expired
+                identityMaterial = identity
                 host.mutableState.update { it.copy(identityReady = true) }
 
                 host.applySelectedPlaybackMuted()
@@ -421,14 +607,28 @@ internal class ConnectionCoordinator(
 
                 val newSession = sessionFactory()
                 val listener = SessionListener(epoch, reconnecting)
-                activeListener = listener
-                session = newSession
+                val accepted =
+                    synchronized(exitLock) {
+                        if (!isEpochActive(epoch) || !clonesRecovery.allowsCallbacks(epoch)) {
+                            false
+                        } else {
+                            activeListener = listener
+                            session = newSession
+                            true
+                        }
+                    }
+                if (!accepted) {
+                    newSession.close()
+                    return@withLock AttemptResult.Stale
+                }
                 host.attachMicrophoneTo(newSession)
-                newSession.connect(config, identity, listener)
+                runInterruptible { newSession.connect(config, identity, listener) }
                 if (!isListenerActive(listener)) {
                     newSession.close()
                     if (session === newSession) session = null
-                    return@withLock if (isEpochActive(epoch)) {
+                    return@withLock if (!clonesRecovery.allowsCallbacks(epoch)) {
+                        AttemptResult.Expired
+                    } else if (isEpochActive(epoch)) {
                         val status = host.mutableState.value.status
                         AttemptResult.Failed(status, status.retryable)
                     } else {
@@ -439,62 +639,51 @@ internal class ConnectionCoordinator(
                     AttemptResult.Success
                 } else {
                     val status = host.mutableState.value.status
+                    listenerRef.compareAndSet(listener, null)
+                    newSession.close()
+                    if (session === newSession) session = null
                     AttemptResult.Failed(status, status.retryable && reconnecting)
                 }
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 val failedSession = session
                 activeListener = null
                 failedSession?.close()
                 if (session === failedSession) session = null
                 if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
+                if (!clonesRecovery.allowsCallbacks(epoch)) return@withLock AttemptResult.Expired
 
                 val status =
                     ConnectionStatus(
                         ConnectionPhase.ERROR,
                         host.conciseMessage(error),
                         retryable = error.isRetryableConnectionFailure(),
+                        category = error.connectionFailureCategory(),
                     )
+                if (!connectedOnce && !reconnecting && status.category == ConnectionFailureCategory.CLONES_LIMIT) {
+                    noteClonesRejection(epoch, status)
+                }
+                val recoveringClones = clonesRecovery.isRejectedFor(epoch) && status.retryable
+                val message = if (recoveringClones) UserMessage.ClonesLimitRetrying else failureMessageFor(status, reconnecting)
                 host.mutableState.update { current ->
-                    if (reconnecting) {
+                    if (reconnecting || recoveringClones) {
                         current.withStatus(
                             ConnectionStatus(
                                 ConnectionPhase.RECONNECTING,
                                 status.detail,
                                 retryable = status.retryable,
+                                category = status.category,
                             ),
-                            UserMessage.ReconnectFailed(status.detail?.takeIf(String::isNotBlank)),
+                            message,
                         )
                     } else {
-                        current.withStatus(status)
+                        current.withStatus(status, message)
                     }.copy(snapshot = SessionSnapshot.Empty)
                 }
                 host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
                 host.onConnectionFailure(status)
                 host.refreshDiagnostics()
                 AttemptResult.Failed(status, status.retryable && reconnecting)
-            }
-        }
-
-    private suspend fun disconnect(userInitiated: Boolean) =
-        host.sessionMutex.withLock {
-            host.stopMicrophoneCapture()
-            try {
-                session?.disconnect(if (userInitiated) "Disconnected by user" else "Service stopped")
-            } finally {
-                session?.close()
-                session = null
-                activeListener = null
-                host.stopPlayback()
-                host.clearPlaybackMuted()
-                host.stopAudioRouting()
-                connectedWatchJob?.cancel()
-                host.mutableState.value =
-                    TeamSpeakServiceState(
-                        diagnostics = host.diagnosticsRecorder.snapshot(),
-                        backgroundRuntime = host.mutableState.value.backgroundRuntime,
-                    )
-                host.removeForegroundNotification()
-                if (userInitiated) host.requestStopSelf()
             }
         }
 
@@ -509,10 +698,11 @@ internal class ConnectionCoordinator(
             if (!isListenerActive(this)) return
             when (status.phase) {
                 ConnectionPhase.CONNECTING -> {
-                    if (!reconnecting) host.mutableState.update { it.withStatus(status) }
+                    if (!reconnecting) withCurrentListener { host.mutableState.update { it.withStatus(status) } }
                 }
 
                 ConnectionPhase.CONNECTED -> {
+                    if (!clonesRecovery.acceptConnected(epoch)) return
                     connected = true
                     onSessionConnected(this)
                 }
@@ -520,21 +710,41 @@ internal class ConnectionCoordinator(
                 ConnectionPhase.DISCONNECTED,
                 ConnectionPhase.ERROR,
                 -> {
-                    if (connected) {
-                        onEstablishedSessionEnded(this, status)
-                    } else {
-                        host.mutableState.update { current ->
-                            current.withStatus(status).copy(
-                                snapshot = SessionSnapshot.Empty,
-                                isTransmitting = false,
-                            )
+                    if (!connected && clonesRecovery.noteTerminalFailure(epoch, status)) return
+                    when {
+                        // A first connect refused by the clone limit. The window
+                        // opens at this observation, which normally arrives while the
+                        // blocking connect is still waiting.
+                        !connected && !reconnecting && status.category == ConnectionFailureCategory.CLONES_LIMIT ->
+                            noteClonesRejection(epoch, status)
+
+                        connected -> onEstablishedSessionEnded(this, status)
+
+                        else -> {
+                            val recovering = clonesRecovery.isRejectedFor(epoch)
+                            withCurrentListener {
+                                host.mutableState.update { current ->
+                                    val next =
+                                        if (recovering) {
+                                            current.withStatus(
+                                                status.copy(phase = ConnectionPhase.RECONNECTING),
+                                                UserMessage.ClonesLimitRetrying,
+                                            )
+                                        } else {
+                                            current.withStatus(status)
+                                        }
+                                    next.copy(snapshot = SessionSnapshot.Empty, isTransmitting = false)
+                                }
+                            }
                         }
                     }
                 }
 
                 ConnectionPhase.DISCONNECTING -> {
-                    host.mutableState.update { it.withStatus(status) }
-                    host.updateNotification()
+                    withCurrentListener {
+                        host.mutableState.update { it.withStatus(status) }
+                        host.updateNotification()
+                    }
                 }
 
                 ConnectionPhase.RECONNECTING -> Unit
@@ -543,12 +753,12 @@ internal class ConnectionCoordinator(
 
         override fun onSnapshotChanged(snapshot: SessionSnapshot) {
             if (!isListenerActive(this)) return
-            host.mutableState.update { it.copy(snapshot = snapshot) }
-            host.applyParticipantAudioSettings(snapshot)
-            if (connected) {
-                channelRestore.rememberSnapshot(snapshot.currentChannelId)
+            withCurrentListener {
+                host.mutableState.update { it.copy(snapshot = snapshot) }
+                host.applyParticipantAudioSettings(snapshot)
+                if (connected) channelRestore.rememberSnapshot(snapshot.currentChannelId)
+                host.updateNotification()
             }
-            host.updateNotification()
         }
 
         override fun onVoiceFrame(frame: VoiceFrame) {
@@ -556,29 +766,41 @@ internal class ConnectionCoordinator(
                 host.diagnosticsRecorder.recordVoiceFrameDropped()
                 return
             }
-            host.diagnosticsRecorder.recordVoiceFrameReceived()
-            host.submitVoiceFrame(frame)
+            withCurrentListener {
+                host.diagnosticsRecorder.recordVoiceFrameReceived()
+                host.submitVoiceFrame(frame)
+            }
+        }
+
+        /** Registration and callback mutation share one short atomic epoch boundary. */
+        private fun withCurrentListener(action: () -> Unit) {
+            host.sessionGeneration.withActive(epoch) {
+                if (activeListener === this) action()
+            }
         }
     }
 
     private fun onSessionConnected(listener: SessionListener) {
         if (!isListenerActive(listener)) return
-        connectedOnce = true
-        host.diagnosticsRecorder.recordConnectionSuccess()
-        host.mutableState.update { current ->
-            current.withStatus(ConnectionStatus(ConnectionPhase.CONNECTED)).copy(
-                switchingChannelId = null,
-                channelError = null,
-            )
+        host.sessionGeneration.withActive(listener.epoch) {
+            if (activeListener !== listener) return@withActive
+            connectedOnce = true
+            host.diagnosticsRecorder.recordConnectionSuccess()
+            host.mutableState.update { current ->
+                current.withStatus(ConnectionStatus(ConnectionPhase.CONNECTED)).copy(
+                    switchingChannelId = null,
+                    channelError = null,
+                )
+            }
+            desiredConfig?.let { host.onConnectionSucceeded(it) }
+            channelRestore.seedFromCurrentChannel(host.mutableState.value.snapshot.currentChannelId)
+            scheduleStableConnectionReset(listener)
+            startConnectedWatch(listener)
+            host.refreshDiagnostics()
+            host.updateNotification()
+            host.reconcileMicrophone()
+            restoreLastChannelIfNeeded(listener)
         }
-        desiredConfig?.let { host.onConnectionSucceeded(it) }
-        channelRestore.seedFromCurrentChannel(host.mutableState.value.snapshot.currentChannelId)
-        scheduleStableConnectionReset(listener)
-        startConnectedWatch(listener)
-        host.refreshDiagnostics()
-        host.updateNotification()
-        host.reconcileMicrophone()
-        restoreLastChannelIfNeeded(listener)
     }
 
     private fun onEstablishedSessionEnded(
@@ -611,6 +833,54 @@ internal class ConnectionCoordinator(
         host.stopPlayback()
     }
 
+    override suspend fun suspendAudioForRecovery() {
+        host.stopMicrophoneCapture()
+        host.stopPlayback()
+    }
+
+    /**
+     * Opens the bounded recovery window at the first observed clone refusal and
+     * publishes the localised message immediately, so the raw protocol detail never
+     * reaches the user.
+     */
+    private fun noteClonesRejection(
+        epoch: Long,
+        status: ConnectionStatus,
+    ) {
+        if (!isEpochActive(epoch)) return
+        clonesRecovery.noteRejection(epoch)
+        host.sessionGeneration.withActive(epoch) {
+            host.mutableState.update { current ->
+                current
+                    .withStatus(
+                        ConnectionStatus(
+                            phase = ConnectionPhase.RECONNECTING,
+                            detail = status.detail,
+                            retryable = true,
+                            category = ConnectionFailureCategory.CLONES_LIMIT,
+                        ),
+                        UserMessage.ClonesLimitRetrying,
+                    ).copy(snapshot = SessionSnapshot.Empty, isTransmitting = false)
+            }
+            host.updateNotification()
+        }
+    }
+
+    /**
+     * The app message for a failed attempt. A clone refusal keeps its own wording
+     * whether it happened on the first connect or inside the recovery window; every
+     * other reconnect failure keeps the existing generic text.
+     */
+    private fun failureMessageFor(
+        status: ConnectionStatus,
+        reconnecting: Boolean,
+    ): UserMessage? =
+        when {
+            status.category == ConnectionFailureCategory.CLONES_LIMIT -> UserMessage.ClonesLimitRetrying
+            reconnecting -> UserMessage.ReconnectFailed(status.detail?.takeIf(String::isNotBlank))
+            else -> null
+        }
+
     override suspend fun finishTerminalFailure(
         status: ConnectionStatus,
         epoch: Long,
@@ -624,20 +894,26 @@ internal class ConnectionCoordinator(
             if (!isEpochActive(epoch)) return@withLock
             session?.close()
             session = null
+            // New attempts acquire this same mutex before starting shared audio.
+            host.stopMicrophoneCapture()
+            runInterruptible {
+                host.stopPlayback()
+                host.stopAudioRouting()
+            }
+            val updated =
+                host.sessionGeneration.withActive(epoch) {
+                    host.mutableState.update { current ->
+                        current.withStatus(status.copy(retryable = false)).copy(
+                            snapshot = SessionSnapshot.Empty,
+                            isTransmitting = false,
+                            switchingChannelId = null,
+                        )
+                    }
+                }
+            if (!updated) return@withLock
+            host.refreshDiagnostics()
+            host.finishTerminalOnMainThread(epoch)
         }
-        host.stopMicrophoneCapture()
-        host.stopPlayback()
-        host.stopAudioRouting()
-        host.mutableState.update { current ->
-            current.withStatus(status.copy(retryable = false)).copy(
-                snapshot = SessionSnapshot.Empty,
-                isTransmitting = false,
-                switchingChannelId = null,
-            )
-        }
-        host.refreshDiagnostics()
-        host.removeForegroundNotification()
-        host.requestStopSelf()
     }
 
     private fun scheduleStableConnectionReset(listener: SessionListener) {
@@ -732,7 +1008,8 @@ internal class ConnectionCoordinator(
         }
     }
 
-    private fun isListenerActive(listener: SessionListener): Boolean = activeListener === listener && isEpochActive(listener.epoch)
+    private fun isListenerActive(listener: SessionListener): Boolean =
+        activeListener === listener && isEpochActive(listener.epoch) && clonesRecovery.allowsCallbacks(listener.epoch)
 
     private fun isEpochActive(epoch: Long): Boolean = host.sessionGeneration.isActive(epoch)
 
@@ -741,6 +1018,9 @@ internal class ConnectionCoordinator(
         const val CONNECTED_WATCH_INTERVAL_MS = 1_000L
         const val WATCH_EXECUTION_GAP_THRESHOLD_MS = 10_000L
         const val MILLIS_PER_SECOND = 1_000L
+
+        /** Total budget for one exit: capture stop, mutex wait, protocol exit and release. */
+        const val EXIT_BUDGET_MS = 2_000L
 
         val interruptibleConnectionPhases =
             setOf(
@@ -755,6 +1035,9 @@ internal sealed interface AttemptResult {
     data object Success : AttemptResult
 
     data object Stale : AttemptResult
+
+    /** The attempt was cut by the caller's deadline while its handshake was running. */
+    data object Expired : AttemptResult
 
     data class Failed(
         val status: ConnectionStatus,
