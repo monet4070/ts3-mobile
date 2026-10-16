@@ -152,6 +152,8 @@ suite:
 ```
 
 The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+For opt-in microphone signal comparisons and the latest device findings, see
+[the audio diagnosis record](docs/testing/AUDIO_QUALITY_DIAGNOSIS_2026-10-13.md).
 GitHub Actions runs the privacy scan, formatting checks, JVM/unit tests, Android
 Lint and debug assembly for every pull request and push to `main`.
 
