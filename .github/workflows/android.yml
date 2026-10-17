@@ -80,7 +80,7 @@ jobs:
             exit "$result"
           }
           trap cleanup EXIT
-          "$ANDROID_HOME/emulator/emulator" -avd release-identity-api35 -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -partition-size 2048 -memory 2048 -cores 2 > "$RUNNER_TEMP/release-identity-emulator.log" 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd release-identity-api35 -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -partition-size 2048 -memory 2048 -cores 2 > "$RUNNER_TEMP/release-identity-emulator.log" 2>&1 &
           emulator_pid=$!
           attached=false
           for attempt in $(seq 1 90); do
