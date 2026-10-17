@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Lucide 0.468.0 (ISC), headphones; see assets/licenses/lucide.txt. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="48dp"
-    android:height="48dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <path
-        android:fillColor="#006D5B"
-        android:pathData="M12,2A9,9 0,0 0,3 11v7a3,3 0,0 0,3 3h3v-8H5v-2a7,7 0,0 1,14 0v2h-4v8h4v1h-6v2h6a2,2 0,0 0,2 -2V11a9,9 0,0 0,-9 -9z" />
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFBD4F2C" android:strokeWidth="1.75"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
 </vector>
-

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="action_more">More options</string>
+    <string name="connection_memory_failed">Could not save or restore connection details securely. Re-enter them if needed; connection is still available.</string>
     <string name="app_name" translatable="false">TS3 Mobile</string>
 
     <!-- Foreground service notification -->
@@ -32,6 +34,11 @@
     <string name="status_reconnect_failed_cause">Reconnect failed: %1$s</string>
     <string name="status_reconnect_scheduled">Reconnect attempt %2$d in %1$d s</string>
     <string name="status_reconnecting_attempt">Reconnect attempt %1$d under way</string>
+    <string name="status_clones_limit_unavailable">This identity has reached the server\'s connection limit.</string>
+    <string name="status_clones_limit_explanation">The server reported that this identity reached its connection limit. If you just swiped the app away, its previous connection may still be registered. Another client may also be using the same identity.</string>
+    <string name="status_clones_limit_manual_wait">Wait at least %1$d s before tapping “Reconnect”. This app will not retry automatically. The server may require a longer wait; repeated attempts can trigger a temporary block.</string>
+    <string name="status_clones_limit_manual_retry">Check whether another client is using this identity and disconnect it if needed. If you just forced the app to close, allow more time for the server to release the old connection, then tap “Reconnect”.</string>
+    <string name="status_clones_limit_exit_guidance">Next time, tap “Disconnect” in the app or its notification and wait for it to finish before swiping the app away. This helps prevent a leftover connection.</string>
     <string name="channel_join_failed">Could not switch channel: %1$s</string>
     <string name="channel_restore_failed">Could not restore the channel: %1$s</string>
     <string name="microphone_permission_continuous">Microphone permission is required for always-on mode</string>
@@ -145,6 +152,15 @@
     <string name="diagnostics_channel_join_failures">Channel switch failures</string>
     <string name="diagnostics_last_failure">Last failure type</string>
     <string name="diagnostics_none" translatable="false">NONE</string>
+
+    <!-- TailSync default presentation -->
+    <string name="app_tagline">VOICE, CONNECTED</string>
+    <string name="connect_subtitle">Your people. Your server. One connection away.</string>
+    <string name="section_server_details">SERVER DETAILS</string>
+    <string name="connect_privacy_note">Direct to your server. Your identity stays on this device.</string>
+    <string name="channel_gesture_hint">Tap to expand · Double-tap to join</string>
+    <string name="microphone_label">Microphone</string>
+
     <string name="microphone_resume_in_app">Listening is available. Return to the app to resume microphone transmission.</string>
     <string name="microphone_state_deferred">Microphone paused</string>
     <string name="notification_resume_microphone">Connected for listening · Open the app to resume speaking</string>

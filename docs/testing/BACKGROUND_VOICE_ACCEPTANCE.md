@@ -126,3 +126,67 @@ coordinator regression tests: transport polling defers to pending terminal
 callbacks, so no silent-loss event or retry is fabricated for kick/ban. During
 the recovery budget, a transient ERROR may release and reacquire the lock;
 after budget expiry, failed retries must not reacquire it.
+
+## Task-removal exit acceptance
+
+Added 2026-10-13. Device/server runs are pending; local JVM regressions and a
+successful debug build do not establish Android callback delivery or server
+release. Use the original effective clones limit throughout acceptance. Follow
+[the task-removal matrix](TASK_REMOVAL_DISCONNECT_REVIEW_2026-10-13.md), including
+20 normal-network repetitions on the problem phone, continuous transmission,
+handshake/backoff removal, immediate reopen/connect, lost exit traffic, force stop,
+another legitimate same-identity client, and Home/lock/manual-disconnect controls.
+
+Retain the callback, send, confirmation and next-attempt timestamps separately:
+
+| Journal category | Meaning |
+| --- | --- |
+| TASK_REMOVED | Service callback ran; it does not identify a particular user gesture |
+| EXIT_STARTED | Registered captured-session exit began |
+| EXIT_REQUEST_SENT | First clientdisconnect datagram was written |
+| EXIT_SERVER_CONFIRMED | This captured socket received its own server leave notification |
+| EXIT_TIMED_OUT | Exit deadline elapsed without confirmation |
+| EXIT_FAILED | Protocol or local reclamation failed |
+| EXIT_NO_ACTIVE_SESSION | No established local session; partial server-side handshake acceptance remains possible |
+| EXIT_UNSUPPORTED | Transport has no bounded exit implementation |
+| EXIT_CLEANUP_OVERRUN | Numeric milliseconds spent past the exit deadline during local cleanup |
+| EXIT_CLEANUP_FAILED | Local reclamation failed; separate from the observed server exit result |
+
+Only EXIT_SERVER_CONFIRMED proves the client's observation of server exit. An
+EXIT_REQUEST_SENT event, removal of the notification, local socket closure or
+Android previous-process-exit reason cannot replace server-side observation.
+Native audio cleanup that ignores cancellation can exceed the two-second target;
+report that duration separately. No callback in a force-stop/vendor-kill run is
+not an active-exit success. Reopening alone must never initiate a connection.
+
+The [2026-10-17 device report](TASK_REMOVAL_DEVICE_2026-10-17.md) records three
+successful framework task removals and three successful manual exits, alongside
+a failed Xiaomi launcher swipe exit. The launcher killed the process first and
+delivered the callback to a new service with no session. Neither battery
+unrestricted mode nor task locking changed this. Do not count framework-driven
+removal as a pass of the launcher gesture or mark the full matrix complete.
+
+## Identity-limit manual retry acceptance
+
+Use offline fixtures rather than repeatedly connecting to a production server.
+
+| Scenario | Required observation |
+| --- | --- |
+| Identity connection-limit refusal | One attempt, terminal manual-wait guidance; no automatic attempt after five minutes |
+| Refusal during ordinary reconnect | Automatic recovery stops; original refusal is preserved |
+| Late success or snapshot after refusal | No return to CONNECTED and no stale state update |
+| User manually retries | One new attempt with the same identity; replacement callbacks remain isolated |
+| Ordinary network loss | Existing automatic recovery remains available |
+| Localized large text | Full guidance and manual reconnect reachable by scrolling |
+
+The recommendation to wait at least 60 seconds does not enforce a cooldown or
+promise that a server ban/session expires by that time. See ADR-0011.
+
+Historical journal format (no new clone-recovery events are emitted):
+
+CLONES_RECOVERY_STARTED records the first recognized refusal for the active
+request. CLONES_RECOVERY_ENDED records exactly one numeric outcome: 0 connected,
+1 cancelled/replaced, 2 expired, 3 terminal refusal, 4 unexpected recovery failure.
+The start is recorded even if the initial handshake has not returned; cancellation
+before the retry job starts still produces its paired end. These are client-side
+observations, not evidence that another client was stale or removed.

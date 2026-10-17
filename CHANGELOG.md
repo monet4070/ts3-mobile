@@ -5,7 +5,34 @@ and audio behavior is still being validated.
 
 ## Unreleased
 
+## 0.11.1-m10 — 2026-10-18
+
+- Fix the minified Release crash when reading an existing TeamSpeak identity
+  (#3), preserving ini4j reflection constructors and adding an actual APK smoke
+  check to CI. No identity reset or app-data deletion is required.
+- Preserve active voice transmission across temporarily empty encoded queues.
+- Stop automatic retries after identity connection-limit refusals; show localized
+  wait/manual-retry guidance and keep ordinary network recovery automatic.
+- Prioritize server exit before audio cleanup, preserving server-confirmed results.
+  OEM task killing can still bypass task-removal callbacks: disconnect explicitly.
+- Remember the last address, port, nickname and server password with a separate
+  Keystore-backed AES-GCM snapshot, excluded from Android backup/transfer.
+- Refresh the warm cream UI, emphasize Disconnect next to the server and move
+  diagnostics/background checks into More options.
+- Include successful endpoint history, network-switch/silent-loss recovery,
+  bounded background power handling and privacy-safe persistent diagnostics
+  added since the previous published M10 build.
+- Local verification: 261 JVM tests, 28 offline UI tests, minified APK identity/INI
+  smoke and two live-server Release connections/server-confirmed exits on Android 16.
+  Actual voice listening, long-duration Bluetooth and Android 14 acceptance remain open.
+
+## Earlier milestone development notes
+
 ### Added
+
+- A warm cream Compose interface with terracotta accents and licensed Lucide
+  outline icons, retaining server history, background voice checks and the
+  microphone-paused state from the latest connection implementation.
 
 - English as the default UI language with Simplified Chinese kept under
   `values-zh/`. All user-facing text now lives in string resources, and the
@@ -32,6 +59,20 @@ and audio behavior is still being validated.
 
 ### Fixed
 
+- Keep a voice talkspurt active across temporary encoded-frame queue gaps; only
+  an explicit capture stop emits the end marker. Exercise the actual pinned
+  ts3j sender with offline datagram fixtures.
+
+- Send the captured session's exit before audio cleanup or session-mutex waiting
+  consumes its budget; preserve server confirmation when later cleanup times out
+  or fails. Xiaomi Android 16 testing confirms that launcher process killing can
+  still precede the task-removal callback; this is not a guaranteed swipe exit.
+
+- Release connection failure while reading a TeamSpeak identity: preserve ini4j's
+  reflective parser, builder and formatter instead of only its public `Ini` entry
+  point (#3). CI now builds release and checks offline identity/INI roundtrips
+  against the actual minified APK.
+
 - Password-protected servers rejected the connection because the server password
   was handed to ts3j in plaintext. ts3j forwards `client_server_password`
   verbatim, so it now receives the TeamSpeak Base64(SHA1) representation.
@@ -44,6 +85,16 @@ and audio behavior is still being validated.
   in the working tree but not yet committed.
 
 ### Changed
+
+- Stop automatic retries after identity connection-limit refusals. Localized
+  guidance recommends waiting at least 60 seconds before manual retry, explains
+  temporary bans from repeated attempts, and recommends explicit disconnect
+  before task removal. Ordinary network recovery remains automatic.
+- Move diagnostics/background checks to More options; emphasize Disconnect to
+  the right of the connected server information.
+- Restore the last address, port, nickname and server password from a separate
+  Keystore-backed AES-GCM form snapshot, excluded from backup. Existing identity
+  and successful endpoint history formats remain unchanged.
 
 - Completed the architecture decomposition plan for the oversized first-party
   files: the reconnect loop and channel-restore bookkeeping moved out of

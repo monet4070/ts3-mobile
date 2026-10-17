@@ -12,8 +12,13 @@ TeamSpeak 及相关名称和商标归其各自所有者所有。
 
 ## 项目状态
 
+最新 M10 维护预发布版为 **0.11.1-m10**，修复 issue #3 的 Release 身份读取崩溃，
+新增连接表单加密记忆、连接限制后手动重试指引，并改善断开按钮。已有 M10 安装可直接
+覆盖升级，无需清除应用数据或重建身份。
+
 当前开发重点是 M11 production-beta 准备阶段。自动化构建门禁和 M10 代码加固基线
 已经完成，但完整的实体设备验收矩阵尚未完成。剩余发布证据请参阅
+[持续开发计划](docs/release/CONTINUATION_PLAN_ZH.md)、
 [M11 发布清单](docs/release/M11_RELEASE_CHECKLIST.md) 和
 [M10 稳定性矩阵](docs/testing/M10_STABILITY_MATRIX.md)。
 
@@ -26,15 +31,19 @@ TeamSpeak 及相关名称和商标归其各自所有者所有。
 
 ## 功能
 
+界面采用 TailSync 风格的暖米白主题，以奶油色卡片与陶土橙作为视觉层次，使用 Lucide 精细线性图标。
+
 ### 连接与会话
 
 - 使用 Android Keystore 加密存储 TeamSpeak 身份，采用 AES-GCM
 - 前台 UDP 连接服务，并提供通知栏断开操作
-- 服务器地址、端口、TeamSpeak 服务器密码和昵称输入
+- 服务器地址、端口、TeamSpeak 服务器密码和昵称输入，重启后从本地加密快照恢复
 - 保存最近十个成功连接的地址与端口，启动预填最近地址，支持选择和逐条删除
 - 使用 TeamSpeak Base64(SHA1) 表示进行服务器密码认证
 - 连接、取消、断开和错误状态
 - 支持可取消的自动重连，网络恢复后的退避时间为 1–30 秒
+- 收到 Android 任务移除回调时主动退出会话，协议退出预算为两秒
+- 收到同一身份连接数量限制后停止自动重试，提示等待后手动重连
 - 跟踪默认网络身份和应用网络阻止状态，网络切换后进行有时限的协议控制响应检查
 - 拒绝过期会话回调，并在内存中恢复上一次频道
 - 层级频道视图和直接频道成员列表
@@ -59,7 +68,8 @@ TeamSpeak 及相关名称和商标归其各自所有者所有。
 
 - 默认使用英文；中文系统或应用语言环境会自动选择简体中文
 - 服务状态、通知、音频路由和错误消息均已本地化
-- 应用内诊断页，记录线程安全的连接和音频计数器
+- “更多选项”菜单中提供诊断和后台语音检查，减少主界面干扰
+- 服务器信息右侧显示带强调底色的“断开连接”按钮
 - 后台语音运行检查、Android 电池优化入口、系统应用设置入口，以及可选的会话 CPU 唤醒锁申请（系统或厂商省电策略可能禁用该申请）
 - 最多 128 条脱敏本地事件及 Android 进程退出原因，重启后仍可导出
 - 后台重连先恢复收听；已停止的麦克风采集在回到应用后恢复
@@ -69,12 +79,35 @@ TeamSpeak 及相关名称和商标归其各自所有者所有。
 当前没有应用内语言切换按钮。也尚未实现 Whisper 发送、自动语音激活、文字聊天、
 文件传输、权限管理、书签和多服务器标签页。
 
+## 从最近任务列表移除应用
+
+从最近任务列表移除应用时，若 Android 交付回调，应用会提交断开请求。
+按 Home、切换应用或锁屏继续保持既有后台会话。退出结果分别记录请求发送与
+服务器确认；网络不可用时，服务器可能仍需等待旧会话超时。强行停止或厂商清理
+可能没有任何回调。重新打开应用不会自行连接。
+
+在本次实测的小米 Android 16 手机上，桌面左右划掉任务会先杀死进程，再向新建服务
+交付回调；新服务无法使用已丢失的连接通知服务器退出。省电策略“无限制”和最近任务
+加锁均未改变这个顺序。要获得服务器确认的正常退出，请先使用应用内或通知栏的断开
+按钮。详见[真机报告](docs/testing/TASK_REMOVAL_DEVICE_2026-10-17.md)。
+
+收到已识别的同一身份连接数量限制后，应用停止自动重试，解释旧连接暂留和
+其他客户端占用两种可能。建议至少等待 60 秒，再手动点击“重新连接”；这只是
+等待建议，服务器实际清理可能更久，反复连接可能触发临时封禁。普通网络中断
+仍保留自动恢复。使用应用内或通知栏按钮断开后再划掉应用。完整提示随表单
+滚动，不截断。详见 [ADR-0011](docs/decisions/0011-manual-refusal-and-form-memory.md)。
+
+当前实现已有本地回归和 Debug 构建验证。回调是否交付、实际麦克风停止耗时和
+服务器释放仍待实机验收，详见[复核记录与验收矩阵](docs/testing/TASK_REMOVAL_DISCONNECT_REVIEW_2026-10-13.md)。
+
 ## 隐私
 
 项目不包含分析、广告、遥测、崩溃上报 SDK 或项目自建后端。应用只直接连接用户
-选择的服务器。TeamSpeak 身份使用 Android Keystore 在本地加密。连接流程需要的
-成功连接的服务器地址与端口最多保存十条到本地，昵称和密码仍只保留在应用或服务
-内存中。用于恢复频道的密码也只保留在前台服务内存中。本地诊断最多保留 128 条
+选择的服务器。TeamSpeak 身份使用 Android Keystore 在本地加密。成功连接的
+服务器地址与端口最多保存十条到本地；上次表单的地址、端口、昵称和服务器密码
+另用 AES-GCM 与 Android Keystore 加密保存，并排除 Android 备份。编辑后短暂延迟
+保存，点击连接会等待保存尝试。用于恢复频道的密码只保留在前台服务内存中。
+本地诊断最多保留 128 条
 固定事件类别和数字系统状态，不包含连接信息或音频。
 
 完整数据处理说明请参阅 [PRIVACY.md](PRIVACY.md)。
@@ -120,9 +153,20 @@ Android 界面层依赖协议和音频适配器；JVM 协议模块不依赖 Andr
 运行完整自动化门禁：
 
 ```powershell
-.\gradlew.bat quality :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --stacktrace
+.\gradlew.bat quality :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --stacktrace
 .\tools\check-repository-privacy.ps1
 ```
+
+启动 Android 模拟器或连接已授权设备后，检查开启混淆的 Release APK 是否能读取身份
+（需要 JDK 17、PowerShell 7；设置 `ANDROID_HOME` 或通过 `-SdkRoot` 指定 SDK 路径）：
+
+```powershell
+.\tools\check-release-identity.ps1 -DeviceSerial emulator-5554
+```
+
+设备序列号以 `adb devices` 的结果为准。检查直接加载 APK，无需安装应用，全程离线
+验证临时身份的重复读取及 INI 解析、写入。探针单独编译，不会影响 R8 的可达性分析。
+日志保存在 `build/release-identity-smoke/`，详见 [Issue #3 修复报告](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md)。
 
 连接已授权的实体 Android 设备后，运行原生设备测试套件：
 
@@ -130,9 +174,12 @@ Android 界面层依赖协议和音频适配器；JVM 协议模块不依赖 Andr
 .\gradlew.bat :audio-opus:connectedDebugAndroidTest
 ```
 
+显式开启的麦克风信号对比方法与本次真机结果，见
+[音质自动诊断记录](docs/testing/AUDIO_QUALITY_DIAGNOSIS_2026-10-13.md)。
+
 Debug APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。GitHub Actions 会在每个
-Pull Request 和推送到 `main` 时运行隐私扫描、格式检查、JVM/单元测试、Android Lint
-和 Debug 构建。
+Pull Request 和推送到 `main` 时运行隐私扫描、格式检查、JVM/单元测试、Android Lint、
+Debug/Release 构建以及混淆后的身份读取检查。
 
 ## Android 支持
 

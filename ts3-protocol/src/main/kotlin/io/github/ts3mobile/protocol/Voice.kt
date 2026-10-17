@@ -14,6 +14,9 @@ data class VoiceFrame(
 )
 
 interface EncodedVoiceSource {
+    /** Active talkspurt, independent of temporary queue availability. Old implementations retain their default behavior. */
+    val isTransmitting: Boolean get() = isReady()
+
     fun isReady(): Boolean
 
     fun pollEncodedFrame(): ByteArray?

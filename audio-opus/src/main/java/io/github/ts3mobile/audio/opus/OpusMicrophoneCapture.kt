@@ -165,6 +165,8 @@ class OpusMicrophoneCapture(
         }
     }
 
+    override val isTransmitting: Boolean get() = isCapturing
+
     override fun isReady(): Boolean = encodedFrames.isNotEmpty()
 
     override fun pollEncodedFrame(): ByteArray? =

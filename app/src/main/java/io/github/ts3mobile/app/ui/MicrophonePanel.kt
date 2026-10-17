@@ -4,24 +4,17 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.outlined.MicOff
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,7 +45,7 @@ internal fun MicrophoneControl(
     onMicrophoneModeChanged: (MicrophoneMode) -> Unit,
     onPushToTalkChanged: (Boolean) -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)) {
+    Surface(color = MaterialTheme.colorScheme.background) {
         Column(
             modifier =
                 Modifier
@@ -61,29 +54,7 @@ internal fun MicrophoneControl(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                MicrophoneMode.entries.forEachIndexed { index, option ->
-                    SegmentedButton(
-                        selected = mode == option,
-                        onClick = { onMicrophoneModeChanged(option) },
-                        shape =
-                            SegmentedButtonDefaults.itemShape(
-                                index = index,
-                                count = MicrophoneMode.entries.size,
-                            ),
-                    ) {
-                        Text(
-                            stringResource(
-                                when (option) {
-                                    MicrophoneMode.OFF -> R.string.microphone_mode_off
-                                    MicrophoneMode.PUSH_TO_TALK -> R.string.microphone_mode_push_to_talk
-                                    MicrophoneMode.CONTINUOUS -> R.string.microphone_mode_continuous
-                                },
-                            ),
-                        )
-                    }
-                }
-            }
+            MicrophoneModeSelector(mode, onMicrophoneModeChanged)
 
             when (mode) {
                 MicrophoneMode.PUSH_TO_TALK ->
@@ -100,12 +71,12 @@ internal fun MicrophoneControl(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Icon(
-                            imageVector =
+                        AppIcon(
+                            icon =
                                 if (mode == MicrophoneMode.OFF) {
-                                    Icons.Outlined.MicOff
+                                    UiIcon.MicOff
                                 } else {
-                                    Icons.Filled.Mic
+                                    UiIcon.Mic
                                 },
                             contentDescription = null,
                             tint =
@@ -150,7 +121,8 @@ private fun PushToTalkButton(
     Surface(
         modifier =
             Modifier
-                .size(58.dp)
+                .fillMaxWidth()
+                .heightIn(min = 58.dp)
                 .semantics {
                     role = Role.Button
                     contentDescription = talkDescription
@@ -172,7 +144,7 @@ private fun PushToTalkButton(
                         }
                     }
                 },
-        shape = CircleShape,
+        shape = MaterialTheme.shapes.small,
         color =
             if (active) {
                 MaterialTheme.colorScheme.error
@@ -185,14 +157,16 @@ private fun PushToTalkButton(
             } else {
                 MaterialTheme.colorScheme.onPrimary
             },
-        shadowElevation = 2.dp,
+        shadowElevation = 0.dp,
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = Icons.Filled.Mic,
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            AppIcon(
+                icon = UiIcon.Mic,
                 contentDescription = null,
-                modifier = Modifier.size(28.dp),
+                modifier = Modifier.size(22.dp),
             )
+            Spacer(Modifier.width(10.dp))
+            Text(talkDescription, style = MaterialTheme.typography.labelLarge)
         }
     }
 }

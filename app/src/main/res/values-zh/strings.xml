@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="action_more">更多选项</string>
+    <string name="connection_memory_failed">无法安全保存或恢复连接信息，请按需重新填写；仍可继续连接。</string>
     <!-- 前台服务通知 -->
     <string name="notification_channel_name">TeamSpeak 连接</string>
     <string name="notification_connecting">正在连接 %1$s</string>
@@ -29,6 +31,11 @@
     <string name="status_reconnect_failed_cause">重连失败：%1$s</string>
     <string name="status_reconnect_scheduled">%1$d 秒后进行第 %2$d 次重连</string>
     <string name="status_reconnecting_attempt">正在进行第 %1$d 次重连</string>
+    <string name="status_clones_limit_unavailable">此身份的连接数已达到服务器限制。</string>
+    <string name="status_clones_limit_explanation">服务器曾提示此身份的连接数已满。如果刚从后台划掉应用，上一次连接可能尚未释放；也可能有其他客户端正在使用同一身份。</string>
+    <string name="status_clones_limit_manual_wait">建议先等待至少 %1$d 秒，再点击“重新连接”。应用不会自动重试；服务器可能要求等待更久，反复连接可能触发临时封禁。</string>
+    <string name="status_clones_limit_manual_retry">请检查是否有其他客户端使用同一身份，按需将其断开。如果刚强制关闭应用，请再等一会儿，待服务器释放旧连接后点击“重新连接”。</string>
+    <string name="status_clones_limit_exit_guidance">下次退出请先点击应用内或通知栏的“断开连接”，等待断开完成后再划掉应用，避免旧连接暂留。</string>
     <string name="channel_join_failed">切换频道失败：%1$s</string>
     <string name="channel_restore_failed">恢复频道失败：%1$s</string>
     <string name="microphone_permission_continuous">需要麦克风权限才能开启常开模式</string>
@@ -135,6 +142,15 @@
     <string name="diagnostics_channel_join_attempts">频道切换尝试</string>
     <string name="diagnostics_channel_join_failures">频道切换失败</string>
     <string name="diagnostics_last_failure">最近失败类型</string>
+
+    <!-- TailSync default presentation -->
+    <string name="app_tagline">让声音，保持连接</string>
+    <string name="connect_subtitle">连接你的服务器，让熟悉的声音即刻相聚。</string>
+    <string name="section_server_details">服务器信息</string>
+    <string name="connect_privacy_note">直连你的服务器，身份密钥保留在本机。</string>
+    <string name="channel_gesture_hint">单击展开成员 · 双击加入频道</string>
+    <string name="microphone_label">麦克风</string>
+
     <string name="microphone_resume_in_app">收听已恢复。请回到应用恢复麦克风发言。</string>
     <string name="microphone_state_deferred">麦克风已暂停</string>
     <string name="notification_resume_microphone">已连接，可收听 · 打开应用恢复发言</string>

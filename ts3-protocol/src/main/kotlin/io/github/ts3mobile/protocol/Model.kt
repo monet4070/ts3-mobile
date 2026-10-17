@@ -34,6 +34,12 @@ data class ConnectionStatus(
     val phase: ConnectionPhase = ConnectionPhase.DISCONNECTED,
     val detail: String? = null,
     val retryable: Boolean = false,
+    /**
+     * Closed classification of the failure when the producer could classify it.
+     * Defaults to [ConnectionFailureCategory.UNCLASSIFIED] so every existing
+     * construction stays source-compatible.
+     */
+    val category: ConnectionFailureCategory = ConnectionFailureCategory.UNCLASSIFIED,
 )
 
 data class Ts3Channel(

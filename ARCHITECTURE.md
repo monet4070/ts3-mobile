@@ -67,6 +67,72 @@ outside the session callback implementation. A reconnect snapshot cannot replace
 that target while restoration is pending, and an already-restored channel is not
 joined again.
 
+## Visual presentation
+
+The Compose layer follows TailSync's warm Canvas palette, with a cream light
+default, coordinated warm dark preview tokens and restrained 4/6/10 dp geometry.
+`ui/theme` owns colors, typography and shapes; `UiComponents` owns shared panels
+and icon tiles. `AppIcon` renders
+bundled Lucide 0.468.0 vector drawables without a runtime icon dependency.
+Connection fields, status surfaces, session header/navigation and channel
+password entry are separate components. `ServerHistorySection` renders the
+imported history store's endpoints and forwards selection/removal callbacks.
+The background dialog and deferred microphone state use the remote application
+ports. Service state and callbacks remain the
+single source of connection and audio behavior. See ADR 0010.
+
+## Task removal and bounded exit
+
+Task removal, UI disconnect and notification disconnect use one coordinator
+request path. `SessionRequestOwnership` assigns a monotonically increasing
+request revision; a newer connection invalidates an exit's right to clear state
+or stop the service. `SessionExitRunner` executes cleanup for a captured socket
+without owning the active session. Registered exit jobs form a barrier before
+new attempts start shared audio, including exits queued after a new connection.
+Terminal failure cleanup holds the attempt mutex and guards state mutation with
+`SessionGeneration.withActive`; both terminal and explicit-exit service teardown
+re-check ownership in one main-thread notification/`stopSelfResult` action.
+
+One monotonic two-second target covers protocol exit, lock waiting and parallel
+audio stops. With voice already detached, the captured session sends its exit
+before shared-audio cleanup or session-mutex waiting. Server confirmation remains
+distinct from cleanup timeout/failure (`EXIT_CLEANUP_OVERRUN` / `EXIT_CLEANUP_FAILED`).
+Native/scheduler overruns are reported and final local audio
+cleanup completes before new audio starts. Handshake sockets close before lock
+waiting. `close()` keeps its local-release meaning; the optional protocol
+`disconnectBounded` method has a no-I/O `UNSUPPORTED` default for other adapters.
+The pinned ts3j adapter sends the existing encrypted reliable command and requires
+this socket's own server leave notification for `SERVER_CONFIRMED`. Per-socket
+`SocketOperations` interrupts and reclaims registered blocking writers, including
+writers queued behind the library's command monitor, inside the same deadline.
+A local close or UDP ACK cannot serve as confirmation.
+
+`onTaskRemoved` only registers work and appends an in-memory journal category.
+Explicit `stopWithTask=false` preserves the callback opportunity and retains the
+Android default; `START_NOT_STICKY` stays unchanged. Home/lock/Activity lifecycle
+does not invoke this path. Android process killing can bypass callbacks entirely
+or deliver them only to a new process that no longer owns the session, as
+[verified on Xiaomi / Android 16](docs/testing/TASK_REMOVAL_DEVICE_2026-10-17.md).
+See [ADR-0008](docs/decisions/0008-task-removal-bounded-exit.md).
+
+## Terminal identity-limit refusal
+
+`ConnectionFailure` owns a cycle-safe classifier with terminal command precedence.
+`CLONES_LIMIT` is nonretryable. `ConnectionCoordinator` atomically detaches the
+refused listener, stops `ReconnectEngine`, closes the captured handshake before
+cancellation, and publishes localized manual-wait guidance. Epoch checks reject
+late callbacks and isolate replacement connections. The former clone recovery
+engine/window are removed. Ordinary network recovery retains its existing policy.
+The 60-second recommendation is a message constant, not a scheduler or unban
+promise. Old journal enum values remain readable for historical diagnostics.
+See [ADR-0011](docs/decisions/0011-manual-refusal-and-form-memory.md).
+
+`TalkspurtMicrophone` separates active capture from queue readiness. A temporarily
+empty queue returns an empty frame while still ready, which the pinned ts3j
+sender skips. Explicit capture stop makes readiness false and produces the end
+marker. Source failures report once and end capture readiness. The protocol
+module stays JVM-only; `OpusMicrophoneCapture` supplies its capture-active state.
+
 ## Diagnostics
 
 `DiagnosticsRecorder` is a thread-safe, in-memory counter owned by the service.
@@ -95,8 +161,19 @@ and session/epoch checks prevent duplicate and stale loss reports.
 `SuccessServerHistoryStore` shares one preferences DataStore between the service
 and the view model. Only an accepted current-session success stores host/port,
 with ten-entry recency and deletion. The form's initial history load cannot
-overwrite user-edited endpoint fields. Nicknames and passwords are not saved.
-See [ADR-0007](docs/decisions/0007-background-voice-and-server-history.md).
+overwrite user-edited endpoint fields. This successful-endpoint history remains
+separate from `ConnectionSettingsVault`, which AES-GCM encrypts the last form
+(host/port/nickname/password) in a serialized preferences DataStore with a
+separate Keystore alias. `ConnectionFormMemory` merges delayed loads per field
+without overwriting edits or attaching an old password to a new endpoint.
+`MainViewModel` conflates delayed saves and waits for a save attempt before
+connecting; errors remain visible. A missing snapshot falls back to legacy
+history without changing identity storage. The snapshot is excluded from backup.
+See [ADR-0007](docs/decisions/0007-background-voice-and-server-history.md) and
+[ADR-0011](docs/decisions/0011-manual-refusal-and-form-memory.md).
+
+Diagnostics and background checks open from the secondary More options menu;
+the connected server header owns the visible Disconnect action.
 
 ## Known decomposition work
 
@@ -133,6 +210,19 @@ large structural change with the outstanding M10 physical-device acceptance
 matrix.
 
 ## Compatibility and release scope
+
+The release APK keeps ini4j's reflection graph, including SPI parser, builder and
+formatter constructors. `Ts3IdentityCodec.decode` calls ts3j's `LocalIdentity.read`
+before the network connection; ini4j resolves these helpers through `ServiceFinder`
+and `Class.newInstance`. Keeping only the directly referenced `Ini` class does not
+make the reflective implementations reachable to R8.
+
+`app/src/releaseSmokeTest` is an independent test source set compiled by
+`tools/check-release-identity.ps1`, not by the application build. It loads the
+already-minified APK on ART to verify identity and INI roundtrips without changing
+production reachability, storage or network behavior. This packaging regression
+complements JVM tests and device connection acceptance; see
+[the issue #3 report](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
 
 The public app API is intentionally small and internal to the Android app. The
 protocol facade pins a ts3j revision. The current release target is a pre-release

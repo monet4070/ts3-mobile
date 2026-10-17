@@ -7,21 +7,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.VolumeOff
-import androidx.compose.material.icons.automirrored.outlined.VolumeUp
-import androidx.compose.material.icons.outlined.GraphicEq
-import androidx.compose.material.icons.outlined.MicOff
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -33,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +44,7 @@ internal fun ParticipantList(
     onMutedChange: (String, Boolean) -> Unit,
     onVolumeChange: (String, Int) -> Unit,
 ) {
+    val volumeLabelMinWidth = 44.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
     val channelsById =
         remember(state.snapshot.channels) {
             state.snapshot.channels.associateBy { it.id }
@@ -73,21 +68,15 @@ internal fun ParticipantList(
                             .padding(start = 18.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector =
+                    IconTile(
+                        icon =
                             when {
-                                participant.isTalking -> Icons.Outlined.GraphicEq
-                                participant.isInputMuted -> Icons.Outlined.MicOff
-                                participant.isOutputMuted -> Icons.AutoMirrored.Outlined.VolumeOff
-                                else -> Icons.Outlined.Person
+                                participant.isTalking -> UiIcon.Audio
+                                participant.isInputMuted -> UiIcon.MicOff
+                                participant.isOutputMuted -> UiIcon.VolumeOff
+                                else -> UiIcon.User
                             },
-                        contentDescription = null,
-                        tint =
-                            if (participant.isTalking) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
+                        accented = participant.isTalking,
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
@@ -110,12 +99,12 @@ internal fun ParticipantList(
                     }
                     if (!isOwnClient) {
                         IconButton(onClick = { onMutedChange(key, !settings.muted) }) {
-                            Icon(
-                                imageVector =
+                            AppIcon(
+                                icon =
                                     if (settings.muted) {
-                                        Icons.AutoMirrored.Outlined.VolumeOff
+                                        UiIcon.VolumeOff
                                     } else {
-                                        Icons.AutoMirrored.Outlined.VolumeUp
+                                        UiIcon.Volume
                                     },
                                 contentDescription =
                                     stringResource(
@@ -133,8 +122,8 @@ internal fun ParticipantList(
                                 expandedKey = if (expandedKey == key) null else key
                             },
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Tune,
+                            AppIcon(
+                                icon = UiIcon.Sliders,
                                 contentDescription =
                                     stringResource(R.string.action_adjust_volume, participant.nickname),
                                 tint =
@@ -152,7 +141,7 @@ internal fun ParticipantList(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .height(52.dp)
+                                .heightIn(min = 52.dp)
                                 .padding(start = 54.dp, end = 18.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -169,14 +158,14 @@ internal fun ParticipantList(
                         Spacer(Modifier.width(12.dp))
                         Text(
                             text = "${settings.volumePercent}%",
-                            modifier = Modifier.width(52.dp),
+                            modifier = Modifier.widthIn(min = volumeLabelMinWidth),
                             style = MaterialTheme.typography.labelLarge,
                             maxLines = 1,
                         )
                     }
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }
@@ -212,7 +201,7 @@ internal fun ChannelParticipantRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f))
+                .background(MaterialTheme.colorScheme.surface)
                 .padding(
                     start = (48 + depth * 20).coerceAtMost(112).dp,
                     end = 16.dp,
@@ -221,13 +210,13 @@ internal fun ChannelParticipantRow(
                 ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector =
+        AppIcon(
+            icon =
                 when {
-                    participant.isTalking -> Icons.Outlined.GraphicEq
-                    participant.isInputMuted -> Icons.Outlined.MicOff
-                    participant.isOutputMuted -> Icons.AutoMirrored.Outlined.VolumeOff
-                    else -> Icons.Outlined.Person
+                    participant.isTalking -> UiIcon.Audio
+                    participant.isInputMuted -> UiIcon.MicOff
+                    participant.isOutputMuted -> UiIcon.VolumeOff
+                    else -> UiIcon.User
                 },
             contentDescription =
                 when {

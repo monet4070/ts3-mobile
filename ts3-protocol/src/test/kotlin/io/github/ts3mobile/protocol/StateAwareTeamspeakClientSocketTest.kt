@@ -109,6 +109,55 @@ class StateAwareTeamspeakClientSocketTest {
         assertFalse(socket.isDisconnectNotificationPending)
     }
 
+    @Test
+    fun aSelfLeaveNotificationConfirmsTheSocketsOwnLeave() {
+        val socket = newSocket()
+        socket.clientId = SELF_CLIENT_ID
+
+        socket.process(socket, leaveNotification(SELF_CLIENT_ID))
+
+        assertTrue(socket.awaitSelfLeaveNotification(0))
+    }
+
+    @Test
+    fun anotherClientsLeaveNotificationDoesNotConfirmTheSocketsOwnLeave() {
+        val socket = newSocket()
+        socket.clientId = SELF_CLIENT_ID
+
+        socket.process(socket, leaveNotification(OTHER_CLIENT_ID))
+
+        assertFalse(socket.awaitSelfLeaveNotification(0))
+    }
+
+    @Test
+    fun aLocalDisconnectDoesNotConfirmTheSocketsOwnLeave() {
+        val socket = newSocket()
+
+        // A watchdog or a local close ends the transport without the server ever
+        // releasing the session, so it must never be reported as a confirmation.
+        socket.startAttemptAndDisconnect()
+
+        assertFalse(socket.awaitSelfLeaveNotification(0))
+    }
+
+    @Test
+    fun aFreshSocketHasNoSessionToLeave() {
+        val socket = newSocket()
+
+        assertFalse(socket.isSessionOpen)
+    }
+
+    @Test
+    fun markingTheSessionDisconnectedEndsIt() {
+        val socket = newSocket()
+        socket.setState(ClientConnectionState.CONNECTED)
+        assertTrue(socket.isSessionOpen)
+
+        socket.markSessionDisconnected()
+
+        assertFalse(socket.isSessionOpen)
+    }
+
     private fun newSocket(): StateAwareTeamspeakClientSocket {
         val socket = StateAwareTeamspeakClientSocket()
         // Replaces the library's default printing handler so the expected

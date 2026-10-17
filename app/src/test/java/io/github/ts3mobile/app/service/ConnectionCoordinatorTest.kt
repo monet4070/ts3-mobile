@@ -1,7 +1,9 @@
 package io.github.ts3mobile.app.service
 
+import io.github.ts3mobile.protocol.ConnectionFailureCategory
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
+import io.github.ts3mobile.protocol.DisconnectOutcome
 import io.github.ts3mobile.protocol.EncodedVoiceSource
 import io.github.ts3mobile.protocol.ServerConfig
 import io.github.ts3mobile.protocol.SessionSnapshot
@@ -24,6 +26,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
 
 /**
  * Drives the connection state machine through a fake host with no Android
@@ -45,6 +48,7 @@ class ConnectionCoordinatorTest {
                 clockMs = host::readClockMs,
                 sessionFactory = { host.session },
             )
+        host.latestExitCheck = { coordinator.isLatestExit(it) }
     }
 
     @After
@@ -83,6 +87,7 @@ class ConnectionCoordinatorTest {
 
         coordinator.requestDisconnect()
         host.advance()
+        host.runPendingTeardowns()
 
         assertFalse(host.sessionGeneration.isActive(1L))
         assertTrue(host.stopSelfRequested)
@@ -163,10 +168,44 @@ class ConnectionCoordinatorTest {
         host.session.connectAction = { error("boom") }
         coordinator.beginConnection(CONFIG)
         host.advance()
+        host.runPendingTeardowns()
 
         assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
         assertTrue(host.stopSelfRequested)
         assertTrue(host.removeForegroundNotificationCalls >= 1)
+    }
+
+    @Test
+    fun terminalAudioCleanupCannotOverwriteAConnectRegisteredWhileItWasStopping() {
+        host.session.connectAction = { error("first attempt failed") }
+        host.playbackStopAction = {
+            host.playbackStopAction = {}
+            host.session.connectAction = {}
+            coordinator.beginConnection(CONFIG.copy(port = 9988))
+        }
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+
+        assertFalse("old terminal cleanup stopped a newer request", host.stopSelfRequested)
+        assertEquals(ConnectionPhase.CONNECTING, host.state.value.status.phase)
+        assertEquals("example.invalid:9988", host.state.value.serverLabel)
+    }
+
+    @Test
+    fun queuedTerminalTeardownCannotStopANewerConnect() {
+        host.session.connectAction = { error("first attempt failed") }
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertFalse(host.stopSelfRequested)
+
+        host.session.connectAction = {}
+        coordinator.beginConnection(CONFIG.copy(port = 9988))
+        host.runPendingTeardowns()
+        host.advance()
+
+        assertFalse(host.stopSelfRequested)
+        assertEquals(0, host.removeForegroundNotificationCalls)
+        assertEquals(ConnectionPhase.CONNECTING, host.state.value.status.phase)
     }
 
     @Test
@@ -471,6 +510,7 @@ class ConnectionCoordinatorTest {
         host.testScope.advanceTimeBy(1_001L)
         host.session.listener!!.onStatusChanged(ConnectionStatus(ConnectionPhase.DISCONNECTED, retryable = false))
         host.advance()
+        host.runPendingTeardowns()
 
         assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
         assertEquals(0, host.transportDisconnects)
@@ -587,7 +627,328 @@ class ConnectionCoordinatorTest {
         assertTrue(host.watchGaps.isEmpty())
     }
 
-    private class FakeSession : Ts3SessionClient {
+    @Test
+    fun aTaskRemovalExitNotifiesAndReleasesTheSessionBeforeAudioCleanup() {
+        connectEstablished()
+
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+
+        // Voice was detached synchronously; server notification must not wait
+        // for potentially slow native audio cleanup.
+        assertEquals(listOf("disconnectBounded", "close", "stopMicrophone"), host.timeline)
+        assertEquals(1, host.session.boundedDisconnectCalls)
+        assertEquals("Task removed", host.session.boundedDisconnectReason)
+        assertTrue(host.session.voiceSourceDetached)
+        host.runPendingTeardowns()
+        assertTrue(host.stopSelfRequested)
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+    }
+
+    @Test
+    fun captureCleanupDoesNotReduceTheProtocolExitBudget() {
+        connectEstablished()
+        host.microphoneStopAction = { host.nowMs += 500L }
+
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+
+        assertEquals(EXIT_BUDGET_MS, host.session.boundedDisconnectBudgetMs)
+    }
+
+    @Test
+    fun audioCleanupThatConsumesTheBudgetDoesNotSkipTheProtocolExit() {
+        connectEstablished()
+        host.microphoneStopAction = { host.nowMs += EXIT_BUDGET_MS }
+
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+
+        assertEquals(1, host.session.boundedDisconnectCalls)
+        assertTrue(host.diagnostics.contains(DiagnosticEventKind.EXIT_SERVER_CONFIRMED))
+        assertEquals(1, host.session.closeCalls)
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertTrue("timeout left the playback resources running", host.playbackStops > 0)
+        host.runPendingTeardowns()
+        assertTrue(host.stopSelfRequested)
+    }
+
+    @Test
+    fun aConfirmedExitReportsSendingAndConfirmationSeparately() {
+        connectEstablished()
+        host.session.boundedDisconnectOutcome = DisconnectOutcome.SERVER_CONFIRMED
+
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+
+        assertEquals(
+            listOf(
+                DiagnosticEventKind.EXIT_STARTED,
+                DiagnosticEventKind.EXIT_REQUEST_SENT,
+                DiagnosticEventKind.EXIT_SERVER_CONFIRMED,
+            ),
+            host.diagnostics,
+        )
+    }
+
+    @Test
+    fun aLostConfirmationIsReportedAsTimedOutAndNeverAsConfirmed() {
+        connectEstablished()
+        host.session.boundedDisconnectOutcome = DisconnectOutcome.TIMED_OUT
+
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+
+        assertTrue(host.diagnostics.contains(DiagnosticEventKind.EXIT_TIMED_OUT))
+        assertFalse(host.diagnostics.contains(DiagnosticEventKind.EXIT_SERVER_CONFIRMED))
+        assertEquals(1, host.session.closeCalls)
+    }
+
+    @Test
+    fun repeatedExitRequestsSendOneLeaveCommandAndStayIdempotent() {
+        connectEstablished()
+
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        coordinator.requestExit(ExitTrigger.USER_DISCONNECT)
+        host.advance()
+
+        assertEquals(1, host.session.boundedDisconnectCalls)
+        assertEquals(1, host.session.closeCalls)
+        assertEquals(1, host.pendingTeardowns.size)
+        host.runPendingTeardowns()
+        assertTrue(host.stopSelfRequested)
+        assertEquals(1, host.removeForegroundNotificationCalls)
+    }
+
+    @Test
+    fun anExitedSessionCannotBeRevivedByItsOldListener() {
+        connectEstablished()
+        val stale = host.session.listener ?: error("listener was not attached")
+        val attemptsBefore = host.connectionAttempts.size
+
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+
+        stale.onStatusChanged(ConnectionStatus(ConnectionPhase.CONNECTED))
+        stale.onSnapshotChanged(SessionSnapshot.Empty)
+        stale.onVoiceFrame(VOICE_FRAME)
+
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(attemptsBefore, host.connectionAttempts.size)
+        assertEquals(0, host.submittedVoiceFrames)
+    }
+
+    @Test
+    fun networkRecoveryAfterAnExitDoesNotRestartTheSession() {
+        connectEstablished()
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+        val attemptsBefore = host.connectionAttempts.size
+
+        host.network.value = false
+        coordinator.onNetworkChanged(false)
+        host.network.value = true
+        coordinator.onNetworkChanged(true)
+        host.advance()
+
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(attemptsBefore, host.connectionAttempts.size)
+    }
+
+    @Test
+    fun aQueuedExitTeardownCannotStopASessionThatANewerRequestOwns() {
+        connectEstablished()
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+        assertEquals(1, host.pendingTeardowns.size)
+
+        // The user reopens and connects before the queued main-thread teardown runs.
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        host.runPendingTeardowns()
+
+        assertFalse(host.stopSelfRequested)
+        assertEquals(0, host.removeForegroundNotificationCalls)
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+    }
+
+    @Test
+    fun anOldExitTeardownCannotStopANewerExitThatIsStillRunning() {
+        connectEstablished()
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+        val oldTeardown = host.pendingTeardowns.single()
+
+        // Reconnect, then disconnect again while the second exit is still waiting
+        // for its confirmation.
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        val gate = CompletableDeferred<Unit>()
+        host.session.boundedDisconnectGate = { gate.await() }
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+
+        oldTeardown.invoke()
+
+        assertFalse("an old exit stopped the service under a newer exit", host.stopSelfRequested)
+
+        gate.complete(Unit)
+        host.advance()
+        host.runPendingTeardowns()
+        assertTrue(host.stopSelfRequested)
+    }
+
+    @Test
+    fun destructionReleasesLocallyWithoutSendingAnExitCommand() {
+        connectEstablished()
+
+        coordinator.close()
+
+        assertEquals(0, host.session.boundedDisconnectCalls)
+        assertEquals(1, host.session.closeCalls)
+        assertFalse(host.sessionGeneration.isActive(1L))
+    }
+
+    @Test
+    fun cancelingANewRequestWhileThePreviousExitRunsStillFinishesTheLatestExit() {
+        connectEstablished()
+        val gate = CompletableDeferred<Unit>()
+        host.session.boundedDisconnectGate = { gate.await() }
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        coordinator.requestDisconnect()
+        gate.complete(Unit)
+        host.advance()
+        host.runPendingTeardowns()
+
+        assertEquals(1, host.session.boundedDisconnectCalls)
+        assertTrue("the latest exit lost its teardown owner", host.stopSelfRequested)
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+    }
+
+    @Test
+    fun aQueuedTeardownIsInvalidAfterCoordinatorDestruction() {
+        connectEstablished()
+        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        host.advance()
+        coordinator.close()
+        host.runPendingTeardowns()
+
+        assertFalse(host.stopSelfRequested)
+        assertEquals(0, host.removeForegroundNotificationCalls)
+    }
+
+    private fun connectEstablished() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        host.timeline.clear()
+    }
+
+    @Test
+    fun aRefusedConnectionNeverRetriesAutomaticallyEvenAfterFiveMinutes() {
+        refuseFirstConnectWithClones()
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        advance(300_000L)
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        assertEquals(UserMessage.ConnectionLimitWait, host.state.value.statusMessage)
+        assertEquals(1, host.session.connectCalls)
+        assertFalse(host.state.value.status.retryable)
+        assertFalse(host.diagnostics.contains(DiagnosticEventKind.CLONES_RECOVERY_STARTED))
+    }
+
+    @Test
+    fun aUserCanStartOneNewAttemptAfterARefusal() {
+        refuseFirstConnectWithClones()
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        host.runPendingTeardowns()
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        assertEquals(2, host.session.connectCalls)
+        assertFalse(host.stopSelfRequested)
+    }
+
+    @Test
+    fun aRefusedCallbackCannotWriteIntoAReplacementRequest() {
+        var observedClient: Int? = null
+        host.session.connectAction = {
+            host.session.connectAction = {}
+            val old = host.session.listener!!
+            old.onStatusChanged(ConnectionStatus(ConnectionPhase.ERROR, category = ConnectionFailureCategory.CLONES_LIMIT))
+            coordinator.beginConnection(CONFIG.copy(port = 9988))
+            old.onSnapshotChanged(SessionSnapshot.Empty.copy(ownClientId = 777))
+            observedClient = host.state.value.snapshot.ownClientId
+        }
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertEquals(SessionSnapshot.Empty.ownClientId, observedClient)
+        assertEquals("example.invalid:9988", host.state.value.serverLabel)
+    }
+
+    @Test
+    fun aLimitRefusalAlsoStopsEstablishedSessionRecovery() {
+        connectEstablished()
+        host.session.listener!!.onStatusChanged(
+            ConnectionStatus(ConnectionPhase.ERROR, retryable = true, category = ConnectionFailureCategory.CLONES_LIMIT),
+        )
+        host.advance()
+        advance(300_000L)
+        assertEquals(1, host.session.connectCalls)
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        assertEquals(UserMessage.ConnectionLimitWait, host.state.value.statusMessage)
+    }
+
+    @Test
+    fun aFirstConnectThatFailsWithANetworkErrorStaysTerminal() {
+        host.session.connectAction = { throw IOException("offline") }
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        host.runPendingTeardowns()
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        assertTrue(host.stopSelfRequested)
+    }
+
+    /**
+     * The refusal is observed through the protocol listener while the blocking
+     * connect is still running, which is the order a real handshake produces, and
+     * the call that follows it fails with an unrelated transport error.
+     */
+    private fun refuseFirstConnectWithClones() {
+        host.session.connectAction = {
+            // Only the first attempt is refused; a later request must be able to
+            // succeed on the same scripted session.
+            host.session.connectAction = {}
+            host.session.listener?.onStatusChanged(
+                ConnectionStatus(
+                    phase = ConnectionPhase.ERROR,
+                    detail = "too many clones already connected",
+                    retryable = true,
+                    category = ConnectionFailureCategory.CLONES_LIMIT,
+                ),
+            )
+            throw IOException("handshake cut")
+        }
+        host.network.value = true
+    }
+
+    /** Advances the virtual dispatcher and the injected monotonic clock together. */
+    private fun advance(millis: Long) {
+        host.nowMs += millis
+        host.testScope.advanceTimeBy(millis)
+    }
+
+    private class FakeSession(
+        private val timeline: MutableList<String> = mutableListOf(),
+    ) : Ts3SessionClient {
         private var transportSignal: Boolean? = null
         var transportReadAction: () -> Unit = {}
         override var transportConnected: Boolean?
@@ -603,6 +964,14 @@ class ConnectionCoordinatorTest {
             ConnectionStatus(ConnectionPhase.CONNECTING)
         var connectCalls = 0
         var listener: Ts3SessionListener? = null
+        var connectedConfig: ServerConfig? = null
+        var closeCalls = 0
+        var boundedDisconnectCalls = 0
+        var boundedDisconnectBudgetMs = 0L
+        var boundedDisconnectReason: String? = null
+        var boundedDisconnectOutcome = DisconnectOutcome.SERVER_CONFIRMED
+        var boundedDisconnectGate: (suspend () -> Unit)? = null
+        var voiceSourceDetached = false
 
         override fun connect(
             config: ServerConfig,
@@ -610,12 +979,15 @@ class ConnectionCoordinatorTest {
             listener: Ts3SessionListener,
         ) {
             connectCalls++
+            connectedConfig = config
             this.listener = listener
             connectAction()
             emittedStatusOnConnect?.let { listener.onStatusChanged(it) }
         }
 
-        override fun setVoiceSource(source: EncodedVoiceSource?) = Unit
+        override fun setVoiceSource(source: EncodedVoiceSource?) {
+            if (source == null) voiceSourceDetached = true
+        }
 
         override fun joinChannel(
             channelId: Int,
@@ -623,6 +995,20 @@ class ConnectionCoordinatorTest {
         ) = Unit
 
         override fun disconnect(reason: String) = Unit
+
+        override suspend fun disconnectBounded(
+            timeoutMs: Long,
+            reason: String,
+            onRequestSent: () -> Unit,
+        ): DisconnectOutcome {
+            boundedDisconnectCalls++
+            boundedDisconnectBudgetMs = timeoutMs
+            boundedDisconnectReason = reason
+            timeline += "disconnectBounded"
+            onRequestSent()
+            boundedDisconnectGate?.invoke()
+            return boundedDisconnectOutcome
+        }
 
         var livenessResult = true
         var livenessCalls = 0
@@ -635,10 +1021,15 @@ class ConnectionCoordinatorTest {
             return result
         }
 
-        override fun close() = Unit
+        override fun close() {
+            closeCalls++
+            timeline += "close"
+        }
     }
 
-    private class FakeHost : ConnectionCoordinatorHost {
+    private class FakeHost(
+        val timeline: MutableList<String> = mutableListOf(),
+    ) : ConnectionCoordinatorHost {
         val dispatcher = StandardTestDispatcher()
         val testScope = TestScope(dispatcher)
         override val serviceScope: CoroutineScope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -650,7 +1041,7 @@ class ConnectionCoordinatorTest {
         val state: kotlinx.coroutines.flow.StateFlow<TeamSpeakServiceState> = mutableState
         override val reconnectPolicy = ReconnectPolicy(delaysMs = listOf(10L))
         override val diagnosticsRecorder = DiagnosticsRecorder()
-        val session = FakeSession()
+        val session = FakeSession(timeline)
         val scope = serviceScope
         var stopSelfRequested = false
         var removeForegroundNotificationCalls = 0
@@ -680,9 +1071,19 @@ class ConnectionCoordinatorTest {
 
         override fun resetMicrophoneForConnection() = Unit
 
-        override suspend fun stopMicrophoneCapture() = Unit
+        var microphoneStopAction: () -> Unit = {}
 
-        override suspend fun createIdentity(): String = "identity"
+        override suspend fun stopMicrophoneCapture() {
+            timeline += "stopMicrophone"
+            microphoneStopAction()
+        }
+
+        var identityCalls = 0
+
+        override suspend fun createIdentity(): String {
+            identityCalls++
+            return "identity"
+        }
 
         override fun startAudioRouting() = Unit
 
@@ -694,7 +1095,10 @@ class ConnectionCoordinatorTest {
 
         override fun stopPlayback() {
             playbackStops++
+            playbackStopAction()
         }
+
+        var playbackStopAction: () -> Unit = {}
 
         override fun clearPlaybackMuted() = Unit
 
@@ -708,7 +1112,11 @@ class ConnectionCoordinatorTest {
 
         override fun applyParticipantAudioSettings(snapshot: SessionSnapshot) = Unit
 
-        override fun submitVoiceFrame(frame: VoiceFrame) = Unit
+        var submittedVoiceFrames = 0
+
+        override fun submitVoiceFrame(frame: VoiceFrame) {
+            submittedVoiceFrames++
+        }
 
         override fun removeForegroundNotification() {
             removeForegroundNotificationCalls++
@@ -716,6 +1124,45 @@ class ConnectionCoordinatorTest {
 
         override fun requestStopSelf() {
             stopSelfRequested = true
+        }
+
+        val diagnostics = mutableListOf<DiagnosticEventKind>()
+        val diagnosticCodes = mutableListOf<Pair<DiagnosticEventKind, Long>>()
+
+        override fun recordDiagnostic(
+            kind: DiagnosticEventKind,
+            code: Long,
+        ) {
+            diagnostics += kind
+            diagnosticCodes += kind to code
+        }
+
+        /** Deferred exactly like the service's main-thread handler hop. */
+        val pendingTeardowns = mutableListOf<() -> Unit>()
+        var latestExitCheck: (Long) -> Boolean = { true }
+
+        override fun finishExitOnMainThread(exitToken: Long) {
+            pendingTeardowns += {
+                if (latestExitCheck(exitToken)) {
+                    removeForegroundNotificationCalls++
+                    stopSelfRequested = true
+                }
+            }
+        }
+
+        override fun finishTerminalOnMainThread(epoch: Long) {
+            pendingTeardowns += {
+                if (sessionGeneration.isActive(epoch)) {
+                    removeForegroundNotificationCalls++
+                    stopSelfRequested = true
+                }
+            }
+        }
+
+        fun runPendingTeardowns() {
+            val pending = pendingTeardowns.toList()
+            pendingTeardowns.clear()
+            pending.forEach { it() }
         }
 
         val connectionAttempts = mutableListOf<Boolean>()
@@ -757,5 +1204,17 @@ class ConnectionCoordinatorTest {
                 port = 9987,
                 nickname = "tester",
             )
+
+        val VOICE_FRAME =
+            VoiceFrame(
+                clientId = 7,
+                packetId = 1,
+                codec = io.github.ts3mobile.protocol.VoiceCodec.OPUS_VOICE,
+                encodedData = ByteArray(2),
+                isWhisper = false,
+            )
+
+        /** Product budget for one exit; asserted against the coordinator's own value. */
+        const val EXIT_BUDGET_MS = 2_000L
     }
 }

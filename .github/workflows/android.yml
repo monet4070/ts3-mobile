@@ -40,10 +40,12 @@ jobs:
           packages: platform-tools
 
       - name: Install Android build tools
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1" "emulator" "system-images;android-35;default;x86_64"
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-read-only: false
 
       - name: Test, lint, and assemble
         run: >-
@@ -54,5 +56,64 @@ jobs:
           :audio-opus:lintDebug
           :app:testDebugUnitTest
           :app:lintDebug
+          :app:lintRelease
           :app:assembleDebug
+          :app:assembleRelease
+          --max-workers=2
           --stacktrace
+
+      - name: Verify identity loading in the minified APK
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          ./gradlew --stop
+          sudo chmod 666 /dev/kvm
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/release-identity-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avd_path="$ANDROID_AVD_HOME/release-identity-api35.avd"
+          echo no | avdmanager create avd --name release-identity-api35 --path "$avd_path" --package "system-images;android-35;default;x86_64"
+          # Explicit registration also covers CLI/emulator versions with different default homes.
+          printf 'avd.ini.encoding=UTF-8\npath=%s\ntarget=android-35\n' "$avd_path" > "$ANDROID_AVD_HOME/release-identity-api35.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds
+          cleanup() {
+            result=$?
+            trap - EXIT
+            if [[ "$result" != "0" ]]; then
+              cat "$RUNNER_TEMP/release-identity-emulator.log"
+              df -h "$RUNNER_TEMP" "$HOME/.android"
+            fi
+            adb -s emulator-5554 emu kill || echo "::warning::Emulator cleanup failed"
+            exit "$result"
+          }
+          trap cleanup EXIT
+          "$ANDROID_HOME/emulator/emulator" -avd release-identity-api35 -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -partition-size 2048 -memory 2048 -cores 2 > "$RUNNER_TEMP/release-identity-emulator.log" 2>&1 &
+          emulator_pid=$!
+          attached=false
+          for attempt in $(seq 1 90); do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "::error::Emulator exited before attaching to ADB"
+              exit 1
+            fi
+            if [[ "$(adb -s emulator-5554 get-state 2>/dev/null)" == "device" ]]; then
+              attached=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$attached" != "true" ]]; then
+            echo "::error::Emulator did not attach to ADB"
+            exit 1
+          fi
+          booted=false
+          for attempt in $(seq 1 90); do
+            if [[ "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" == "1" ]]; then
+              booted=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$booted" != "true" ]]; then
+            cat "$RUNNER_TEMP/release-identity-emulator.log"
+            exit 1
+          fi
+          pwsh -NoProfile -File ./tools/check-release-identity.ps1 -DeviceSerial emulator-5554 -SdkRoot "$ANDROID_HOME"

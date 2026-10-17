@@ -14,10 +14,16 @@ marks are the property of their respective owners.
 
 ## Project status
 
+The latest M10 maintenance pre-release is **0.11.1-m10**. It fixes the Release
+identity-loading crash reported in issue #3, adds encrypted connection-form
+memory and manual-only identity-limit recovery, and improves the disconnect UI.
+Existing M10 installations can update in place without resetting identity.
+
 Development is currently focused on the M11 production-beta preparation
 milestone. The automated build gate and the M10 code-hardening baseline are in
 place, but the complete physical-device acceptance matrix is not finished. See
-the [M11 release checklist](docs/release/M11_RELEASE_CHECKLIST.md) and
+the [continuation plan](docs/release/CONTINUATION_PLAN.md), the
+[M11 release checklist](docs/release/M11_RELEASE_CHECKLIST.md) and the
 [M10 stability matrix](docs/testing/M10_STABILITY_MATRIX.md) for the remaining
 release evidence.
 
@@ -38,11 +44,13 @@ testing on important servers.
 
 - TeamSpeak identity generation with AES-GCM storage backed by Android Keystore
 - foreground UDP connection service with a notification disconnect action
-- server address, port, TeamSpeak server password and nickname input
+- server address, port, TeamSpeak server password and nickname input, restored from an encrypted local snapshot
 - up to ten successfully connected addresses and ports, with recent-address prefill and individual deletion
 - correct TeamSpeak Base64(SHA1) server-password authentication
 - connection, cancellation, disconnection and error states
 - cancellable automatic reconnection with network-aware 1–30 second backoff
+- active session exit when Android delivers a task-removal callback, with a two-second protocol budget
+- manual retry guidance after an identity connection-limit refusal; no automatic retry
 - default-network identity and blocked-state tracking, with a bounded control-response check on network switches
 - stale-session callback rejection and in-memory restoration of the last channel
 - hierarchical channel view with direct channel-member rosters
@@ -66,10 +74,14 @@ testing on important servers.
 
 ### Interface and diagnostics
 
+- TailSync-inspired warm cream visual style with terracotta accents, compact cards
+  and licensed Lucide outline icons
+
 - English UI by default, with Simplified Chinese selected automatically for a
   Chinese system or app locale
 - localized service status, notification, audio-route and error messages
-- in-app diagnostics with thread-safe connection and audio counters
+- diagnostics and background voice checks in the secondary More options menu
+- a labeled, accented Disconnect button beside the server information
 - background voice runtime check with an Android battery-optimization entry, a system app-settings entry, and an optional, session-scoped CPU wake-lock request that the system or a vendor battery policy can disable
 - a bounded local event journal and Android process-exit reasons that survive process recreation
 - background reconnection restores listening; stopped microphone capture resumes when the app is visible
@@ -82,13 +94,42 @@ There is currently no in-app language selector. Whisper transmission, automatic
 voice activation, text chat, file transfer, permissions administration,
 bookmarks and multi-server tabs are also not implemented.
 
+## Removing the task
+
+Removing the app from recents requests a disconnect if Android delivers the
+callback. Home, app switching and locking the screen keep the existing background
+session. The exit result distinguishes a request sent from server-confirmed
+release; if the network is unavailable, the server may retain the session until
+its own timeout. Force stop and vendor process killing may provide no callback.
+Reopening the app does not connect automatically.
+
+On the tested Xiaomi / Android 16 device, launcher swipe removal kills the process
+before delivering the callback to a newly created service. That service cannot
+disconnect the lost socket, even with unrestricted battery policy or a locked
+recent task. Use the app or notification disconnect action before removal for a
+server-confirmed exit. See the [device report](docs/testing/TASK_REMOVAL_DEVICE_2026-10-17.md).
+
+If the server refuses an identity connection limit, the app stops retrying and
+explains leftover sessions and other clients using that identity. Wait at least
+60 seconds before manually reconnecting; this is guidance, not a guaranteed
+server cleanup deadline. Repeated attempts may trigger a temporary server ban.
+Ordinary network interruption recovery remains automatic. Disconnect with the
+app or notification before swiping the app away. The complete localized guidance
+scrolls with the form. See [ADR-0011](docs/decisions/0011-manual-refusal-and-form-memory.md).
+
+Local regressions and a debug build cover the implementation. Callback delivery,
+actual microphone stop time and server release still require device acceptance:
+see [the review and device matrix](docs/testing/TASK_REMOVAL_DISCONNECT_REVIEW_2026-10-13.md).
+
 ## Privacy
 
 The project includes no analytics, advertising, telemetry, crash-reporting SDK
 or project-operated backend. The app connects directly to servers selected by
 the user. The TeamSpeak identity is encrypted locally using Android Keystore.
-Only successfully connected server addresses and ports are saved locally, up
-to ten entries. Nicknames and passwords remain in app/service memory. A
+Up to ten successful server addresses and ports are stored as history. The last
+connection form (address, port, nickname and server password) is saved separately
+with AES-GCM and an Android Keystore key, excluded from Android backup. Edits
+are saved after a short delay; connecting waits for a save attempt. A
 password used to restore a channel remains in the foreground service's memory
 only. Local diagnostics retain at most 128 events with fixed categories and
 numeric system state; they exclude connection details and audio.
@@ -140,9 +181,22 @@ Set `sdk.dir` in an untracked `local.properties`, then verify the local setup:
 Run the complete automated gate:
 
 ```powershell
-.\gradlew.bat quality :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --stacktrace
+.\gradlew.bat quality :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --stacktrace
 .\tools\check-repository-privacy.ps1
 ```
+
+With a booted Android emulator or an authorized device, verify identity loading
+in the minified release APK (JDK 17 and PowerShell 7; set `ANDROID_HOME` or pass
+`-SdkRoot` with your SDK path):
+
+```powershell
+.\tools\check-release-identity.ps1 -DeviceSerial emulator-5554
+```
+
+Use the serial reported by `adb devices`. The check loads the APK without installing
+it and tests temporary identity reloads and INI parse/store entirely offline.
+Its separate probe cannot change R8's reachability analysis. Output is saved under
+`build/release-identity-smoke/`. See the [issue #3 report](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
 
 With an authorized physical Android device connected, run the native device
 suite:
@@ -152,8 +206,11 @@ suite:
 ```
 
 The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+For opt-in microphone signal comparisons and the latest device findings, see
+[the audio diagnosis record](docs/testing/AUDIO_QUALITY_DIAGNOSIS_2026-10-13.md).
 GitHub Actions runs the privacy scan, formatting checks, JVM/unit tests, Android
-Lint and debug assembly for every pull request and push to `main`.
+Lint, debug/release assembly and the minified identity smoke check for every pull
+request and push to `main`.
 
 ## Android support
 

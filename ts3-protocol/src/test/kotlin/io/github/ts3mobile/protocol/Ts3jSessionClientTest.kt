@@ -1,6 +1,7 @@
 package io.github.ts3mobile.protocol
 
 import com.github.manevolent.ts3j.audio.Microphone
+import com.github.manevolent.ts3j.command.CommandProcessException
 import com.github.manevolent.ts3j.event.ClientJoinEvent
 import com.github.manevolent.ts3j.event.DisconnectedEvent
 import com.github.manevolent.ts3j.event.TS3Listener
@@ -20,9 +21,53 @@ import java.net.InetSocketAddress
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit.SECONDS
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 class Ts3jSessionClientTest {
+    @Test
+    fun anActiveTalkspurtRemainsReadyWhileItsQueueIsTemporarilyEmpty() {
+        var active = true
+        val frames = ArrayDeque(listOf(byteArrayOf(1, 2, 3, 4)))
+        val source =
+            object : EncodedVoiceSource {
+                override val isTransmitting get() = active
+
+                override fun isReady() = frames.isNotEmpty()
+
+                override fun pollEncodedFrame() = frames.removeFirstOrNull()
+            }
+        val socket = FakeSocket()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        try {
+            client.setVoiceSource(source)
+            client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+            val microphone = checkNotNull(socket.lastMicrophone)
+            assertEquals(4, microphone.provide().size)
+            assertTrue("a transient queue gap ended the talkspurt", microphone.isReady)
+            assertEquals(0, microphone.provide().size)
+            active = false
+            assertFalse(microphone.isReady)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun theFacadeCarriesTheObservedCloneCategoryAndReleasesTheFailedSocket() {
+        val failure = IllegalStateException("fixture wrapper", CommandProcessException("TOO MANY CLONES ALREADY CONNECTED"))
+        val socket = FakeSocket(failureOnConnect = failure)
+        val listener = RecordingListener()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        val thrown = runCatching { client.connect(testConfig(), Ts3IdentityCodec.generate(), listener) }.exceptionOrNull()
+        assertEquals(failure, thrown)
+        val status = listener.statuses.single { it.phase == ConnectionPhase.ERROR }
+        assertEquals(ConnectionFailureCategory.CLONES_LIMIT, status.category)
+        assertFalse(status.retryable)
+        assertTrue(listener.statuses.none { it.phase == ConnectionPhase.CONNECTED })
+        assertEquals(1, socket.closeCalls)
+    }
+
     @Test
     fun aStaleJoinCannotMutateTheReplacementSessionSnapshot() {
         val joinEntered = CountDownLatch(1)
@@ -257,6 +302,147 @@ class Ts3jSessionClientTest {
         assertEquals(true, client.transportConnected)
     }
 
+    @Test
+    fun boundedDisconnectWithoutASessionCreatesNoSocket() {
+        val created = AtomicInteger()
+        val client =
+            Ts3jSessionClient(
+                Ts3jClientSocketFactory {
+                    created.incrementAndGet()
+                    FakeSocket()
+                },
+            )
+
+        val outcome = runBlocking { client.disconnectBounded(BUDGET_MS) }
+
+        assertEquals(DisconnectOutcome.NO_ACTIVE_SESSION, outcome)
+        assertEquals(0, created.get())
+    }
+
+    @Test
+    fun boundedDisconnectUsesTheCapturedSocketAndReportsItsOutcome() {
+        val socket = FakeSocket()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+        socket.boundedDisconnectOutcome = DisconnectOutcome.SERVER_CONFIRMED
+
+        val outcome = runBlocking { client.disconnectBounded(BUDGET_MS, REASON) }
+
+        assertEquals(DisconnectOutcome.SERVER_CONFIRMED, outcome)
+        assertEquals(1, socket.boundedDisconnectCalls)
+        assertEquals(BUDGET_MS, socket.boundedDisconnectBudget)
+        assertEquals(REASON, socket.boundedDisconnectReason)
+        // The old socket's microphone stops before the exit, so no further voice
+        // frame can be sent while the server is still being asked to release us.
+        assertNull(socket.lastMicrophone)
+        assertEquals(1, socket.closeCalls)
+    }
+
+    @Test
+    fun boundedDisconnectReportsFailedWhenTheSocketFails() {
+        val socket = FakeSocket(boundedDisconnectFailure = IllegalStateException("transport is gone"))
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+
+        val outcome = runBlocking { client.disconnectBounded(BUDGET_MS) }
+
+        assertEquals(DisconnectOutcome.FAILED, outcome)
+        assertEquals(1, socket.closeCalls)
+    }
+
+    @Test
+    fun boundedDisconnectDropsTheOldListenerAndGeneration() {
+        val socket = FakeSocket()
+        val listener = RecordingListener()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), listener)
+        socket.fireClientJoin(clientId = 7, channelId = 10, nickname = "Alice")
+        val statusesBefore = listener.statuses.size
+        val snapshotsBefore = listener.snapshots.size
+
+        runBlocking { client.disconnectBounded(BUDGET_MS) }
+
+        // Events from the replaced session must not reach the listener, and the
+        // old failure handler must not report a second time.
+        socket.fireClientJoin(clientId = 7, channelId = 99, nickname = "Late")
+        socket.fireDisconnected(reasonId = 4)
+        socket.emitException(IllegalStateException("late failure"))
+
+        assertEquals(statusesBefore, listener.statuses.size)
+        assertEquals(snapshotsBefore, listener.snapshots.size)
+        assertEquals(false, client.transportConnected)
+    }
+
+    @Test
+    fun repeatedBoundedDisconnectOnlyLeavesOnce() {
+        val socket = FakeSocket()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+
+        val first = runBlocking { client.disconnectBounded(BUDGET_MS) }
+        val second = runBlocking { client.disconnectBounded(BUDGET_MS) }
+
+        assertEquals(DisconnectOutcome.SERVER_CONFIRMED, first)
+        assertEquals(DisconnectOutcome.NO_ACTIVE_SESSION, second)
+        assertEquals(1, socket.boundedDisconnectCalls)
+        assertEquals(1, socket.closeCalls)
+    }
+
+    @Test
+    fun boundedDisconnectDoesNotCloseTheReplacementSession() {
+        val exitEntered = CountDownLatch(1)
+        val releaseExit = CountDownLatch(1)
+        val firstSocket =
+            FakeSocket(
+                onBoundedDisconnect = {
+                    exitEntered.countDown()
+                    releaseExit.await(2, SECONDS)
+                },
+            )
+        val secondSocket = FakeSocket()
+        val sockets = ConcurrentLinkedQueue(listOf(firstSocket, secondSocket))
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { sockets.remove() })
+        val identity = Ts3IdentityCodec.generate()
+        client.connect(testConfig(), identity, RecordingListener())
+
+        val exitOutcome = AtomicReference<DisconnectOutcome?>()
+        val exitThread =
+            Thread {
+                exitOutcome.set(runBlocking { client.disconnectBounded(BUDGET_MS) })
+            }
+        exitThread.start()
+        assertTrue(exitEntered.await(1, SECONDS))
+
+        client.connect(testConfig(), identity, RecordingListener())
+        releaseExit.countDown()
+        exitThread.join(1_000)
+
+        assertFalse(exitThread.isAlive)
+        assertEquals(DisconnectOutcome.SERVER_CONFIRMED, exitOutcome.get())
+        assertEquals(1, firstSocket.closeCalls)
+        assertEquals(0, secondSocket.closeCalls)
+        assertEquals(true, secondSocket.isConnected)
+    }
+
+    @Test
+    fun aSocketWithoutBoundedSupportIsReportedAsUnsupported() {
+        val socket = FakeSocket(boundedDisconnectSupported = false)
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+
+        val outcome = runBlocking { client.disconnectBounded(BUDGET_MS) }
+
+        assertEquals(DisconnectOutcome.UNSUPPORTED, outcome)
+        assertEquals(1, socket.closeCalls)
+    }
+
+    @Test
+    fun theDefaultBoundedDisconnectIsUnsupported() {
+        val outcome = runBlocking { MinimalSessionClient().disconnectBounded(BUDGET_MS) }
+
+        assertEquals(DisconnectOutcome.UNSUPPORTED, outcome)
+    }
+
     private fun testConfig() =
         ServerConfig(
             host = "localhost",
@@ -304,12 +490,26 @@ class Ts3jSessionClientTest {
         private val joinEntered: CountDownLatch? = null,
         private val releaseJoin: CountDownLatch? = null,
         private val failureOnConnect: Throwable? = null,
+        private val boundedDisconnectSupported: Boolean = true,
+        private val boundedDisconnectFailure: Throwable? = null,
+        private val onBoundedDisconnect: (() -> Unit)? = null,
     ) : Ts3jClientSocket {
         private var exceptionHandler: ((Throwable) -> Unit)? = null
         private var connected = false
         private var eventListener: TS3Listener? = null
         override val clientId: Int = 7
         var joinedChannel: Int? = null
+            private set
+        var closeCalls = 0
+            private set
+        var boundedDisconnectCalls = 0
+            private set
+        var boundedDisconnectBudget = 0L
+            private set
+        var boundedDisconnectReason: String? = null
+            private set
+        var boundedDisconnectOutcome: DisconnectOutcome = DisconnectOutcome.SERVER_CONFIRMED
+        var lastMicrophone: Microphone? = null
             private set
 
         override fun setIdentity(identity: LocalIdentity) = Unit
@@ -318,7 +518,9 @@ class Ts3jSessionClientTest {
 
         override fun setHWID(hwid: String) = Unit
 
-        override fun setMicrophone(microphone: Microphone?) = Unit
+        override fun setMicrophone(microphone: Microphone?) {
+            lastMicrophone = microphone
+        }
 
         override fun setExceptionHandler(handler: (Throwable) -> Unit) {
             exceptionHandler = handler
@@ -359,7 +561,22 @@ class Ts3jSessionClientTest {
             connected = false
         }
 
+        override fun disconnectBounded(
+            timeoutMs: Long,
+            reason: String,
+            onRequestSent: () -> Unit,
+        ): DisconnectOutcome {
+            if (!boundedDisconnectSupported) return super.disconnectBounded(timeoutMs, reason, onRequestSent)
+            boundedDisconnectCalls++
+            boundedDisconnectBudget = timeoutMs
+            boundedDisconnectReason = reason
+            onBoundedDisconnect?.invoke()
+            boundedDisconnectFailure?.let { throw it }
+            return boundedDisconnectOutcome
+        }
+
         override fun close() {
+            closeCalls++
             connected = false
         }
 
@@ -412,5 +629,10 @@ class Ts3jSessionClientTest {
                 DisconnectedEvent(mapOf("reasonid" to reasonId.toString())),
             )
         }
+    }
+
+    private companion object {
+        const val BUDGET_MS = 1_000L
+        const val REASON = "task-removed"
     }
 }

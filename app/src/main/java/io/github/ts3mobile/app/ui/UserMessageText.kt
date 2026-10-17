@@ -2,11 +2,14 @@ package io.github.ts3mobile.app.ui
 
 import android.content.Context
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.service.RECOMMENDED_RETRY_WAIT_SECONDS
+import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.service.UserMessage
 import io.github.ts3mobile.audio.opus.AudioRouteKind
 import io.github.ts3mobile.audio.opus.AudioRouteOption
 import io.github.ts3mobile.audio.opus.AudioRoutingError
 import io.github.ts3mobile.audio.opus.AudioRoutingErrorKind
+import io.github.ts3mobile.protocol.ConnectionFailureCategory
 
 /**
  * Resolves service-layer messages against the active locale. This is the only
@@ -36,6 +39,7 @@ fun UserMessage.resolve(context: Context): String =
             context.getString(R.string.status_reconnect_scheduled, seconds, attempt)
 
         is UserMessage.Reconnecting -> context.getString(R.string.status_reconnecting_attempt, attempt)
+        UserMessage.ConnectionLimitWait -> context.connectionLimitGuidance()
         is UserMessage.ChannelJoinFailed -> context.getString(R.string.channel_join_failed, cause)
         is UserMessage.ChannelRestoreFailed -> context.getString(R.string.channel_restore_failed, cause)
         UserMessage.MicrophonePermissionForContinuous ->
@@ -47,6 +51,24 @@ fun UserMessage.resolve(context: Context): String =
         is UserMessage.MicrophoneFailed -> context.getString(R.string.microphone_failed, cause)
         is UserMessage.AudioRouting -> error.resolve(context)
     }
+
+/** A categorized refusal must not fall back to the server's technical wording. */
+internal fun TeamSpeakServiceState.resolveStatusText(context: Context): String? {
+    statusMessage?.let { return it.resolve(context) }
+    if (status.category == ConnectionFailureCategory.CLONES_LIMIT) {
+        return context.connectionLimitGuidance()
+    }
+    return status.detail
+}
+
+private fun Context.connectionLimitGuidance(): String =
+    listOf(
+        getString(R.string.status_clones_limit_unavailable),
+        getString(R.string.status_clones_limit_explanation),
+        getString(R.string.status_clones_limit_manual_wait, RECOMMENDED_RETRY_WAIT_SECONDS),
+        getString(R.string.status_clones_limit_manual_retry),
+        getString(R.string.status_clones_limit_exit_guidance),
+    ).joinToString("\n\n")
 
 /** Names an audio route, appending the platform device name when one is known. */
 fun AudioRouteOption.resolveLabel(context: Context): String {

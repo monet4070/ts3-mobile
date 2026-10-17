@@ -25,8 +25,23 @@ a pull request, run the environment check first:
 Then run:
 
 ```powershell
-.\gradlew.bat :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+.\gradlew.bat :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
 ```
+
+After changes to identity handling, dependencies or shrinker rules, also run the
+offline regression against the actual minified APK on a booted Android emulator:
+
+```powershell
+.\tools\check-release-identity.ps1 -DeviceSerial emulator-5554
+```
+
+This requires PowerShell 7 and `ANDROID_HOME`/`ANDROID_SDK_ROOT`, or an explicit
+`-SdkRoot` argument. Select the serial from `adb devices`; `-ApkPath` can select
+another APK. The Java probe in `app/src/releaseSmokeTest` is compiled separately
+and runs via ART `app_process`, without installing the app or contacting a server.
+Keep it outside the production build so test references cannot hide R8 mistakes.
+CI runs this check on API 35. A successful release build alone cannot validate
+reflective constructors; see the [issue #3 report](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
 
 The repository quality gate also checks Kotlin formatting across all modules:
 
@@ -42,6 +57,16 @@ Before publishing a branch, run the privacy-safe repository scan:
 
 Use `.\gradlew.bat ktlintFormat` only for a focused formatting change, then
 review the complete diff before committing it.
+
+For UI changes, run the offline Compose regression/preview suite on an Android
+emulator (no TeamSpeak server or credentials are required):
+
+```powershell
+.\gradlew.bat :app:connectedDebugAndroidTest
+```
+
+The preview tests write PNGs into the app's external `ui-previews` directory.
+Check both palettes, Chinese text and large text before changing shared UI tokens.
 
 Changes to native audio or device interaction should also be tested on a
 physical device. Describe the tested device, Android version, audio route, and
