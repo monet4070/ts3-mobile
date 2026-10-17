@@ -54,8 +54,10 @@ jobs:
           :audio-opus:lintDebug
           :app:testDebugUnitTest
           :app:lintDebug
+          :app:lintRelease
           :app:assembleDebug
           :app:assembleRelease
+          --max-workers=2
           --stacktrace
 
       - name: Verify identity loading in the minified APK
