@@ -68,7 +68,13 @@ jobs:
         run: |
           ./gradlew --stop
           sudo chmod 666 /dev/kvm
-          echo no | avdmanager create avd --name release-identity-api35 --package "system-images;android-35;default;x86_64"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/release-identity-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avd_path="$ANDROID_AVD_HOME/release-identity-api35.avd"
+          echo no | avdmanager create avd --name release-identity-api35 --path "$avd_path" --package "system-images;android-35;default;x86_64"
+          # Explicit registration also covers CLI/emulator versions with different default homes.
+          printf 'avd.ini.encoding=UTF-8\npath=%s\ntarget=android-35\n' "$avd_path" > "$ANDROID_AVD_HOME/release-identity-api35.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds
           cleanup() {
             result=$?
             trap - EXIT
