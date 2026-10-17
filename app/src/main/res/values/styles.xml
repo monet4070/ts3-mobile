@@ -2,9 +2,10 @@
 <resources>
     <style name="Theme.Ts3Mobile" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:navigationBarColor">#F8FAF7</item>
-        <item name="android:statusBarColor">#F8FAF7</item>
+        <item name="android:windowLightStatusBar">@bool/light_system_bars</item>
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:navigationBarColor">@color/window_background</item>
+        <item name="android:statusBarColor">@color/window_background</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
 </resources>

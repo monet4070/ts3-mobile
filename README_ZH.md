@@ -14,6 +14,7 @@ TeamSpeak 及相关名称和商标归其各自所有者所有。
 
 当前开发重点是 M11 production-beta 准备阶段。自动化构建门禁和 M10 代码加固基线
 已经完成，但完整的实体设备验收矩阵尚未完成。剩余发布证据请参阅
+[持续开发计划](docs/release/CONTINUATION_PLAN_ZH.md)、
 [M11 发布清单](docs/release/M11_RELEASE_CHECKLIST.md) 和
 [M10 稳定性矩阵](docs/testing/M10_STABILITY_MATRIX.md)。
 
@@ -25,6 +26,8 @@ TeamSpeak 及相关名称和商标归其各自所有者所有。
 本应用仍属于预发布软件。在重要服务器上测试时，请保留其他可用客户端。
 
 ## 功能
+
+界面采用 TailSync 风格的暖米白主题，以奶油色卡片与陶土橙作为视觉层次，使用 Lucide 精细线性图标。
 
 ### 连接与会话
 

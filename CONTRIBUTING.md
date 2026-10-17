@@ -43,6 +43,16 @@ Before publishing a branch, run the privacy-safe repository scan:
 Use `.\gradlew.bat ktlintFormat` only for a focused formatting change, then
 review the complete diff before committing it.
 
+For UI changes, run the offline Compose regression/preview suite on an Android
+emulator (no TeamSpeak server or credentials are required):
+
+```powershell
+.\gradlew.bat :app:connectedDebugAndroidTest
+```
+
+The preview tests write PNGs into the app's external `ui-previews` directory.
+Check both palettes, Chinese text and large text before changing shared UI tokens.
+
 Changes to native audio or device interaction should also be tested on a
 physical device. Describe the tested device, Android version, audio route, and
 result without exposing private server details.

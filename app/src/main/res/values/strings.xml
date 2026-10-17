@@ -140,4 +140,12 @@
     <string name="diagnostics_channel_join_failures">Channel switch failures</string>
     <string name="diagnostics_last_failure">Last failure type</string>
     <string name="diagnostics_none" translatable="false">NONE</string>
+
+    <!-- TailSync default presentation -->
+    <string name="app_tagline">VOICE, CONNECTED</string>
+    <string name="connect_subtitle">Your people. Your server. One connection away.</string>
+    <string name="section_server_details">SERVER DETAILS</string>
+    <string name="connect_privacy_note">Direct to your server. Your identity stays on this device.</string>
+    <string name="channel_gesture_hint">Tap to expand · Double-tap to join</string>
+    <string name="microphone_label">Microphone</string>
 </resources>

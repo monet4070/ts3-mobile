@@ -130,4 +130,12 @@
     <string name="diagnostics_channel_join_attempts">频道切换尝试</string>
     <string name="diagnostics_channel_join_failures">频道切换失败</string>
     <string name="diagnostics_last_failure">最近失败类型</string>
+
+    <!-- TailSync default presentation -->
+    <string name="app_tagline">让声音，保持连接</string>
+    <string name="connect_subtitle">连接你的服务器，让熟悉的声音即刻相聚。</string>
+    <string name="section_server_details">服务器信息</string>
+    <string name="connect_privacy_note">直连你的服务器，身份密钥保留在本机。</string>
+    <string name="channel_gesture_hint">单击展开成员 · 双击加入频道</string>
+    <string name="microphone_label">麦克风</string>
 </resources>

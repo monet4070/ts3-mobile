@@ -6,15 +6,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -58,14 +55,14 @@ internal fun DiagnosticsPanel(
                 )
             }
             Spacer(Modifier.width(12.dp))
-            OutlinedButton(onClick = onCopyDiagnostics) {
-                Icon(Icons.Outlined.ContentCopy, contentDescription = null)
+            OutlinedButton(onClick = onCopyDiagnostics, shape = MaterialTheme.shapes.small) {
+                AppIcon(UiIcon.Copy, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.action_copy))
             }
         }
 
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.heightIn(min = 2.dp))
         HorizontalDivider()
 
         DiagnosticMetric(stringResource(R.string.diagnostics_uptime), formatDuration(diagnostics.uptimeMs))
@@ -95,7 +92,7 @@ private fun DiagnosticMetric(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(34.dp),
+                .heightIn(min = 34.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(

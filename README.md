@@ -17,7 +17,8 @@ marks are the property of their respective owners.
 Development is currently focused on the M11 production-beta preparation
 milestone. The automated build gate and the M10 code-hardening baseline are in
 place, but the complete physical-device acceptance matrix is not finished. See
-the [M11 release checklist](docs/release/M11_RELEASE_CHECKLIST.md) and
+the [continuation plan](docs/release/CONTINUATION_PLAN.md), the
+[M11 release checklist](docs/release/M11_RELEASE_CHECKLIST.md) and the
 [M10 stability matrix](docs/testing/M10_STABILITY_MATRIX.md) for the remaining
 release evidence.
 
@@ -63,6 +64,9 @@ testing on important servers.
 - automatic fallback to system routing when a selected device is disconnected
 
 ### Interface and diagnostics
+
+- TailSync-inspired warm cream visual style with terracotta accents, compact cards
+  and licensed Lucide outline icons
 
 - English UI by default, with Simplified Chinese selected automatically for a
   Chinese system or app locale

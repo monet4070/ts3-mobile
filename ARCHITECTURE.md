@@ -67,6 +67,16 @@ outside the session callback implementation. A reconnect snapshot cannot replace
 that target while restoration is pending, and an already-restored channel is not
 joined again.
 
+## Visual presentation
+
+The Compose layer follows TailSync's warm Canvas palette, with a cream light
+default, coordinated warm dark preview tokens and restrained 4/6/10 dp geometry. `ui/theme` owns colors, typography and
+shapes; `UiComponents` owns shared panels and icon tiles. `AppIcon` renders
+bundled Lucide 0.468.0 vector drawables without a runtime icon dependency.
+Connection fields, status surfaces, session header/navigation and channel
+password entry are separate components. Service state and callbacks remain the
+single source of connection and audio behavior. See ADR 0007.
+
 ## Diagnostics
 
 `DiagnosticsRecorder` is a thread-safe, in-memory counter owned by the service.

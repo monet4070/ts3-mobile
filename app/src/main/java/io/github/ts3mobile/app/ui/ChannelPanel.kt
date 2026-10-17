@@ -13,23 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Tag
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,8 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
@@ -57,8 +42,6 @@ internal fun ChannelList(
     onJoinChannel: (Int, String) -> Unit,
 ) {
     var passwordChannel by remember { mutableStateOf<Ts3Channel?>(null) }
-    var channelPassword by rememberSaveable { mutableStateOf("") }
-    var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var expandedChannelIds by rememberSaveable { mutableStateOf(intArrayOf()) }
     val currentChannelId = state.snapshot.currentChannelId
     val rows =
@@ -77,72 +60,10 @@ internal fun ChannelList(
     }
 
     passwordChannel?.let { channel ->
-        AlertDialog(
-            onDismissRequest = {
-                passwordChannel = null
-                channelPassword = ""
-                passwordVisible = false
-            },
-            title = { Text(stringResource(R.string.channel_join_title, channel.name)) },
-            text = {
-                OutlinedTextField(
-                    value = channelPassword,
-                    onValueChange = { channelPassword = it },
-                    singleLine = true,
-                    label = { Text(stringResource(R.string.field_channel_password)) },
-                    leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
-                    trailingIcon = {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                imageVector =
-                                    if (passwordVisible) {
-                                        Icons.Outlined.VisibilityOff
-                                    } else {
-                                        Icons.Outlined.Visibility
-                                    },
-                                contentDescription =
-                                    stringResource(
-                                        if (passwordVisible) {
-                                            R.string.action_hide_password
-                                        } else {
-                                            R.string.action_show_password
-                                        },
-                                    ),
-                            )
-                        }
-                    },
-                    visualTransformation =
-                        if (passwordVisible) {
-                            VisualTransformation.None
-                        } else {
-                            PasswordVisualTransformation()
-                        },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onJoinChannel(channel.id, channelPassword)
-                        passwordChannel = null
-                        channelPassword = ""
-                        passwordVisible = false
-                    },
-                ) {
-                    Text(stringResource(R.string.action_join))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        passwordChannel = null
-                        channelPassword = ""
-                        passwordVisible = false
-                    },
-                ) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            },
-        )
+        ChannelPasswordDialog(channel.name, onDismiss = { passwordChannel = null }) { password ->
+            onJoinChannel(channel.id, password)
+            passwordChannel = null
+        }
     }
 
     if (rows.isEmpty()) {
@@ -163,7 +84,7 @@ internal fun ChannelList(
                             .fillMaxWidth()
                             .background(
                                 if (isCurrent) {
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                    MaterialTheme.colorScheme.primaryContainer
                                 } else {
                                     MaterialTheme.colorScheme.surface
                                 },
@@ -188,8 +109,6 @@ internal fun ChannelList(
                                 onDoubleClick = {
                                     if (!isCurrent && state.switchingChannelId == null) {
                                         if (row.channel.hasPassword) {
-                                            channelPassword = ""
-                                            passwordVisible = false
                                             passwordChannel = row.channel
                                         } else {
                                             onJoinChannel(row.channel.id, "")
@@ -205,12 +124,12 @@ internal fun ChannelList(
                             ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector =
+                    AppIcon(
+                        icon =
                             if (isExpanded) {
-                                Icons.Outlined.KeyboardArrowDown
+                                UiIcon.ChevronDown
                             } else {
-                                Icons.AutoMirrored.Outlined.KeyboardArrowRight
+                                UiIcon.ChevronRight
                             },
                         contentDescription =
                             stringResource(
@@ -220,8 +139,8 @@ internal fun ChannelList(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.width(8.dp))
-                    Icon(
-                        imageVector = if (row.channel.hasPassword) Icons.Outlined.Lock else Icons.Outlined.Tag,
+                    AppIcon(
+                        icon = if (row.channel.hasPassword) UiIcon.Lock else UiIcon.Channel,
                         contentDescription = null,
                         modifier = Modifier.size(20.dp),
                         tint =
@@ -240,13 +159,18 @@ internal fun ChannelList(
                     )
                     Text(
                         text = row.channel.clientCount.toString(),
+                        modifier =
+                            Modifier.background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                MaterialTheme.shapes.extraSmall,
+                            ).padding(horizontal = 7.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (isCurrent) {
                         Spacer(Modifier.width(10.dp))
-                        Icon(
-                            Icons.Outlined.CheckCircle,
+                        AppIcon(
+                            UiIcon.Current,
                             contentDescription = stringResource(R.string.label_current_channel),
                             modifier = Modifier.size(20.dp),
                             tint = MaterialTheme.colorScheme.primary,
@@ -269,7 +193,7 @@ internal fun ChannelList(
                     }
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }

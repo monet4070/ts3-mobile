@@ -3,6 +3,8 @@
 M11 is the production-beta preparation milestone. It does not declare the M10
 physical-device matrix complete; deferred long-duration, Bluetooth, password
 channel and second-device rows remain release blockers until they are executed.
+The [continuation plan](CONTINUATION_PLAN.md) sequences this checklist; it does
+not replace it.
 
 ## 1. Local Environment
 
