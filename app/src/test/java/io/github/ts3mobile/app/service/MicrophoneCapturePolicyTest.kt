@@ -7,6 +7,13 @@ import org.junit.Test
 
 class MicrophoneCapturePolicyTest {
     @Test
+    fun backgroundReconnectCannotRestartCaptureButExistingCaptureCanContinue() {
+        assertFalse(MicrophoneCapturePolicy.canStartCapture(appVisible = false, alreadyCapturing = false))
+        assertTrue(MicrophoneCapturePolicy.canStartCapture(appVisible = true, alreadyCapturing = false))
+        assertTrue(MicrophoneCapturePolicy.canStartCapture(appVisible = false, alreadyCapturing = true))
+    }
+
+    @Test
     fun disconnectedSessionsNeverCapture() {
         MicrophoneMode.entries.forEach { mode ->
             assertFalse(

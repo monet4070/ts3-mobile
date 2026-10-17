@@ -67,11 +67,43 @@
 
 ### 3.3 Android Lifecycle, Security & Services
 
-![Lifecycle and Security Diagram](images/04_lifecycle_security.png)
+```mermaid
+flowchart TB
+    subgraph FSLifecycle["Foreground Service Lifecycle"]
+        Connect["User Connects"]
+        FS["Start Foreground Service"]
+        Types["Listening: MEDIA_PLAYBACK"]
+        PTTPress["PTT Pressed / Continuous Active"]
+        AddMic["Dynamically Append: MICROPHONE Type"]
+        PTTRelease["PTT Released"]
+        RemoveMic["Remove MICROPHONE Type"]
+        NetDrop["Network Lost"]
+        RecLoop["ReconnectPolicy (1-30s Exponential Backoff)"]
+        NetBack["Network Recovered"]
+        Rejoin["ChannelRestorePolicy (Rejoin Previous Channel)"]
+        Connect --> FS --> Types
+        PTTPress --> AddMic
+        PTTRelease --> RemoveMic
+        NetDrop --> RecLoop --> NetBack --> Rejoin
+    end
+
+    subgraph Identity["Identity & Security"]
+        Keystore["Android Keystore (Hardware Backed)"]
+        AES["AES-GCM-NoPadding Cipher"]
+        PrivKey["Generate/Retrieve AES-256"]
+        EncBlob["Encrypted Blob"]
+        IdentityMat["TeamSpeak Identity Material"]
+        DataStore["Preferences DataStore"]
+        Keystore --> PrivKey --> AES --> EncBlob --> DataStore
+        DataStore -.->|"decrypt on use"| IdentityMat
+    end
+```
 
 - **Hardware-Backed Identity Vault (`IdentityVault.kt`)**: TeamSpeak client private identity keys are encrypted using AES-GCM with hardware-backed keys from the Android Keystore and stored in DataStore. Plaintexts are never persisted to disk or transmitted over the network.
-- **Android 14+ Foreground Service Policy**: During standard connection, the service declares `mediaPlayback | dataSync`. The `microphone` foreground type is appended *only* while the user is actively speaking (PTT pressed or continuous transmit active), complying with Google Play requirements.
-- **Network-Aware Reconnection (`ReconnectPolicy.kt`)**: Listens to `ConnectivityManager.NetworkCallback`. Pauses retry timers when offline and triggers immediate reconnection with 1–30s exponential backoff upon network restoration.
+- **Foreground Service Policy (`SessionNotifications.kt`)**: Listening uses `mediaPlayback`; actual PTT or continuous capture adds `microphone`. The long-lived voice session no longer enables `dataSync`. Stopped background capture waits for a visible app before restarting.
+- **Network-Aware Reconnection**: `DefaultNetworkMonitor` tracks identity, capabilities, pending and blocked states. A bounded read-only control request checks a network switch before reconnecting. Offline retry waits for usable network, then applies 1–30s backoff.
+- **Background Evidence and Power**: A bounded local journal survives process recreation. The background runtime check offers battery settings and an optional timed CPU wake lock, with a two-minute recovery budget; see [ADR-0007](decisions/0007-background-voice-and-server-history.md).
+- **Successful Endpoint History**: One shared DataStore saves the ten most recent successful host/port pairs, without passwords or nicknames; users can select or delete entries.
 - **Channel State Memory & Restoration (`ChannelRestorePolicy.kt`)**: In-memory caching of the active channel ID and password; automatically rejoins the user's previous channel upon reconnection.
 
 ---

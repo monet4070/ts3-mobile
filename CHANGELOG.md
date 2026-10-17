@@ -7,6 +7,10 @@ and audio behavior is still being validated.
 
 ### Added
 
+- A warm cream Compose interface with terracotta accents and licensed Lucide
+  outline icons, retaining server history, background voice checks and the
+  microphone-paused state from the latest connection implementation.
+
 - English as the default UI language with Simplified Chinese kept under
   `values-zh/`. All user-facing text now lives in string resources, and the
   service and audio layers emit typed `UserMessage` / `AudioRoutingError`

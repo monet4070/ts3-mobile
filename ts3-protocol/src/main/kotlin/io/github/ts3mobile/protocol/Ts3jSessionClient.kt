@@ -8,6 +8,9 @@ import com.github.manevolent.ts3j.event.TS3Listener
 import com.github.manevolent.ts3j.protocol.PacketKind
 import com.github.manevolent.ts3j.protocol.packet.PacketBody0Voice
 import com.github.manevolent.ts3j.protocol.packet.PacketBody1VoiceWhisper
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -26,6 +29,14 @@ class Ts3jSessionClient : Ts3SessionClient {
 
     @Volatile
     private var socket: Ts3jClientSocket? = null
+
+    /**
+     * Set inside the session gate whenever a failure or server-issued disconnect is
+     * reported for the current generation, so [transportConnected] cannot report
+     * the same event a second time as an unexplained transport loss.
+     */
+    @Volatile
+    private var failureReported = false
 
     @Volatile
     private var listener: Ts3SessionListener? = null
@@ -46,6 +57,7 @@ class Ts3jSessionClient : Ts3SessionClient {
             generation.begin { nextToken ->
                 val previous = socket
                 socket = null
+                failureReported = false
                 this.listener = listener
                 snapshotStore.clear()
                 nextToken to previous
@@ -136,6 +148,7 @@ class Ts3jSessionClient : Ts3SessionClient {
             reportConnectionFailure(token, connectionAttempt, reportedError)
             runCatching { client.close() }
             generation.withCurrent(token) {
+                failureReported = true
                 if (socket === client) socket = null
             }
             throw reportedError
@@ -168,6 +181,115 @@ class Ts3jSessionClient : Ts3SessionClient {
         voiceSource = source
         socket?.setMicrophone(source?.toMicrophone())
     }
+
+    /**
+     * Bounded, server-confirmed disconnect.
+     *
+     * The current session is captured and invalidated before anything else, so
+     * the old listener, generation and microphone stop being used immediately and
+     * a replacement session started meanwhile is never touched. Only the captured
+     * socket is closed afterwards, even when the caller cancels the surrounding
+     * coroutine: the exit is already in flight, and leaving the socket open would
+     * keep the server-side session alive.
+     *
+     * The result is the transport's own outcome, so a local close, a watchdog
+     * transition or a lost acknowledgement is never reported as
+     * [DisconnectOutcome.SERVER_CONFIRMED]. No status is emitted here; the caller
+     * owns the user-visible state once the session is gone.
+     */
+    override suspend fun disconnectBounded(
+        timeoutMs: Long,
+        reason: String,
+        onRequestSent: () -> Unit,
+    ): DisconnectOutcome {
+        val startedAt = System.nanoTime()
+        require(timeoutMs > 0L) { "Disconnect timeout must be positive" }
+        val captured =
+            generation.invalidate {
+                val previous = socket
+                socket = null
+                snapshotStore.clear()
+                listener = null
+                previous
+            }
+        if (captured == null) return DisconnectOutcome.NO_ACTIVE_SESSION
+
+        // Stop the old socket's microphone before the exit, so no further voice
+        // frame can be sent even if the server never answers the leave request.
+        try {
+            captured.setMicrophone(null)
+        } catch (error: Throwable) {
+            // The exit must not be blocked by a microphone that cannot be stopped,
+            // but the failure is reported instead of hidden.
+            logFailure("stopping the old microphone failed", error)
+        }
+        return try {
+            withContext(Dispatchers.IO) {
+                val remaining = timeoutMs - (System.nanoTime() - startedAt) / 1_000_000L
+                if (remaining <= 0) {
+                    DisconnectOutcome.TIMED_OUT
+                } else {
+                    captured.disconnectBounded(remaining, reason, onRequestSent)
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            logFailure("bounded disconnect failed", error)
+            DisconnectOutcome.FAILED
+        } finally {
+            runCatching { captured.close() }
+        }
+    }
+
+    override suspend fun verifyLiveness(timeoutMs: Long): Boolean {
+        require(timeoutMs > 0L) { "Liveness timeout must be positive" }
+        val token = generation.currentToken()
+        val current =
+            generation.withCurrent(token) {
+                socket?.takeIf { it.isConnected }
+            } ?: return false
+        return try {
+            // The socket call is blocking, so it runs off the caller's thread and
+            // is bounded by the protocol timeout. Cancellation is rethrown and no
+            // state is written here, so a cancelled probe cannot revive a
+            // replaced or user-disconnected session.
+            withContext(Dispatchers.IO) { current.probeLiveness(timeoutMs) }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            logFailure("liveness probe failed", error)
+            false
+        }
+    }
+
+    /**
+     * Transport-level view of the current attempt, or null when there is no usable
+     * signal.
+     *
+     * The ts3j socket flips its own state to disconnected on its idle watchdog
+     * without delivering a listener callback or an exception, so a latched
+     * transport read is the only non-blocking way to observe that failure. A null
+     * means the caller must not act: either the implementation does not expose
+     * transport state, or a failure or server-issued disconnect for the current
+     * generation is already being reported through the listener callbacks.
+     *
+     * It never probes the network and never writes to the socket.
+     */
+    override val transportConnected: Boolean?
+        get() {
+            val current = socket
+            val transportState =
+                when {
+                    current == null -> false
+                    current.disconnectNotificationPending -> null
+                    else -> current.isConnected
+                }
+            // Re-check after reading the transport state so a failure reported while
+            // we were reading wins. The gate rejects stale callbacks, so an older
+            // session cannot set the flag for a newer one.
+            return if (failureReported) null else transportState
+        }
 
     override fun joinChannel(
         channelId: Int,
@@ -225,6 +347,7 @@ class Ts3jSessionClient : Ts3SessionClient {
     ) {
         val targetListener =
             generation.withCurrent(token) {
+                failureReported = true
                 socket = null
                 snapshotStore.clear()
                 listener
@@ -335,12 +458,19 @@ class Ts3jSessionClient : Ts3SessionClient {
         token: Long,
         error: Throwable,
     ) {
-        emitStatus(
-            token,
+        // Mark and fetch inside one gate block so a replacement generation can
+        // never inherit the failure report of the session it replaced.
+        val targetListener =
+            generation.withCurrent(token) {
+                failureReported = true
+                listener
+            } ?: return
+        targetListener.onStatusChanged(
             ConnectionStatus(
                 ConnectionPhase.ERROR,
                 error.conciseMessage(),
                 retryable = error.isRetryableConnectionFailure(),
+                category = error.connectionFailureCategory(),
             ),
         )
     }

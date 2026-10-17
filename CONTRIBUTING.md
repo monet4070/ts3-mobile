@@ -56,6 +56,8 @@ Check both palettes, Chinese text and large text before changing shared UI token
 Changes to native audio or device interaction should also be tested on a
 physical device. Describe the tested device, Android version, audio route, and
 result without exposing private server details.
+For background voice or saved endpoint changes, also follow
+[the background acceptance checklist](docs/testing/BACKGROUND_VOICE_ACCEPTANCE.md).
 
 ## Pull requests
 

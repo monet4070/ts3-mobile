@@ -8,6 +8,19 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 class SessionGenerationTest {
     @Test
+    fun guardedMutationRejectsAReplacedOrInvalidatedSession() {
+        val generation = SessionGeneration()
+        val first = generation.beginSession()
+        val second = generation.beginSession()
+        var mutations = 0
+        assertFalse(generation.withActive(first) { mutations++ })
+        assertTrue(generation.withActive(second) { mutations++ })
+        generation.invalidate()
+        assertFalse(generation.withActive(second) { mutations++ })
+        assertEquals(1, mutations)
+    }
+
+    @Test
     fun aNewSessionInvalidatesCallbacksFromThePreviousSession() {
         val generation = SessionGeneration()
         val first = generation.beginSession()

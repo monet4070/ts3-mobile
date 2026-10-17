@@ -40,6 +40,9 @@ internal enum class UiIcon(
     Radio(R.drawable.ic_lucide_radio),
     ArrowRight(R.drawable.ic_lucide_arrow_right),
     Info(R.drawable.ic_lucide_info),
+    Battery(R.drawable.ic_lucide_battery),
+    Trash(R.drawable.ic_lucide_trash_2),
+    History(R.drawable.ic_lucide_history),
 }
 
 @Composable

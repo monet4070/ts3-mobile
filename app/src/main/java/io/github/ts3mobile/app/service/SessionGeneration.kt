@@ -26,6 +26,17 @@ internal class SessionGeneration {
             generation == current && !disconnectRequested
         }
 
+    /** Runs a short state mutation atomically with session registration. */
+    fun withActive(
+        generation: Long,
+        action: () -> Unit,
+    ): Boolean =
+        synchronized(lock) {
+            if (generation != current || disconnectRequested) return@synchronized false
+            action()
+            true
+        }
+
     val isDisconnectRequested: Boolean
         get() = synchronized(lock) { disconnectRequested }
 }

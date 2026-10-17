@@ -25,16 +25,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.ConnectionFormState
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.protocol.ConnectionPhase
 
 @Composable
 internal fun ConnectionForm(
     form: ConnectionFormState,
+    history: List<ServerHistoryEntry>,
+    historyError: Boolean,
     phase: ConnectionPhase,
     onHostChanged: (String) -> Unit,
     onPortChanged: (String) -> Unit,
     onNicknameChanged: (String) -> Unit,
     onPasswordChanged: (String) -> Unit,
+    onHistorySelected: (ServerHistoryEntry) -> Unit,
+    onHistoryRemoved: (ServerHistoryEntry) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -94,6 +99,16 @@ internal fun ConnectionForm(
                     }
                 }
             }
+        }
+        if (history.isNotEmpty() || historyError) {
+            ServerHistorySection(
+                history = history,
+                historyError = historyError,
+                enabled = !busy,
+                onSelected = onHistorySelected,
+                onRemoved = onHistoryRemoved,
+                modifier = Modifier.widthIn(max = 520.dp).fillMaxWidth(),
+            )
         }
         Row(
             Modifier.widthIn(max = 520.dp).fillMaxWidth().padding(horizontal = 4.dp),

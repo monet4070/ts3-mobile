@@ -10,9 +10,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import io.github.ts3mobile.app.ConnectionFormState
+import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.app.service.ParticipantAudioSettings
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
+import io.github.ts3mobile.app.withSelectedHistoryEntry
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.SessionSnapshot
@@ -23,6 +25,13 @@ import java.util.Locale
 internal class UiFixture(connected: Boolean = false) {
     val form = mutableStateOf(ConnectionFormState(host = "voice.example.com", nickname = "Alex"))
     val state = mutableStateOf(if (connected) connectedState() else TeamSpeakServiceState())
+    val history = mutableStateOf<List<ServerHistoryEntry>>(emptyList())
+    val historyError = mutableStateOf(false)
+    val removedHistory = mutableListOf<ServerHistoryEntry>()
+    val keepCpuAwakeRequests = mutableListOf<Boolean>()
+    var refreshes = 0
+    var batterySettings = 0
+    var appSettings = 0
     var connects = 0
     var disconnects = 0
     var copies = 0
@@ -45,11 +54,19 @@ internal class UiFixture(connected: Boolean = false) {
         ) {
             Ts3MobileTheme(darkTheme = dark) {
                 MainScreen(
-                    form = form.value, serviceState = state.value,
+                    form = form.value,
+                    history = history.value,
+                    historyError = historyError.value,
+                    serviceState = state.value,
                     onHostChanged = { form.value = form.value.copy(host = it) },
                     onPortChanged = { form.value = form.value.copy(port = it) },
                     onNicknameChanged = { form.value = form.value.copy(nickname = it) },
                     onPasswordChanged = { form.value = form.value.copy(password = it) },
+                    onHistorySelected = { form.value = form.value.withSelectedHistoryEntry(it) },
+                    onHistoryRemoved = { entry ->
+                        removedHistory += entry
+                        history.value = history.value.filterNot { it.matches(entry) }
+                    },
                     onConnect = {
                         connects++
                         form.value = form.value.copy(submitted = true)
@@ -77,6 +94,13 @@ internal class UiFixture(connected: Boolean = false) {
                     onPushToTalkChanged = { transmission += it },
                     onJoinChannel = { id, password -> joins += id to password },
                     onCopyDiagnostics = { copies++ },
+                    onKeepCpuAwakeChanged = {
+                        keepCpuAwakeRequests += it
+                        state.value = state.value.copy(backgroundRuntime = state.value.backgroundRuntime.copy(keepCpuAwake = it))
+                    },
+                    onRefreshBackgroundRuntime = { refreshes++ },
+                    onBatterySettings = { batterySettings++ },
+                    onAppSettings = { appSettings++ },
                 )
             }
         }

@@ -48,6 +48,12 @@ internal fun ConnectedContent(
                 }
             }
         }
-        MicrophoneControl(state.microphoneMode, state.isTransmitting, onMicrophoneModeChanged, onPushToTalkChanged)
+        MicrophoneControl(
+            mode = state.microphoneMode,
+            isTransmitting = state.isTransmitting,
+            captureDeferred = state.microphoneError == io.github.ts3mobile.app.service.UserMessage.MicrophoneResumeInApp,
+            onMicrophoneModeChanged = onMicrophoneModeChanged,
+            onPushToTalkChanged = onPushToTalkChanged,
+        )
     }
 }

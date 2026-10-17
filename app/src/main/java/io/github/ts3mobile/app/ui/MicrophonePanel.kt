@@ -41,6 +41,7 @@ import io.github.ts3mobile.app.service.MicrophoneMode
 internal fun MicrophoneControl(
     mode: MicrophoneMode,
     isTransmitting: Boolean,
+    captureDeferred: Boolean,
     onMicrophoneModeChanged: (MicrophoneMode) -> Unit,
     onPushToTalkChanged: (Boolean) -> Unit,
 ) {
@@ -92,6 +93,8 @@ internal fun MicrophoneControl(
                                         R.string.microphone_state_off
                                     } else if (isTransmitting) {
                                         R.string.microphone_state_continuous
+                                    } else if (captureDeferred) {
+                                        R.string.microphone_state_deferred
                                     } else {
                                         R.string.microphone_state_starting
                                     },

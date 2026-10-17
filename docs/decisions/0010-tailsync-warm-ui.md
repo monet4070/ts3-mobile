@@ -1,4 +1,4 @@
-# ADR 0007: TailSync warm cream visual language
+# ADR 0010: TailSync warm cream visual language
 
 ## Decision
 
@@ -16,7 +16,8 @@ theme parameter for previews. No wallpaper-driven colors are applied.
 
 Keep the service state, protocol/audio APIs, connection validation, channel
 gestures, participant controls and microphone transmission callbacks compatible.
-No connection settings, credentials or identities are persisted by the UI.
+Successful host/port history is managed by the imported history store. The
+presentation never persists passwords, nicknames or identity material.
 
 ## Decomposition assessment
 
@@ -26,7 +27,22 @@ surfaces and shared visual primitives get focused files. Channel password entry
 will be extracted if channel layout would cross the approximately 300-line
 review boundary. No service or protocol decomposition is needed for this work.
 
-## Verification
+## Integration with current remote behavior
+
+Merge remote revision `a6ae68e`, including ADRs 0007-0009, while keeping their
+service, history-store and protocol implementations unchanged. The UI passes
+the new history and background-runtime callbacks through to the existing
+application boundary. Server-history rows get a focused component; the resumed
+microphone hint is preserved in the warm microphone surface. Opening the
+background dialog releases push-to-talk before presenting the modal.
+
+The remote coordinator and existing service/protocol files still exceed the
+preferred review boundary. This merge does not add responsibilities to those
+files. Keep their concurrency-sensitive ownership and teardown logic intact;
+any later listener/transport decomposition should be a separate change with
+the imported race tests retained.
+
+## Verification after integration
 
 Use offline Compose fixtures for connection validation/cancellation, channel
 expansion and password joining, participant controls and push-to-talk release.

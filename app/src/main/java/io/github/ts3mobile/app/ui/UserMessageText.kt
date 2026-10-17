@@ -36,6 +36,12 @@ fun UserMessage.resolve(context: Context): String =
             context.getString(R.string.status_reconnect_scheduled, seconds, attempt)
 
         is UserMessage.Reconnecting -> context.getString(R.string.status_reconnecting_attempt, attempt)
+        UserMessage.ClonesLimitRetrying -> context.getString(R.string.status_clones_limit_retrying)
+        is UserMessage.ClonesLimitRetryScheduled ->
+            context.getString(R.string.status_clones_limit_retry_scheduled, seconds, attempt)
+
+        UserMessage.ClonesLimitWaitingForNetwork -> context.getString(R.string.status_clones_limit_waiting_for_network)
+        UserMessage.ClonesLimitExpired -> context.getString(R.string.status_clones_limit_expired)
         is UserMessage.ChannelJoinFailed -> context.getString(R.string.channel_join_failed, cause)
         is UserMessage.ChannelRestoreFailed -> context.getString(R.string.channel_restore_failed, cause)
         UserMessage.MicrophonePermissionForContinuous ->
@@ -43,6 +49,7 @@ fun UserMessage.resolve(context: Context): String =
 
         UserMessage.MicrophonePermissionMissing -> context.getString(R.string.microphone_permission_missing)
         UserMessage.MicrophonePermissionForVoice -> context.getString(R.string.microphone_permission_voice)
+        UserMessage.MicrophoneResumeInApp -> context.getString(R.string.microphone_resume_in_app)
         is UserMessage.MicrophoneFailed -> context.getString(R.string.microphone_failed, cause)
         is UserMessage.AudioRouting -> error.resolve(context)
     }

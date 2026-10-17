@@ -2,9 +2,15 @@
 <data-extraction-rules>
     <cloud-backup disableIfNoEncryptionCapabilities="true">
         <exclude domain="sharedpref" path="ts3_identity.preferences_pb" />
+        <exclude domain="file" path="datastore/ts3_server_history.preferences_pb" />
+        <exclude domain="sharedpref" path="background_voice.xml" />
+        <exclude domain="sharedpref" path="diagnostic_exit.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="ts3_identity.preferences_pb" />
+        <exclude domain="file" path="datastore/ts3_server_history.preferences_pb" />
+        <exclude domain="sharedpref" path="background_voice.xml" />
+        <exclude domain="sharedpref" path="diagnostic_exit.xml" />
     </device-transfer>
 </data-extraction-rules>
 

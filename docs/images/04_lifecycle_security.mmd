@@ -2,7 +2,7 @@ flowchart TB
     subgraph FSLifecycle["Foreground Service Lifecycle"]
         Connect["User Connects"]
         FS["Start Foreground Service"]
-        Types["Types: MEDIA_PLAYBACK | DATA_SYNC"]
+        Types["Listening: MEDIA_PLAYBACK"]
         PTTPress["PTT Pressed / Continuous Active"]
         AddMic["Dynamically Append: MICROPHONE Type"]
         PTTRelease["PTT Released"]

@@ -126,6 +126,7 @@ internal class ReconnectEngine(
             when (val result = delegate.performAttempt(epoch)) {
                 AttemptResult.Success -> return
                 AttemptResult.Stale -> return
+                AttemptResult.Expired -> return
                 is AttemptResult.Failed -> {
                     if (!result.retryable) {
                         delegate.finishTerminalFailure(result.status, epoch)

@@ -40,9 +40,13 @@ testing on important servers.
 - TeamSpeak identity generation with AES-GCM storage backed by Android Keystore
 - foreground UDP connection service with a notification disconnect action
 - server address, port, TeamSpeak server password and nickname input
+- up to ten successfully connected addresses and ports, with recent-address prefill and individual deletion
 - correct TeamSpeak Base64(SHA1) server-password authentication
 - connection, cancellation, disconnection and error states
 - cancellable automatic reconnection with network-aware 1–30 second backoff
+- active session exit when Android delivers a task-removal callback, with a two-second protocol budget
+- cancellable first-connect recovery after an explicit identity connection-limit refusal, within one 60-second window
+- default-network identity and blocked-state tracking, with a bounded control-response check on network switches
 - stale-session callback rejection and in-memory restoration of the last channel
 - hierarchical channel view with direct channel-member rosters
 - single-tap channel expansion and double-tap channel joining
@@ -72,6 +76,10 @@ testing on important servers.
   Chinese system or app locale
 - localized service status, notification, audio-route and error messages
 - in-app diagnostics with thread-safe connection and audio counters
+- background voice runtime check with an Android battery-optimization entry, a system app-settings entry, and an optional, session-scoped CPU wake-lock request that the system or a vendor battery policy can disable
+- a bounded local event journal and Android process-exit reasons that survive process recreation
+- background reconnection restores listening; stopped microphone capture resumes when the app is visible
+- silent protocol transport closures trigger recovery even when the default network is unchanged; failed retries share one recovery wake-lock budget
 - redacted JSON export that excludes server, password, nickname, channel and
   participant data
 - fixture-based protocol mapping regression tests and sanitized failure logging
@@ -80,14 +88,35 @@ There is currently no in-app language selector. Whisper transmission, automatic
 voice activation, text chat, file transfer, permissions administration,
 bookmarks and multi-server tabs are also not implemented.
 
+## Removing the task
+
+Removing the app from recents requests a disconnect if Android delivers the
+callback. Home, app switching and locking the screen keep the existing background
+session. The exit result distinguishes a request sent from server-confirmed
+release; if the network is unavailable, the server may retain the session until
+its own timeout. Force stop and vendor process killing may provide no callback.
+Reopening the app does not connect automatically.
+
+If a user-started connection receives the observed identity connection-limit
+refusal, the app retries with 1/2/4/8-second backoff (then 8 seconds), for at most
+60 seconds from the first refusal. Offline waiting consumes the same window.
+Cancel stops recovery; expiry suggests checking other clients using the same
+identity and retrying manually. The app does not remove another client.
+
+Local regressions and a debug build cover the implementation. Callback delivery,
+actual microphone stop time and server release still require device acceptance:
+see [the review and device matrix](docs/testing/TASK_REMOVAL_DISCONNECT_REVIEW_2026-10-13.md).
+
 ## Privacy
 
 The project includes no analytics, advertising, telemetry, crash-reporting SDK
 or project-operated backend. The app connects directly to servers selected by
 the user. The TeamSpeak identity is encrypted locally using Android Keystore.
-Connection details are kept in app/service memory while needed by the
-connection workflow; they are not deliberately persisted. A password used to
-restore a channel remains in the foreground service's memory only.
+Only successfully connected server addresses and ports are saved locally, up
+to ten entries. Nicknames and passwords remain in app/service memory. A
+password used to restore a channel remains in the foreground service's memory
+only. Local diagnostics retain at most 128 events with fixed categories and
+numeric system state; they exclude connection details and audio.
 
 See [PRIVACY.md](PRIVACY.md) for the complete data-handling statement.
 
@@ -148,6 +177,8 @@ suite:
 ```
 
 The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+For opt-in microphone signal comparisons and the latest device findings, see
+[the audio diagnosis record](docs/testing/AUDIO_QUALITY_DIAGNOSIS_2026-10-13.md).
 GitHub Actions runs the privacy scan, formatting checks, JVM/unit tests, Android
 Lint and debug assembly for every pull request and push to `main`.
 
