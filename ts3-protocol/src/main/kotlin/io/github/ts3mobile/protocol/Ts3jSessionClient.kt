@@ -475,19 +475,13 @@ class Ts3jSessionClient : Ts3SessionClient {
         )
     }
 
-    private fun EncodedVoiceSource.toMicrophone(): Microphone =
-        object : Microphone {
-            override fun isReady(): Boolean =
-                runCatching { this@toMicrophone.isReady() }
-                    .getOrDefault(false)
-
-            override fun getCodec(): CodecType = CodecType.OPUS_VOICE
-
-            override fun provide(): ByteArray =
-                runCatching { this@toMicrophone.pollEncodedFrame() }
-                    .getOrNull()
-                    ?: EMPTY_AUDIO_FRAME
+    private fun EncodedVoiceSource.toMicrophone(): Microphone {
+        val token = generation.currentToken()
+        return TalkspurtMicrophone(this) { error ->
+            logFailure("microphone source failed", error)
+            emitConnectionFailureStatus(token, error)
         }
+    }
 
     private fun Throwable.conciseMessage(): String {
         var cursor: Throwable? = this
@@ -530,6 +524,5 @@ class Ts3jSessionClient : Ts3SessionClient {
         const val CONNECT_TIMEOUT_MS = 10_000L
         const val REGULAR_CLIENT_TYPE = 0
         val TERMINAL_DISCONNECT_REASONS = setOf(4, 5)
-        val EMPTY_AUDIO_FRAME = ByteArray(0)
     }
 }

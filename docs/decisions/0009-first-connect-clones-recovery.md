@@ -1,5 +1,6 @@
 # 0009: Bound first-connect clone-limit recovery
 
+> Historical implementation: automatic clone-limit retries described below were removed on 2026-10-18. See [ADR-0011](../decisions/0011-manual-refusal-and-form-memory.md) and the [current report](../testing/MANUAL_RETRY_MEMORY_VOICE_2026-10-18.md).
 **Status:** Accepted (local implementation; device/server acceptance pending)
 **Date:** 2026-10-13
 
@@ -86,6 +87,15 @@ Retrying, scheduled attempts, offline waiting and expiry use English/Chinese
 asks the user to check other clients using the same identity and retry manually;
 it refers to the original refusal, without asserting the server was still refusing
 at the instant the window ended or that another client is stale.
+
+On 2026-10-18 the localized guidance was expanded to explain both a leftover
+session after process killing and another legitimate client using the identity.
+It states the retry window, the cancel action, the expiry/manual-retry steps and
+the instruction to disconnect before swiping the app away. Server cleanup may
+take longer than the retry window. The displayed default budget and recovery
+policy share `CLONES_RECOVERY_BUDGET_MS`; there is no second UI timeout policy.
+The full message scrolls with the connection form, and a categorized refusal
+without a service message gets localized guidance rather than raw protocol text.
 
 ### Fixed diagnostics
 

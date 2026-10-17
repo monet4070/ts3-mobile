@@ -34,7 +34,6 @@ internal fun NavigationTabs(
         listOf(
             R.string.tab_channels to UiIcon.Channel,
             R.string.tab_participants to UiIcon.Users,
-            R.string.tab_diagnostics to UiIcon.Activity,
         )
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)

@@ -25,8 +25,23 @@ a pull request, run the environment check first:
 Then run:
 
 ```powershell
-.\gradlew.bat :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+.\gradlew.bat :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
 ```
+
+After changes to identity handling, dependencies or shrinker rules, also run the
+offline regression against the actual minified APK on a booted Android emulator:
+
+```powershell
+.\tools\check-release-identity.ps1 -DeviceSerial emulator-5554
+```
+
+This requires PowerShell 7 and `ANDROID_HOME`/`ANDROID_SDK_ROOT`, or an explicit
+`-SdkRoot` argument. Select the serial from `adb devices`; `-ApkPath` can select
+another APK. The Java probe in `app/src/releaseSmokeTest` is compiled separately
+and runs via ART `app_process`, without installing the app or contacting a server.
+Keep it outside the production build so test references cannot hide R8 mistakes.
+CI runs this check on API 35. A successful release build alone cannot validate
+reflective constructors; see the [issue #3 report](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
 
 The repository quality gate also checks Kotlin formatting across all modules:
 

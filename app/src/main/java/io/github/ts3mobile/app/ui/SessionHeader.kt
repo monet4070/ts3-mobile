@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -62,6 +64,20 @@ internal fun SessionHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            Spacer(Modifier.size(8.dp))
+            FilledTonalButton(
+                onClick = onDisconnect,
+                colors =
+                    ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                shape = MaterialTheme.shapes.small,
+            ) {
+                AppIcon(UiIcon.Power, null, Modifier.size(18.dp))
+                Spacer(Modifier.size(6.dp))
+                Text(stringResource(R.string.action_disconnect), maxLines = 1, softWrap = false)
+            }
         }
         androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -72,9 +88,6 @@ internal fun SessionHeader(
                     stringResource(if (state.playbackMuted) R.string.action_unmute_playback else R.string.action_mute_playback),
                     tint = if (state.playbackMuted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            IconButton(onClick = onDisconnect) {
-                AppIcon(UiIcon.Power, stringResource(R.string.action_disconnect), tint = MaterialTheme.colorScheme.error)
             }
         }
     }

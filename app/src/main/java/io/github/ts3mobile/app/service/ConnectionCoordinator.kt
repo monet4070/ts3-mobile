@@ -162,11 +162,8 @@ internal class ConnectionCoordinator(
     // Monotonic milliseconds. The default stays JVM-only and does not count deep
     // sleep; the Android service injects SystemClock.elapsedRealtime().
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000L },
-    // Product parameters by default; tests may inject a short window.
-    clonesPolicy: ClonesRecoveryPolicy = ClonesRecoveryPolicy(),
     private val sessionFactory: () -> Ts3SessionClient = { Ts3jSessionClient() },
-) : ReconnectEngine.Delegate,
-    ClonesRecoveryEngine.Delegate {
+) : ReconnectEngine.Delegate {
     @Volatile
     private var session: Ts3SessionClient? = null
 
@@ -209,7 +206,9 @@ internal class ConnectionCoordinator(
     private var lastNetworkState = DefaultNetworkState.Unknown
     private var lastAvailableNetworkGeneration: Long? = null
     private val reconnectEngine = ReconnectEngine(host, this)
-    private val clonesRecovery = ClonesRecoveryEngine(host, this, clonesPolicy, clockMs)
+
+    @Volatile
+    private var refusedEpoch: Long? = null
     private val channelRestore = ChannelRestoreTracker()
 
     fun beginConnection(config: ServerConfig) {
@@ -231,7 +230,6 @@ internal class ConnectionCoordinator(
         connectedWatchJob?.cancel()
         livenessJob?.cancel()
         reconnectEngine.cancel()
-        clonesRecovery.cancel()
         connectionJob?.cancel()
 
         val selectedMicrophoneMode = host.mutableState.value.microphoneMode
@@ -263,18 +261,10 @@ internal class ConnectionCoordinator(
                 when (val result = performConnectionAttempt(config, epoch, reconnecting = false)) {
                     AttemptResult.Success,
                     AttemptResult.Stale,
-                    AttemptResult.Expired,
                     -> Unit
 
                     is AttemptResult.Failed -> {
                         when {
-                            // A first connect that the server refused because this
-                            // identity already has too many clones: bounded recovery.
-                            // The refusal is the one the protocol classified, not a
-                            // retryable flag on its own.
-                            !connectedOnce && clonesRecovery.isRejectedFor(epoch) ->
-                                clonesRecovery.launch(epoch, result.status)
-
                             connectedOnce && result.retryable -> reconnectEngine.launch(result.status, epoch)
                             else -> finishTerminalFailure(result.status, epoch)
                         }
@@ -324,7 +314,6 @@ internal class ConnectionCoordinator(
         activeListener = null
         connectionJob?.cancel()
         reconnectEngine.cancel()
-        clonesRecovery.cancel()
         stableConnectionJob?.cancel()
         connectedWatchJob?.cancel()
         livenessJob?.cancel()
@@ -522,7 +511,6 @@ internal class ConnectionCoordinator(
         activeListener = null
         connectionJob?.cancel()
         reconnectEngine.cancel()
-        clonesRecovery.cancel()
         stableConnectionJob?.cancel()
         connectedWatchJob?.cancel()
         livenessJob?.cancel()
@@ -541,17 +529,8 @@ internal class ConnectionCoordinator(
         return performConnectionAttempt(config, epoch, reconnecting = true)
     }
 
-    /** The independent recovery watchdog bounds initial and retry attempts alike. */
-    override suspend fun performAttemptWithin(
-        epoch: Long,
-        remainingMs: Long,
-    ): AttemptResult {
-        val config = desiredConfig ?: return AttemptResult.Stale
-        if (remainingMs <= 0 || !clonesRecovery.allowsCallbacks(epoch)) return AttemptResult.Expired
-        return performConnectionAttempt(config, epoch, reconnecting = true)
-    }
-
-    override fun abortRecoveryAttempt(epoch: Long) {
+    /** Stop a refused handshake immediately, even if the blocking call ignores interruption. */
+    private fun stopRefusedAttempt(epoch: Long) {
         val captured =
             synchronized(exitLock) {
                 if (!isEpochActive(epoch)) return
@@ -564,18 +543,6 @@ internal class ConnectionCoordinator(
         captured.second?.cancel()
     }
 
-    override suspend fun finishRecoveryExpiry(epoch: Long) {
-        host.sessionMutex.withLock {
-            if (!isEpochActive(epoch)) return@withLock
-            host.stopMicrophoneCapture()
-            runInterruptible {
-                host.stopPlayback()
-                host.clearPlaybackMuted()
-                host.stopAudioRouting()
-            }
-        }
-    }
-
     private suspend fun performConnectionAttempt(
         config: ServerConfig,
         epoch: Long,
@@ -583,7 +550,6 @@ internal class ConnectionCoordinator(
     ): AttemptResult =
         host.sessionMutex.withLock {
             if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
-            if (!clonesRecovery.allowsCallbacks(epoch)) return@withLock AttemptResult.Expired
 
             host.diagnosticsRecorder.recordConnectionAttempt(reconnecting)
             host.onConnectionAttempt(reconnecting)
@@ -597,7 +563,6 @@ internal class ConnectionCoordinator(
                 host.startAudioRouting()
                 val identity = identityMaterial ?: host.createIdentity()
                 if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
-                if (!clonesRecovery.allowsCallbacks(epoch)) return@withLock AttemptResult.Expired
                 identityMaterial = identity
                 host.mutableState.update { it.copy(identityReady = true) }
 
@@ -609,7 +574,7 @@ internal class ConnectionCoordinator(
                 val listener = SessionListener(epoch, reconnecting)
                 val accepted =
                     synchronized(exitLock) {
-                        if (!isEpochActive(epoch) || !clonesRecovery.allowsCallbacks(epoch)) {
+                        if (!isEpochActive(epoch) || refusedEpoch == epoch) {
                             false
                         } else {
                             activeListener = listener
@@ -626,8 +591,8 @@ internal class ConnectionCoordinator(
                 if (!isListenerActive(listener)) {
                     newSession.close()
                     if (session === newSession) session = null
-                    return@withLock if (!clonesRecovery.allowsCallbacks(epoch)) {
-                        AttemptResult.Expired
+                    return@withLock if (refusedEpoch == epoch) {
+                        AttemptResult.Stale
                     } else if (isEpochActive(epoch)) {
                         val status = host.mutableState.value.status
                         AttemptResult.Failed(status, status.retryable)
@@ -651,7 +616,7 @@ internal class ConnectionCoordinator(
                 failedSession?.close()
                 if (session === failedSession) session = null
                 if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
-                if (!clonesRecovery.allowsCallbacks(epoch)) return@withLock AttemptResult.Expired
+                if (refusedEpoch == epoch) return@withLock AttemptResult.Stale
 
                 val status =
                     ConnectionStatus(
@@ -660,13 +625,9 @@ internal class ConnectionCoordinator(
                         retryable = error.isRetryableConnectionFailure(),
                         category = error.connectionFailureCategory(),
                     )
-                if (!connectedOnce && !reconnecting && status.category == ConnectionFailureCategory.CLONES_LIMIT) {
-                    noteClonesRejection(epoch, status)
-                }
-                val recoveringClones = clonesRecovery.isRejectedFor(epoch) && status.retryable
-                val message = if (recoveringClones) UserMessage.ClonesLimitRetrying else failureMessageFor(status, reconnecting)
+                val message = failureMessageFor(status, reconnecting)
                 host.mutableState.update { current ->
-                    if (reconnecting || recoveringClones) {
+                    if (reconnecting && status.retryable) {
                         current.withStatus(
                             ConnectionStatus(
                                 ConnectionPhase.RECONNECTING,
@@ -702,7 +663,6 @@ internal class ConnectionCoordinator(
                 }
 
                 ConnectionPhase.CONNECTED -> {
-                    if (!clonesRecovery.acceptConnected(epoch)) return
                     connected = true
                     onSessionConnected(this)
                 }
@@ -710,29 +670,15 @@ internal class ConnectionCoordinator(
                 ConnectionPhase.DISCONNECTED,
                 ConnectionPhase.ERROR,
                 -> {
-                    if (!connected && clonesRecovery.noteTerminalFailure(epoch, status)) return
                     when {
-                        // A first connect refused by the clone limit. The window
-                        // opens at this observation, which normally arrives while the
-                        // blocking connect is still waiting.
-                        !connected && !reconnecting && status.category == ConnectionFailureCategory.CLONES_LIMIT ->
-                            noteClonesRejection(epoch, status)
+                        status.category == ConnectionFailureCategory.CLONES_LIMIT -> onConnectionRefused(this, status)
 
                         connected -> onEstablishedSessionEnded(this, status)
 
                         else -> {
-                            val recovering = clonesRecovery.isRejectedFor(epoch)
                             withCurrentListener {
                                 host.mutableState.update { current ->
-                                    val next =
-                                        if (recovering) {
-                                            current.withStatus(
-                                                status.copy(phase = ConnectionPhase.RECONNECTING),
-                                                UserMessage.ClonesLimitRetrying,
-                                            )
-                                        } else {
-                                            current.withStatus(status)
-                                        }
+                                    val next = current.withStatus(status)
                                     next.copy(snapshot = SessionSnapshot.Empty, isTransmitting = false)
                                 }
                             }
@@ -833,42 +779,32 @@ internal class ConnectionCoordinator(
         host.stopPlayback()
     }
 
-    override suspend fun suspendAudioForRecovery() {
-        host.stopMicrophoneCapture()
-        host.stopPlayback()
-    }
-
-    /**
-     * Opens the bounded recovery window at the first observed clone refusal and
-     * publishes the localised message immediately, so the raw protocol detail never
-     * reaches the user.
-     */
-    private fun noteClonesRejection(
-        epoch: Long,
+    private fun onConnectionRefused(
+        listener: SessionListener,
         status: ConnectionStatus,
     ) {
-        if (!isEpochActive(epoch)) return
-        clonesRecovery.noteRejection(epoch)
+        val epoch = listener.epoch
+        if (!isEpochActive(epoch) || !listenerRef.compareAndSet(listener, null)) return
+        refusedEpoch = epoch
+        reconnectEngine.cancel()
+        val terminal = status.copy(phase = ConnectionPhase.ERROR, retryable = false)
         host.sessionGeneration.withActive(epoch) {
             host.mutableState.update { current ->
-                current
-                    .withStatus(
-                        ConnectionStatus(
-                            phase = ConnectionPhase.RECONNECTING,
-                            detail = status.detail,
-                            retryable = true,
-                            category = ConnectionFailureCategory.CLONES_LIMIT,
-                        ),
-                        UserMessage.ClonesLimitRetrying,
-                    ).copy(snapshot = SessionSnapshot.Empty, isTransmitting = false)
+                current.withStatus(terminal, UserMessage.ConnectionLimitWait)
+                    .copy(snapshot = SessionSnapshot.Empty, isTransmitting = false)
             }
-            host.updateNotification()
+            host.diagnosticsRecorder.recordConnectionFailure(false)
+            host.onConnectionFailure(terminal)
+        }
+        host.serviceScope.launch {
+            stopRefusedAttempt(epoch)
+            finishTerminalFailure(terminal, epoch)
         }
     }
 
     /**
      * The app message for a failed attempt. A clone refusal keeps its own wording
-     * whether it happened on the first connect or inside the recovery window; every
+     * whether it happened on the first connect or during network recovery; every
      * other reconnect failure keeps the existing generic text.
      */
     private fun failureMessageFor(
@@ -876,7 +812,7 @@ internal class ConnectionCoordinator(
         reconnecting: Boolean,
     ): UserMessage? =
         when {
-            status.category == ConnectionFailureCategory.CLONES_LIMIT -> UserMessage.ClonesLimitRetrying
+            status.category == ConnectionFailureCategory.CLONES_LIMIT -> UserMessage.ConnectionLimitWait
             reconnecting -> UserMessage.ReconnectFailed(status.detail?.takeIf(String::isNotBlank))
             else -> null
         }
@@ -903,7 +839,7 @@ internal class ConnectionCoordinator(
             val updated =
                 host.sessionGeneration.withActive(epoch) {
                     host.mutableState.update { current ->
-                        current.withStatus(status.copy(retryable = false)).copy(
+                        current.withStatus(status.copy(retryable = false), failureMessageFor(status, reconnecting = false)).copy(
                             snapshot = SessionSnapshot.Empty,
                             isTransmitting = false,
                             switchingChannelId = null,
@@ -1009,7 +945,7 @@ internal class ConnectionCoordinator(
     }
 
     private fun isListenerActive(listener: SessionListener): Boolean =
-        activeListener === listener && isEpochActive(listener.epoch) && clonesRecovery.allowsCallbacks(listener.epoch)
+        activeListener === listener && isEpochActive(listener.epoch) && refusedEpoch != listener.epoch
 
     private fun isEpochActive(epoch: Long): Boolean = host.sessionGeneration.isActive(epoch)
 
@@ -1035,9 +971,6 @@ internal sealed interface AttemptResult {
     data object Success : AttemptResult
 
     data object Stale : AttemptResult
-
-    /** The attempt was cut by the caller's deadline while its handshake was running. */
-    data object Expired : AttemptResult
 
     data class Failed(
         val status: ConnectionStatus,

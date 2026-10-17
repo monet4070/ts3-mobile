@@ -1,6 +1,6 @@
 # 0008: Leave the session bounded when the task is removed
 
-**Status:** Accepted (implemented 2026-10-13; device/server acceptance pending)
+**Status:** Accepted (implemented 2026-10-13; Android 16 protocol acceptance recorded 2026-10-17; Xiaomi launcher swipe exit fails)
 **Date:** 2026-10-13
 
 ## Context
@@ -51,9 +51,11 @@ runs synchronously on the caller's thread:
    no further frame can be sent;
 3. the state moves to `DISCONNECTING` and the notification is updated.
 
-The IO part then spends one monotonic budget of two seconds (`EXIT_BUDGET_MS`) on:
-capture and playback reclamation in parallel, the session mutex wait,
-the protocol exit and the local release. Blocking audio operations run in
+The IO part spends one monotonic budget of two seconds (`EXIT_BUDGET_MS`). As
+corrected on 2026-10-17, protocol exit and captured-socket release run first,
+before the session mutex wait and parallel capture/playback reclamation. Voice
+has already been detached and the registered exit job remains the barrier for
+new connections, so slow cleanup must not defer notifying the server. Blocking audio operations run in
 interruptible IO tasks, never on the main thread. A handshake is never waited for:
 the captured socket is closed before any lock is taken, because the attempt that
 is blocked inside the native connect holds the session mutex; that close is the
@@ -102,6 +104,9 @@ The existing fixed-category journal gains `TASK_REMOVED`, `EXIT_STARTED`,
 `EXIT_CLEANUP_OVERRUN`. Only categories and numbers are
 stored: no reason text, exception text, address, nickname, identity or password.
 
+`EXIT_CLEANUP_FAILED` separately reports local reclamation errors. A confirmed
+server leave is not overwritten by a later audio timeout or cleanup failure.
+
 ## Consequences
 
 - One removal gesture produces at most one leave command, and a reconnected
@@ -120,6 +125,13 @@ stored: no reason text, exception text, address, nickname, identity or password.
 - Android gives no guarantee that `onTaskRemoved` runs. A process killed by the
   system or by a vendor task manager still leaves the session to the server's
   timeout; the app cannot promise an immediate release.
+- On the tested Xiaomi Android 16 device, `SwipeUpClean` killed the original
+  process before a newly created service received `onTaskRemoved`. Battery
+  unrestricted mode and task locking did not prevent it. Three framework task
+  removals and three manual disconnects did receive server confirmations, but
+  launcher swipe removal failed. See the
+  [device report](../testing/TASK_REMOVAL_DEVICE_2026-10-17.md); the original
+  physical-device launcher acceptance remains open.
 - `ConnectionCoordinator` and `TeamSpeakService` remain above the roughly
   300-line guidance. `SessionExitRunner` executes captured-resource cleanup and
   `SessionRequestOwnership` governs request revisions; session/generation

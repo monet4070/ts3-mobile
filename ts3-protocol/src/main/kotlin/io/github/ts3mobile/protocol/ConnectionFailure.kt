@@ -25,7 +25,7 @@ private fun Throwable.classifyConnectionFailure(): ClassifiedFailure {
             val clones = current.message?.contains(CLONES_LIMIT_TEXT, ignoreCase = true) == true
             return ClassifiedFailure(
                 if (clones) ConnectionFailureCategory.CLONES_LIMIT else ConnectionFailureCategory.UNCLASSIFIED,
-                clones,
+                false,
             )
         }
         if (current is CommandException) return ClassifiedFailure(ConnectionFailureCategory.UNCLASSIFIED, false)

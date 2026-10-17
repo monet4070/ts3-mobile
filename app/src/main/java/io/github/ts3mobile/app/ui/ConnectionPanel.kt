@@ -42,6 +42,7 @@ internal fun ConnectionForm(
     onHistoryRemoved: (ServerHistoryEntry) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    statusText: String? = null,
 ) {
     val busy = phase == ConnectionPhase.CONNECTING || phase == ConnectionPhase.RECONNECTING || phase == ConnectionPhase.DISCONNECTING
     Column(
@@ -49,6 +50,8 @@ internal fun ConnectionForm(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
+        statusText?.let { StatusMessage(phase, it) }
+        if (form.memoryError) StatusMessage(ConnectionPhase.ERROR, stringResource(R.string.connection_memory_failed))
         Column(Modifier.widthIn(max = 520.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             IconTile(UiIcon.Radio, Modifier.size(48.dp))
             Spacer(Modifier.height(2.dp))

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -25,11 +26,24 @@ import io.github.ts3mobile.app.service.audioControlKey
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
 
 class MainScreenTest {
+    @Test fun disconnectIsVisibleToTheRightOfTheServerAtLargeText() {
+        val fixture = UiFixture(connected = true)
+        rule.setContent { fixture.Render(fontScale = 1.8f) }
+        val server = rule.onNodeWithText(fixture.state.value.serverLabel!!).fetchSemanticsNode().boundsInRoot
+        val disconnect = rule.onNodeWithText("Disconnect").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("Disconnect must be beside the server", disconnect.left >= server.right)
+        rule.onNodeWithText("Diagnostics").assertDoesNotExist()
+        savePreview("session-header-disconnect-large")
+        rule.onNodeWithText("Disconnect").performClick()
+        rule.runOnIdle { assertEquals(1, fixture.disconnects) }
+    }
+
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun invalidFormStillShowsValidationAndRetry() {
@@ -83,6 +97,9 @@ class MainScreenTest {
         rule.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress))
             .performSemanticsAction(SemanticsActions.SetProgress) { it(150f) }
         rule.onNodeWithText("150%").assertIsDisplayed()
+        rule.onNodeWithText("Diagnostics").assertDoesNotExist()
+        rule.onNodeWithContentDescription("More options").performClick()
+        savePopupPreview("diagnostics-menu-open")
         rule.onNodeWithText("Diagnostics").performClick()
         rule.onNodeWithText("Copy").performClick()
         rule.runOnIdle {
@@ -112,6 +129,7 @@ class MainScreenTest {
         val fixture = UiFixture(connected = true)
         rule.setContent { fixture.Render(fontScale = 1.8f) }
         rule.onNodeWithText("Hold").performClick()
+        savePopupPreview("microphone-menu-open")
         rule.onNodeWithText("Always on").performClick()
         rule.runOnIdle { assertEquals(MicrophoneMode.CONTINUOUS, fixture.state.value.microphoneMode) }
     }
@@ -176,6 +194,13 @@ class MainScreenTest {
         val output = File(rule.activity.getExternalFilesDir(null), "ui-previews").apply { mkdirs() }
         File(output, "$name.png").outputStream().use {
             check(rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+    }
+
+    private fun savePopupPreview(name: String) {
+        val output = File(rule.activity.getExternalFilesDir(null), "ui-previews").apply { mkdirs() }
+        File(output, "$name.png").outputStream().use {
+            check(rule.onNode(isPopup()).captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it))
         }
     }
 }

@@ -2,7 +2,7 @@
 
 **Status:** Partially implemented (Step 1 pending; Steps 2–4 done)
 **Date:** 2026-08-26
-**Last updated:** 2026-08-26
+**Last updated:** 2026-10-17
 
 > **Implementation note (2026-08-26).** Steps 2, 3 and 4 are complete and validated:
 > all three Gradle modules have `dependencyLocking` in `LockMode.STRICT` with committed
@@ -16,6 +16,13 @@
 > remaining blocker for this ADR.
 
 ## Context
+
+> **Correction (2026-10-17, issue #3).** The earlier successful release build did
+> not prove reflection safety. Keeping `org.ini4j.Ini` alone let R8 remove the
+> constructors of its SPI helpers and make them abstract. The keep rule now covers
+> `org.ini4j.**`, and CI executes an independent offline identity/INI roundtrip probe
+> against the minified APK on ART. See the
+> [root-cause and verification report](../testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
 
 `ts3-protocol` depends on `com.github.Manevolent:ts3j` through JitPack, pinned to a single
 upstream commit hash in [`gradle/libs.versions.toml`](../../gradle/libs.versions.toml):
@@ -145,7 +152,8 @@ lockless consumer context, and the lockfile pins the entire graph of every modul
 Implemented in [`app/proguard-rules.pro`](../../app/proguard-rules.pro). The set of keep
 rules was derived by scanning ts3j's bytecode (extracting `com.github.manevolent.ts3j.**`
 `.class` files from the cached JitPack jar and listing their referenced types with `javap`)
-so the rules target the classes ts3j actually references by name, not a broad prefix:
+so the original rules targeted directly referenced classes. Issue #3 showed that
+this must also include reflection performed inside those dependencies:
 
 - `com.github.manevolent.ts3j.**` — the protocol library itself (kept wholesale; ts3j
   reflects on its own command/event/identity classes and is not annotation-driven).
@@ -157,12 +165,16 @@ so the rules target the classes ts3j actually references by name, not a broad pr
   `asn1.**`, plus `-dontwarn org.bouncycastle.**`.
 - `dnsjava` resolver entry points: `org.xbill.DNS.{Lookup,Name,Record,SRVRecord}`, plus
   `-dontwarn org.xbill.DNS.**`.
-- `ini4j`: `org.ini4j.Ini`, plus `-dontwarn org.ini4j.**`.
+- `ini4j`: `org.ini4j.**` with all members, including the reflective SPI
+  constructors, plus the existing `-dontwarn org.ini4j.**`. The latter only
+  suppresses warnings; it does not preserve code.
 
 Validated by `./gradlew :app:assembleRelease` (JDK 17, R8 active): `BUILD SUCCESSFUL`,
 no new R8 warnings beyond the pre-existing default-config constructor notices that ship
 with `proguard-android-optimize.txt`. The minified release APK assembles and the keep
-rules emit no warnings about the ts3j transitive set.
+rules emit no warnings about the ts3j transitive set in that historical build.
+Build success is now supplemented by `tools/check-release-identity.ps1`; the
+independent probe must fail on the broken APK and pass on the corrected APK.
 
 ## Consequences
 

@@ -32,7 +32,10 @@
 -keep class org.xbill.DNS.SRVRecord { *; }
 -dontwarn org.xbill.DNS.**
 
-# ini4j — ts3j loads INI-format identity/config via org.ini4j.Ini.
--keep class org.ini4j.Ini { *; }
+# ini4j — LocalIdentity.read loads INI through ServiceFinder/Class.newInstance.
+# Keeping Ini alone does not preserve its reflective parser/builder/formatter:
+# R8 can remove their constructors and make them abstract (GitHub issue #3).
+# Keep the small library's reflection graph, including classes and constructors.
+-keep class org.ini4j.** { *; }
 -dontwarn org.ini4j.**
 

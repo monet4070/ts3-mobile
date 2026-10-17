@@ -9,8 +9,11 @@ import io.github.ts3mobile.protocol.Ts3SessionListener
 import io.github.ts3mobile.protocol.VoiceFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,6 +22,96 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionExitRunnerTest {
+    @Test
+    fun anOldOperationHoldingTheSessionMutexCannotDelayTheExitCommand() =
+        runTest {
+            val host = Host(this)
+            val ownership = SessionRequestOwnership()
+            val session = Session()
+            host.sessionMutex.lock()
+            val job =
+                launch {
+                    SessionExitRunner(host, ownership, { testScheduler.currentTime }, { false }).run(
+                        ExitTrigger.TASK_REMOVED,
+                        session,
+                        false,
+                        2_000L,
+                        ownership.beginExit(),
+                    ) {}
+                }
+            try {
+                runCurrent()
+                assertEquals(1, session.protocolCalls)
+                assertTrue(session.closed)
+                assertFalse(host.captureStopped)
+            } finally {
+                host.sessionMutex.unlock()
+            }
+            job.join()
+            assertTrue(host.captureStopped && host.playbackStopped)
+        }
+
+    @Test
+    fun audioCleanupFailureIsReportedSeparatelyFromServerConfirmation() =
+        runTest {
+            val host = Host(this).apply { failCaptureStop = true }
+            val ownership = SessionRequestOwnership()
+            SessionExitRunner(host, ownership, { testScheduler.currentTime }, { false }).run(
+                ExitTrigger.TASK_REMOVED,
+                Session(),
+                false,
+                2_000L,
+                ownership.beginExit(),
+            ) {}
+
+            assertTrue(host.events.contains(DiagnosticEventKind.EXIT_CLEANUP_FAILED))
+            assertTrue(host.events.contains(DiagnosticEventKind.EXIT_SERVER_CONFIRMED))
+            assertFalse(host.events.contains(DiagnosticEventKind.EXIT_FAILED))
+        }
+
+    @Test
+    fun slowAudioCleanupCannotSpendTheProtocolExitBudget() =
+        runTest {
+            val host = Host(this).apply { captureStopDelayMs = 1_500L }
+            val ownership = SessionRequestOwnership()
+            val session = Session()
+            SessionExitRunner(host, ownership, { testScheduler.currentTime }, { false }).run(
+                ExitTrigger.TASK_REMOVED,
+                session,
+                false,
+                2_000L,
+                ownership.beginExit(),
+            ) {}
+
+            assertEquals(2_000L, session.protocolBudgetMs)
+            assertTrue(session.closed)
+            assertTrue(host.captureStopped && host.playbackStopped)
+            assertTrue(host.events.contains(DiagnosticEventKind.EXIT_SERVER_CONFIRMED))
+        }
+
+    @Test
+    fun audioCleanupTimeoutDoesNotEraseAnAlreadyConfirmedServerExit() =
+        runTest {
+            val host = Host(this).apply { captureStopDelayMs = 2_500L }
+            val ownership = SessionRequestOwnership()
+            val session = Session()
+            SessionExitRunner(host, ownership, { testScheduler.currentTime }, { false }).run(
+                ExitTrigger.TASK_REMOVED,
+                session,
+                false,
+                2_000L,
+                ownership.beginExit(),
+            ) {}
+
+            assertEquals(1, session.protocolCalls)
+            assertEquals(2_000L, session.protocolBudgetMs)
+            assertTrue(session.closed)
+            assertTrue(host.captureStopped && host.playbackStopped)
+            assertTrue(host.events.contains(DiagnosticEventKind.EXIT_SERVER_CONFIRMED))
+            assertTrue(host.events.contains(DiagnosticEventKind.EXIT_CLEANUP_OVERRUN))
+            assertFalse(host.events.contains(DiagnosticEventKind.EXIT_TIMED_OUT))
+        }
+
     @Test
     fun expiredBudgetStillReclaimsAudioAndSocketWithoutClaimingConfirmation() =
         runTest {
@@ -91,6 +184,7 @@ class SessionExitRunnerTest {
     private class Session : Ts3SessionClient {
         var closed = false
         var protocolCalls = 0
+        var protocolBudgetMs = 0L
 
         override fun connect(
             config: ServerConfig,
@@ -113,6 +207,7 @@ class SessionExitRunnerTest {
             onRequestSent: () -> Unit,
         ): DisconnectOutcome {
             protocolCalls++
+            protocolBudgetMs = timeoutMs
             onRequestSent()
             return DisconnectOutcome.SERVER_CONFIRMED
         }
@@ -133,6 +228,8 @@ class SessionExitRunnerTest {
         var captureStopped = false
         var playbackStopped = false
         var teardowns = 0
+        var captureStopDelayMs = 0L
+        var failCaptureStop = false
 
         override fun conciseMessage(error: Throwable) = "failure"
 
@@ -145,6 +242,8 @@ class SessionExitRunnerTest {
         override fun resetMicrophoneForConnection() = Unit
 
         override suspend fun stopMicrophoneCapture() {
+            check(!failCaptureStop) { "fixture cleanup failure" }
+            delay(captureStopDelayMs)
             captureStopped = true
         }
 

@@ -628,15 +628,15 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
-    fun aTaskRemovalExitStopsAudioBeforeTheProtocolExitAndReleasesTheSessionAfterIt() {
+    fun aTaskRemovalExitNotifiesAndReleasesTheSessionBeforeAudioCleanup() {
         connectEstablished()
 
         coordinator.requestExit(ExitTrigger.TASK_REMOVED)
         host.advance()
 
-        // Audio stops first, then the protocol exit, and only then is the captured
-        // session released locally.
-        assertEquals(listOf("stopMicrophone", "disconnectBounded", "close"), host.timeline)
+        // Voice was detached synchronously; server notification must not wait
+        // for potentially slow native audio cleanup.
+        assertEquals(listOf("disconnectBounded", "close", "stopMicrophone"), host.timeline)
         assertEquals(1, host.session.boundedDisconnectCalls)
         assertEquals("Task removed", host.session.boundedDisconnectReason)
         assertTrue(host.session.voiceSourceDetached)
@@ -646,26 +646,26 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
-    fun theExitBudgetCoversTheCaptureStopBeforeTheProtocolExit() {
+    fun captureCleanupDoesNotReduceTheProtocolExitBudget() {
         connectEstablished()
         host.microphoneStopAction = { host.nowMs += 500L }
 
         coordinator.requestExit(ExitTrigger.TASK_REMOVED)
         host.advance()
 
-        assertEquals(EXIT_BUDGET_MS - 500L, host.session.boundedDisconnectBudgetMs)
+        assertEquals(EXIT_BUDGET_MS, host.session.boundedDisconnectBudgetMs)
     }
 
     @Test
-    fun anExitThatRunsOutOfBudgetSkipsTheProtocolExitAndStillReleasesLocally() {
+    fun audioCleanupThatConsumesTheBudgetDoesNotSkipTheProtocolExit() {
         connectEstablished()
         host.microphoneStopAction = { host.nowMs += EXIT_BUDGET_MS }
 
         coordinator.requestExit(ExitTrigger.TASK_REMOVED)
         host.advance()
 
-        assertEquals(0, host.session.boundedDisconnectCalls)
-        assertTrue(host.diagnostics.contains(DiagnosticEventKind.EXIT_TIMED_OUT))
+        assertEquals(1, host.session.boundedDisconnectCalls)
+        assertTrue(host.diagnostics.contains(DiagnosticEventKind.EXIT_SERVER_CONFIRMED))
         assertEquals(1, host.session.closeCalls)
         assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
         assertTrue("timeout left the playback resources running", host.playbackStops > 0)
@@ -850,54 +850,41 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
-    fun aFirstConnectRefusedByTheCloneLimitStartsABoundedWindow() {
+    fun aRefusedConnectionNeverRetriesAutomaticallyEvenAfterFiveMinutes() {
         refuseFirstConnectWithClones()
-
         coordinator.beginConnection(CONFIG)
         host.advance()
-
-        assertEquals(ConnectionPhase.RECONNECTING, host.state.value.status.phase)
-        assertEquals(
-            UserMessage.ClonesLimitRetryScheduled(seconds = 1L, attempt = 1),
-            host.state.value.statusMessage,
-        )
-        assertTrue(host.diagnostics.contains(DiagnosticEventKind.CLONES_RECOVERY_STARTED))
-        assertFalse("the service must not stop while the window is open", host.stopSelfRequested)
-    }
-
-    @Test
-    fun aFailedCloneSocketClosesBeforeTheNextBackoff() {
-        host.network.value = true
-        host.session.emittedStatusOnConnect =
-            ConnectionStatus(
-                ConnectionPhase.ERROR,
-                retryable = true,
-                category = ConnectionFailureCategory.CLONES_LIMIT,
-            )
-        coordinator.beginConnection(CONFIG)
-        host.advance()
+        advance(300_000L)
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        assertEquals(UserMessage.ConnectionLimitWait, host.state.value.statusMessage)
         assertEquals(1, host.session.connectCalls)
-        assertEquals(1, host.session.closeCalls)
-        assertEquals(ConnectionPhase.RECONNECTING, host.state.value.status.phase)
+        assertFalse(host.state.value.status.retryable)
+        assertFalse(host.diagnostics.contains(DiagnosticEventKind.CLONES_RECOVERY_STARTED))
     }
 
     @Test
-    fun aCallbackClaimedBeforeReplacementCannotWriteIntoTheNewRequestsSnapshot() {
+    fun aUserCanStartOneNewAttemptAfterARefusal() {
+        refuseFirstConnectWithClones()
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        host.runPendingTeardowns()
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        assertEquals(2, host.session.connectCalls)
+        assertFalse(host.stopSelfRequested)
+    }
+
+    @Test
+    fun aRefusedCallbackCannotWriteIntoAReplacementRequest() {
         var observedClient: Int? = null
         host.session.connectAction = {
             host.session.connectAction = {}
             val old = host.session.listener!!
-            old.onStatusChanged(
-                ConnectionStatus(
-                    ConnectionPhase.ERROR,
-                    retryable = true,
-                    category = ConnectionFailureCategory.CLONES_LIMIT,
-                ),
-            )
-            host.clockAction = {
-                host.clockAction = {}
-                coordinator.beginConnection(CONFIG.copy(port = 9988))
-            }
+            old.onStatusChanged(ConnectionStatus(ConnectionPhase.ERROR, category = ConnectionFailureCategory.CLONES_LIMIT))
+            coordinator.beginConnection(CONFIG.copy(port = 9988))
             old.onSnapshotChanged(SessionSnapshot.Empty.copy(ownClientId = 777))
             observedClient = host.state.value.snapshot.ownClientId
         }
@@ -908,65 +895,25 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
-    fun theWindowExpiresWithAnActionableMessageAndKeepsTheServiceRunning() {
-        refuseFirstConnectWithClones()
-        coordinator.beginConnection(CONFIG)
+    fun aLimitRefusalAlsoStopsEstablishedSessionRecovery() {
+        connectEstablished()
+        host.session.listener!!.onStatusChanged(
+            ConnectionStatus(ConnectionPhase.ERROR, retryable = true, category = ConnectionFailureCategory.CLONES_LIMIT),
+        )
         host.advance()
-
-        advance(61_000L)
-
+        advance(300_000L)
+        assertEquals(1, host.session.connectCalls)
         assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
-        assertEquals(UserMessage.ClonesLimitExpired, host.state.value.statusMessage)
-        assertEquals(DiagnosticEventKind.CLONES_RECOVERY_ENDED, host.diagnosticCodes.last().first)
-        assertFalse("an expired window must not stop the service", host.stopSelfRequested)
-        assertTrue(host.removeForegroundNotificationCalls >= 1)
-        // Attempts reuse the identity and never restart the manual-connection budget.
-        assertEquals(1, host.identityCalls)
-        assertEquals(1, host.manualSessionStarts)
+        assertEquals(UserMessage.ConnectionLimitWait, host.state.value.statusMessage)
     }
 
     @Test
     fun aFirstConnectThatFailsWithANetworkErrorStaysTerminal() {
         host.session.connectAction = { throw IOException("offline") }
-
         coordinator.beginConnection(CONFIG)
         host.advance()
         host.runPendingTeardowns()
-
-        assertFalse(host.diagnostics.contains(DiagnosticEventKind.CLONES_RECOVERY_STARTED))
         assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
-        assertTrue(host.stopSelfRequested)
-    }
-
-    @Test
-    fun aNewConnectionRequestEndsTheOldWindowAndKeepsTheNewSession() {
-        refuseFirstConnectWithClones()
-        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
-        coordinator.beginConnection(CONFIG)
-        host.advance()
-        assertEquals(ConnectionPhase.RECONNECTING, host.state.value.status.phase)
-
-        coordinator.beginConnection(CONFIG)
-        host.advance()
-
-        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
-        assertTrue(host.diagnostics.contains(DiagnosticEventKind.CLONES_RECOVERY_ENDED))
-        assertFalse(host.stopSelfRequested)
-    }
-
-    @Test
-    fun anExitRequestEndsTheRunningWindow() {
-        refuseFirstConnectWithClones()
-        coordinator.beginConnection(CONFIG)
-        host.advance()
-        assertEquals(ConnectionPhase.RECONNECTING, host.state.value.status.phase)
-
-        coordinator.requestExit(ExitTrigger.TASK_REMOVED)
-        host.advance()
-
-        assertTrue(host.diagnostics.contains(DiagnosticEventKind.CLONES_RECOVERY_ENDED))
-        assertTrue(host.diagnostics.contains(DiagnosticEventKind.EXIT_STARTED))
-        host.runPendingTeardowns()
         assertTrue(host.stopSelfRequested)
     }
 

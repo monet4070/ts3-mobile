@@ -30,7 +30,6 @@ internal fun ConnectedContent(
     onMicrophoneModeChanged: (MicrophoneMode) -> Unit,
     onPushToTalkChanged: (Boolean) -> Unit,
     onJoinChannel: (Int, String) -> Unit,
-    onCopyDiagnostics: () -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
@@ -43,8 +42,7 @@ internal fun ConnectedContent(
             Box(Modifier.weight(1f).fillMaxWidth().clip(MaterialTheme.shapes.medium)) {
                 when (selectedTab) {
                     0 -> ChannelList(state, onJoinChannel)
-                    1 -> ParticipantList(state, onParticipantMutedChange, onParticipantVolumeChange)
-                    else -> DiagnosticsPanel(state.diagnostics, onCopyDiagnostics)
+                    else -> ParticipantList(state, onParticipantMutedChange, onParticipantVolumeChange)
                 }
             }
         }

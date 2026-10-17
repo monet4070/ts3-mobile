@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: 2026-10-08
+Last updated: 2026-10-18
 
 TS3 Mobile is an unofficial client that connects directly from the Android
 device to TeamSpeak servers selected by the user. The maintainers do not
@@ -10,8 +10,16 @@ operate an intermediary service for those connections.
 
 - The ten most recent successfully connected server addresses and ports are
   saved in app-private local storage for connection-page prefill and selection.
-  Failed connection attempts are not saved. Each saved address can be deleted
-  from the connection page. Nicknames and server passwords remain in memory.
+  Only successful connections enter this history. Each history address can be
+  deleted from the connection page.
+- Separately, the last edited connection form (address, port, nickname and server
+  password, including unsubmitted/failed attempts) is saved locally with AES-GCM
+  using a separate Android Keystore key. It prefills the next launch without
+  connecting. It is excluded from cloud backup and device transfer. Clearing a
+  field replaces its remembered value after saving; switching endpoints clears
+  the previous password. Deleting a history entry does not clear the form snapshot.
+  Save failures are shown in the connection form; edits killed before the short
+  delayed save finishes may not survive.
 - The generated TeamSpeak identity is encrypted locally with AES-GCM using a key
   protected by Android Keystore.
 - Server and channel passwords are used only for the requested connection or
@@ -53,7 +61,7 @@ bypass Doze; the background runtime check links to Android battery settings.
 ## Deletion
 
 Uninstalling the app removes its saved server history, local diagnostics,
-preferences and encrypted identity under normal Android behavior. Clearing the app's storage
+preferences, encrypted connection form and encrypted identity under normal Android behavior. Clearing the app's storage
 has the same effect. Data already received by a TeamSpeak server or other
 participants is outside the project's control.
 

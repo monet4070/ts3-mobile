@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.protocol.ConnectionPhase
@@ -85,7 +84,5 @@ internal fun StatusMessage(
                 .padding(horizontal = 20.dp, vertical = 10.dp),
         color = foreground,
         style = MaterialTheme.typography.bodySmall,
-        maxLines = 3,
-        overflow = TextOverflow.Ellipsis,
     )
 }

@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.ts3mobile.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.11.0-m10"
+        versionCode = 12
+        versionName = "0.11.1-m10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

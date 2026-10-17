@@ -9,6 +9,15 @@ the module boundaries.
 
 ## Session interface compatibility
 
+`EncodedVoiceSource.isTransmitting` defaults to the existing `isReady()` for
+source compatibility. Capture implementations should override it with active
+capture state. `TalkspurtMicrophone` uses that state for ts3j readiness and returns
+an empty frame for a temporary queue gap: the pinned sender skips that tick
+without ending the talkspurt. Capture stop emits the end marker on the next
+sender tick; source failures report once. The offline regression invokes the
+actual ts3j `MicrophoneTask` with a fake datagram seam. All modules are rebuilt
+together; this does not promise ABI compatibility for external implementations.
+
 `Ts3SessionClient` keeps three separate capabilities:
 
 - `disconnect(reason)` — the original blocking exit. It invalidates the session

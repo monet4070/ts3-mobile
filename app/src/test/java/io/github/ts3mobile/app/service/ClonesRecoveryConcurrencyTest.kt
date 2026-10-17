@@ -25,17 +25,15 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 
 /** Real blocking work that ignores interrupts: only this attempt's close releases it. */
 class ClonesRecoveryConcurrencyTest {
     @Test
-    fun terminalRefusalDuringTheOriginalHandshakeClosesItWithoutRetrying() {
+    fun aRefusedBlockedHandshakeClosesWithoutAnyRetryAndRejectsLateSuccess() {
         val host = Host()
         val blocked =
             Session { listener, closed ->
                 listener.onStatusChanged(CLONES)
-                listener.onStatusChanged(ConnectionStatus(ConnectionPhase.ERROR, "fixture terminal refusal"))
                 awaitCloseIgnoringInterrupts(closed)
                 listener.onStatusChanged(ConnectionStatus(ConnectionPhase.CONNECTED))
             }
@@ -44,14 +42,14 @@ class ClonesRecoveryConcurrencyTest {
             coordinator.beginConnection(CONFIG)
             assertTrue(blocked.closed.await(1, TimeUnit.SECONDS))
             assertTrue(blocked.returned.await(1, TimeUnit.SECONDS))
-            assertTrue(host.events.contains(DiagnosticEventKind.CLONES_RECOVERY_ENDED to ClonesRecoveryResult.TERMINAL.code))
-            assertFalse(host.events.contains(DiagnosticEventKind.CLONES_RECOVERY_ENDED to ClonesRecoveryResult.EXPIRED.code))
+            assertTrue(awaitUntil { host.mutableState.value.statusMessage == UserMessage.ConnectionLimitWait })
             assertEquals(0, host.successes.get())
+            assertFalse(host.mutableState.value.status.retryable)
         }
     }
 
     @Test
-    fun aNewRequestDuringOldSocketCloseCannotHaveItsJobCancelledByOldExpiry() {
+    fun aNewRequestDuringOldSocketCloseCannotBeCancelledByOldCleanup() {
         val host = Host()
         val old =
             Session { listener, closed ->
@@ -76,63 +74,19 @@ class ClonesRecoveryConcurrencyTest {
     }
 
     @Test
-    fun theFirstRefusalStartsTheDeadlineEvenBeforeItsConnectCallReturns() {
+    fun successDeliveredImmediatelyAfterRefusalCannotBecomeActive() {
         val host = Host()
-        val blocked =
-            Session { listener, closed ->
-                listener.onStatusChanged(CLONES)
-                awaitCloseIgnoringInterrupts(closed)
-                listener.onStatusChanged(ConnectionStatus(ConnectionPhase.CONNECTED))
-            }
-        host.sessions += blocked
-        withCoordinator(host) { coordinator ->
-            coordinator.beginConnection(CONFIG)
-            assertTrue(blocked.entered.await(1, TimeUnit.SECONDS))
-            assertTrue("first rejected handshake survived the recovery deadline", blocked.closed.await(1, TimeUnit.SECONDS))
-            assertTrue("first handshake worker did not finish", blocked.returned.await(1, TimeUnit.SECONDS))
-            assertTrue(awaitUntil { host.events.contains(DiagnosticEventKind.CLONES_RECOVERY_ENDED to ClonesRecoveryResult.EXPIRED.code) })
-            assertEquals(0, host.successes.get())
-        }
-    }
-
-    @Test
-    fun expiryClosesTheSpecificRetryBeforeWaitingForItsCancellation() {
-        val host = Host()
-        val rejected = Session { listener, _ -> listener.onStatusChanged(CLONES) }
-        val blocked =
-            Session { listener, closed ->
-                awaitCloseIgnoringInterrupts(closed)
-                listener.onStatusChanged(ConnectionStatus(ConnectionPhase.CONNECTED))
-            }
-        host.sessions += rejected
-        host.sessions += blocked
-        withCoordinator(host) { coordinator ->
-            coordinator.beginConnection(CONFIG)
-            assertTrue(blocked.entered.await(1, TimeUnit.SECONDS))
-            assertTrue("retry socket was not closed at expiry", blocked.closed.await(1, TimeUnit.SECONDS))
-            assertTrue("retry worker did not finish after close", blocked.returned.await(1, TimeUnit.SECONDS))
-            assertTrue(awaitUntil { host.mutableState.value.statusMessage == UserMessage.ClonesLimitExpired })
-            assertEquals(0, host.successes.get())
-        }
-    }
-
-    @Test
-    fun aSuccessCallbackAfterTheMonotonicDeadlineCannotPublishAConnection() {
-        val host = Host()
-        val clock = AtomicLong(0)
         val late =
             Session { listener, _ ->
                 listener.onStatusChanged(CLONES)
-                clock.set(BUDGET_MS + 1)
                 listener.onStatusChanged(ConnectionStatus(ConnectionPhase.CONNECTED))
             }
         host.sessions += late
-        withCoordinator(host, clock::get) { coordinator ->
+        withCoordinator(host) { coordinator ->
             coordinator.beginConnection(CONFIG)
             assertTrue(late.returned.await(1, TimeUnit.SECONDS))
-            assertEquals("late success reached history/microphone activation", 0, host.successes.get())
-            assertTrue(awaitUntil { host.mutableState.value.statusMessage == UserMessage.ClonesLimitExpired })
-            assertFalse(host.mutableState.value.status.phase == ConnectionPhase.CONNECTED)
+            assertTrue(awaitUntil { host.mutableState.value.statusMessage == UserMessage.ConnectionLimitWait })
+            assertEquals(0, host.successes.get())
         }
     }
 
@@ -146,7 +100,6 @@ class ClonesRecoveryConcurrencyTest {
                 host,
                 clockMs = clock,
                 sessionFactory = { host.sessions.remove() },
-                clonesPolicy = ClonesRecoveryPolicy(backoffMs = listOf(10L), totalBudgetMs = BUDGET_MS),
             )
         host.coordinator = coordinator
         try {

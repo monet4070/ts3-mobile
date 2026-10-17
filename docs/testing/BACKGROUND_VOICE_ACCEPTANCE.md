@@ -150,6 +150,7 @@ Retain the callback, send, confirmation and next-attempt timestamps separately:
 | EXIT_NO_ACTIVE_SESSION | No established local session; partial server-side handshake acceptance remains possible |
 | EXIT_UNSUPPORTED | Transport has no bounded exit implementation |
 | EXIT_CLEANUP_OVERRUN | Numeric milliseconds spent past the exit deadline during local cleanup |
+| EXIT_CLEANUP_FAILED | Local reclamation failed; separate from the observed server exit result |
 
 Only EXIT_SERVER_CONFIRMED proves the client's observation of server exit. An
 EXIT_REQUEST_SENT event, removal of the notification, local socket closure or
@@ -158,29 +159,30 @@ Native audio cleanup that ignores cancellation can exceed the two-second target;
 report that duration separately. No callback in a force-stop/vendor-kill run is
 not an active-exit success. Reopening alone must never initiate a connection.
 
-## First-connect clones recovery acceptance
+The [2026-10-17 device report](TASK_REMOVAL_DEVICE_2026-10-17.md) records three
+successful framework task removals and three successful manual exits, alongside
+a failed Xiaomi launcher swipe exit. The launcher killed the process first and
+delivered the callback to a new service with no session. Neither battery
+unrestricted mode nor task locking changed this. Do not count framework-driven
+removal as a pass of the launcher gesture or mark the full matrix complete.
 
-Keep the same identity and the original server limit. First record the actual
-refusal type/text using disposable fixtures and sanitized evidence; do not infer
-server error codes. From the first clones refusal, measure one 60-second monotonic
-window covering 1/2/4/8-second backoff (then 8 seconds), offline waiting and active
-handshakes. Measure server and client timings independently.
+## Identity-limit manual retry acceptance
+
+Use offline fixtures rather than repeatedly connecting to a production server.
 
 | Scenario | Required observation |
 | --- | --- |
-| Old server session eventually expires | Same-identity attempts recover within the fixed window; no new identity is generated |
-| Another legitimate same-identity client stays connected | Recovery stops at the fixed deadline with an actionable message; the other client remains untouched |
-| Offline after clones refusal | Offline wait consumes the same budget without attempts or spinning; late network restoration does not reopen the window |
-| Attempt still handshaking at deadline | Captured attempt socket closes and the real worker stops; no late success becomes the active session |
-| Cancel, task removal or replacement connection | Old window ends and old callbacks cannot mutate the replacement or remove its notification |
-| Password/ban/kick during recovery | Recovery ends immediately; no generic protocol retry loop |
-| First failure is ordinary network error | Existing first-connect terminal behavior is preserved |
-| Success after returning to the background | Listening can resume; stopped capture still follows foreground/microphone eligibility rules |
+| Identity connection-limit refusal | One attempt, terminal manual-wait guidance; no automatic attempt after five minutes |
+| Refusal during ordinary reconnect | Automatic recovery stops; original refusal is preserved |
+| Late success or snapshot after refusal | No return to CONNECTED and no stale state update |
+| User manually retries | One new attempt with the same identity; replacement callbacks remain isolated |
+| Ordinary network loss | Existing automatic recovery remains available |
+| Localized large text | Full guidance and manual reconnect reachable by scrolling |
 
-Retry count is distinct from time since the first refusal. A fresh failure,
-network switch or failed retry must not reset either this window or the existing
-CPU-awake recovery budget. Capture the localized retry/expiry message, cancel
-entry and fixed-category numeric diagnostics without sensitive server details.
+The recommendation to wait at least 60 seconds does not enforce a cooldown or
+promise that a server ban/session expires by that time. See ADR-0011.
+
+Historical journal format (no new clone-recovery events are emitted):
 
 CLONES_RECOVERY_STARTED records the first recognized refusal for the active
 request. CLONES_RECOVERY_ENDED records exactly one numeric outcome: 0 connected,

@@ -40,7 +40,7 @@ jobs:
           packages: platform-tools
 
       - name: Install Android build tools
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1" "emulator" "system-images;android-35;default;x86_64"
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
@@ -55,4 +55,29 @@ jobs:
           :app:testDebugUnitTest
           :app:lintDebug
           :app:assembleDebug
+          :app:assembleRelease
           --stacktrace
+
+      - name: Verify identity loading in the minified APK
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          ./gradlew --stop
+          sudo chmod 666 /dev/kvm
+          echo no | avdmanager create avd --name release-identity-api35 --package "system-images;android-35;default;x86_64"
+          "$ANDROID_HOME/emulator/emulator" -avd release-identity-api35 -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/release-identity-emulator.log" 2>&1 &
+          trap 'adb -s emulator-5554 emu kill || echo "::warning::Emulator cleanup failed"' EXIT
+          timeout 180 adb -s emulator-5554 wait-for-device
+          booted=false
+          for attempt in $(seq 1 90); do
+            if [[ "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" == "1" ]]; then
+              booted=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$booted" != "true" ]]; then
+            cat "$RUNNER_TEMP/release-identity-emulator.log"
+            exit 1
+          fi
+          pwsh -NoProfile -File ./tools/check-release-identity.ps1 -DeviceSerial emulator-5554 -SdkRoot "$ANDROID_HOME"

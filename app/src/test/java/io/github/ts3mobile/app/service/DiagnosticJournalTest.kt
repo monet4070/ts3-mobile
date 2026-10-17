@@ -68,6 +68,7 @@ class DiagnosticJournalTest {
                 DiagnosticEventKind.EXIT_NO_ACTIVE_SESSION,
                 DiagnosticEventKind.EXIT_UNSUPPORTED,
                 DiagnosticEventKind.EXIT_CLEANUP_OVERRUN,
+                DiagnosticEventKind.EXIT_CLEANUP_FAILED,
             )
         val journal = DiagnosticJournal(file)
         exitKinds.forEach { journal.record(it) }
@@ -86,14 +87,14 @@ class DiagnosticJournalTest {
         val file = temporaryFolder.newFile("events.tsv")
         val journal = DiagnosticJournal(file)
         journal.record(DiagnosticEventKind.CLONES_RECOVERY_STARTED)
-        ClonesRecoveryResult.entries.forEach { journal.record(DiagnosticEventKind.CLONES_RECOVERY_ENDED, it.code) }
+        (0L..4L).forEach { journal.record(DiagnosticEventKind.CLONES_RECOVERY_ENDED, it) }
         journal.persist()
 
         val export = DiagnosticJournal(file).toRedactedJson()
 
         assertTrue(export.contains("\"kind\":\"CLONES_RECOVERY_STARTED\""))
-        ClonesRecoveryResult.entries.forEach {
-            assertTrue(export.contains("\"kind\":\"CLONES_RECOVERY_ENDED\",\"code\":${it.code}"))
+        (0L..4L).forEach {
+            assertTrue(export.contains("\"kind\":\"CLONES_RECOVERY_ENDED\",\"code\":$it"))
         }
         // Only categories and numbers: never the refusal text or any identity.
         assertFalse(export.contains("clones already connected"))

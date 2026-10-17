@@ -103,7 +103,8 @@ flowchart TB
 - **Foreground Service Policy (`SessionNotifications.kt`)**: Listening uses `mediaPlayback`; actual PTT or continuous capture adds `microphone`. The long-lived voice session no longer enables `dataSync`. Stopped background capture waits for a visible app before restarting.
 - **Network-Aware Reconnection**: `DefaultNetworkMonitor` tracks identity, capabilities, pending and blocked states. A bounded read-only control request checks a network switch before reconnecting. Offline retry waits for usable network, then applies 1–30s backoff.
 - **Background Evidence and Power**: A bounded local journal survives process recreation. The background runtime check offers battery settings and an optional timed CPU wake lock, with a two-minute recovery budget; see [ADR-0007](decisions/0007-background-voice-and-server-history.md).
-- **Successful Endpoint History**: One shared DataStore saves the ten most recent successful host/port pairs, without passwords or nicknames; users can select or delete entries.
+- **Identity-limit refusal**: Recognized clone-limit command refusals are terminal. Stop automatic recovery, close the refused attempt and show wait/manual-retry guidance; ordinary network recovery stays automatic. See [ADR-0011](decisions/0011-manual-refusal-and-form-memory.md).
+- **Successful Endpoint History**: One shared DataStore saves the ten most recent successful host/port pairs, without passwords or nicknames; users can select or delete entries. The last edited connection form, including nickname/server password, is separately AES-GCM encrypted with Android Keystore and excluded from backup; see ADR-0011.
 - **Channel State Memory & Restoration (`ChannelRestorePolicy.kt`)**: In-memory caching of the active channel ID and password; automatically rejoins the user's previous channel upon reconnection.
 
 ---

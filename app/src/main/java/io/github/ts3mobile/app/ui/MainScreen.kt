@@ -1,18 +1,24 @@
 package io.github.ts3mobile.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -64,6 +70,18 @@ fun MainScreen(
     onAppSettings: () -> Unit,
 ) {
     var showBackgroundRuntime by rememberSaveable { mutableStateOf(false) }
+    var showDiagnostics by rememberSaveable { mutableStateOf(false) }
+    var showMore by rememberSaveable { mutableStateOf(false) }
+    if (showDiagnostics) {
+        AlertDialog(
+            onDismissRequest = { showDiagnostics = false },
+            title = { Text(stringResource(R.string.tab_diagnostics)) },
+            text = { Box(Modifier.heightIn(max = 420.dp)) { DiagnosticsPanel(serviceState.diagnostics, onCopyDiagnostics) } },
+            confirmButton = {
+                TextButton(onClick = { showDiagnostics = false }) { Text(stringResource(R.string.action_close)) }
+            },
+        )
+    }
     if (showBackgroundRuntime) {
         BackgroundRuntimeDialog(
             state = serviceState.backgroundRuntime,
@@ -106,12 +124,30 @@ fun MainScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        onPushToTalkChanged(false)
-                        onRefreshBackgroundRuntime()
-                        showBackgroundRuntime = true
-                    }) {
-                        AppIcon(UiIcon.Battery, stringResource(R.string.background_runtime_title))
+                    Box {
+                        IconButton(onClick = {
+                            onPushToTalkChanged(false)
+                            showMore = true
+                        }) {
+                            AppIcon(UiIcon.Sliders, stringResource(R.string.action_more))
+                        }
+                        DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.background_runtime_title)) },
+                                onClick = {
+                                    showMore = false
+                                    onRefreshBackgroundRuntime()
+                                    showBackgroundRuntime = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.tab_diagnostics)) },
+                                onClick = {
+                                    showMore = false
+                                    showDiagnostics = true
+                                },
+                            )
+                        }
                     }
                     StatusIndicator(serviceState.status.phase)
                     Spacer(Modifier.width(16.dp))
@@ -126,10 +162,9 @@ fun MainScreen(
                     .padding(contentPadding),
         ) {
             val context = LocalContext.current
-            val statusText =
-                serviceState.statusMessage?.resolve(context) ?: serviceState.status.detail
-            statusText?.let { detail ->
-                StatusMessage(serviceState.status.phase, detail)
+            val statusText = serviceState.resolveStatusText(context)
+            if (serviceState.status.phase == ConnectionPhase.CONNECTED) {
+                statusText?.let { detail -> StatusMessage(serviceState.status.phase, detail) }
             }
             serviceState.microphoneError?.let { message ->
                 StatusMessage(ConnectionPhase.ERROR, message.resolve(context))
@@ -152,7 +187,6 @@ fun MainScreen(
                     onMicrophoneModeChanged = onMicrophoneModeChanged,
                     onPushToTalkChanged = onPushToTalkChanged,
                     onJoinChannel = onJoinChannel,
-                    onCopyDiagnostics = onCopyDiagnostics,
                 )
             } else {
                 ConnectionForm(
@@ -168,6 +202,7 @@ fun MainScreen(
                     onHistoryRemoved = onHistoryRemoved,
                     onConnect = onConnect,
                     onDisconnect = onDisconnect,
+                    statusText = statusText,
                 )
             }
         }

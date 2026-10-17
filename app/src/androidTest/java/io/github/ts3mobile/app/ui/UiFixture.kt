@@ -3,6 +3,7 @@ package io.github.ts3mobile.app.ui
 import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
@@ -45,8 +46,22 @@ internal class UiFixture(connected: Boolean = false) {
         fontScale: Float = 1f,
     ) {
         val base = LocalContext.current
+        val originalConfig = remember(base) { Configuration(base.resources.configuration) }
+        DisposableEffect(base) {
+            onDispose {
+                @Suppress("DEPRECATION")
+                base.resources.updateConfiguration(originalConfig, base.resources.displayMetrics)
+            }
+        }
         val config = remember(locale) { Configuration(base.resources.configuration).apply { setLocale(Locale.forLanguageTag(locale)) } }
-        val context = remember(config) { base.createConfigurationContext(config) }
+        val context =
+            remember(config) {
+                // Popup/Dialog obtain resources from their Android view context.
+                // Align that test-only context too, so the phone locale cannot leak in.
+                @Suppress("DEPRECATION")
+                base.resources.updateConfiguration(config, base.resources.displayMetrics)
+                base.createConfigurationContext(config)
+            }
         CompositionLocalProvider(
             LocalContext provides context,
             LocalConfiguration provides config,

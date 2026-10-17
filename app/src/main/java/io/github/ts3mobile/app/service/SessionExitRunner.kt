@@ -27,6 +27,8 @@ internal class SessionExitRunner(
     ) {
         host.recordDiagnostic(DiagnosticEventKind.EXIT_STARTED)
         var outcome = DisconnectOutcome.FAILED
+        var protocolCompleted = false
+        var cleanupFailed = false
         var audioStopped = false
         var released = false
 
@@ -43,38 +45,42 @@ internal class SessionExitRunner(
             if (handshaking) releaseCaptured()
             val completed =
                 withTimeoutOrNull((deadlineMs - clockMs()).coerceAtLeast(0)) {
-                    // A registered exit is a barrier for new connection attempts, so
-                    // these shared resources still belong to the captured session.
-                    stopAudio()
-                    audioStopped = true
+                    // Ownership and the detached voice source already prevent new
+                    // transmissions. Notify the server before native audio cleanup
+                    // or another session operation can spend the exit budget.
+                    outcome =
+                        when {
+                            handshaking || captured == null -> DisconnectOutcome.NO_ACTIVE_SESSION
+                            deadlineMs <= clockMs() -> DisconnectOutcome.TIMED_OUT
+                            else ->
+                                captured.disconnectBounded(
+                                    deadlineMs - clockMs(),
+                                    trigger.reasonMessage,
+                                ) { host.recordDiagnostic(DiagnosticEventKind.EXIT_REQUEST_SENT) }
+                        }
+                    protocolCompleted = true
+                    releaseCaptured()
+                    // New connections still wait for this exit job. Reclaim shared
+                    // audio only after any old operation releases the session mutex.
                     host.sessionMutex.lock()
                     try {
-                        outcome =
-                            when {
-                                handshaking || captured == null -> DisconnectOutcome.NO_ACTIVE_SESSION
-                                deadlineMs <= clockMs() -> DisconnectOutcome.TIMED_OUT
-                                else ->
-                                    captured.disconnectBounded(
-                                        deadlineMs - clockMs(),
-                                        trigger.reasonMessage,
-                                    ) { host.recordDiagnostic(DiagnosticEventKind.EXIT_REQUEST_SENT) }
-                            }
-                        releaseCaptured()
+                        stopAudio()
+                        audioStopped = true
                     } finally {
                         host.sessionMutex.unlock()
                     }
                     true
                 } == true
-            if (!completed) outcome = DisconnectOutcome.TIMED_OUT
+            if (!completed && !protocolCompleted) outcome = DisconnectOutcome.TIMED_OUT
         } catch (error: CancellationException) {
             throw error
         } catch (_: Throwable) {
-            outcome = DisconnectOutcome.FAILED
+            if (protocolCompleted) cleanupFailed = true else outcome = DisconnectOutcome.FAILED
         } finally {
             try {
                 releaseCaptured()
             } catch (_: Throwable) {
-                outcome = DisconnectOutcome.FAILED
+                cleanupFailed = true
             }
             if (!isClosing()) {
                 // A missed deadline must not leave capture, playback or a bound
@@ -85,7 +91,7 @@ internal class SessionExitRunner(
                         try {
                             stopAudio()
                         } catch (_: Throwable) {
-                            outcome = DisconnectOutcome.FAILED
+                            cleanupFailed = true
                         }
                     }
                 }
@@ -99,6 +105,7 @@ internal class SessionExitRunner(
                 if (clockMs() > deadlineMs) {
                     host.recordDiagnostic(DiagnosticEventKind.EXIT_CLEANUP_OVERRUN, clockMs() - deadlineMs)
                 }
+                if (cleanupFailed) host.recordDiagnostic(DiagnosticEventKind.EXIT_CLEANUP_FAILED)
                 host.recordDiagnostic(outcome.toDiagnosticKind())
                 host.finishExitOnMainThread(exitToken)
             }

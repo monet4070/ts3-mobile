@@ -114,7 +114,7 @@ class ConnectionExitConcurrencyTest {
     }
 
     @Test
-    fun theExitBudgetCoversASlowCaptureStopAndStillReturnsInsideIt() {
+    fun aSlowCaptureStopDoesNotDelayTheProtocolExitAndStillReturnsInsideTheBudget() {
         val session = ScriptedSession()
         host.nextSession = session
         coordinator.beginConnection(CONFIG)
@@ -127,8 +127,8 @@ class ConnectionExitConcurrencyTest {
         val elapsedMs = (System.nanoTime() - startedAt) / NANOS_PER_MILLISECOND
 
         assertTrue(
-            "capture stop was not spent from the budget: ${session.boundedDisconnectBudgetMs}ms",
-            session.boundedDisconnectBudgetMs <= EXIT_BUDGET_MS - CAPTURE_STOP_MS + SLACK_MS,
+            "capture stop consumed the protocol budget: ${session.boundedDisconnectBudgetMs}ms",
+            session.boundedDisconnectBudgetMs > EXIT_BUDGET_MS - CAPTURE_STOP_MS,
         )
         assertTrue("exit took ${elapsedMs}ms", elapsedMs <= EXIT_BUDGET_MS + SLACK_MS)
         assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.DISCONNECTED })

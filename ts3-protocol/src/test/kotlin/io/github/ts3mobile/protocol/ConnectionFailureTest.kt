@@ -39,8 +39,8 @@ class ConnectionFailureTest {
     }
 
     @Test
-    fun staleCloneRejectionIsRetryableAfterAConnectionDrop() {
-        assertTrue(
+    fun cloneRejectionRequiresManualRetryEvenAfterAConnectionDrop() {
+        assertFalse(
             CommandProcessException("too many clones already connected")
                 .isRetryableConnectionFailure(),
         )

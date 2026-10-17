@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity() {
                     onHistorySelected = viewModel::applyHistoryEntry,
                     onHistoryRemoved = viewModel::removeHistoryEntry,
                     onConnect = {
-                        viewModel.submit()?.let(::requestConnection)
+                        viewModel.submitAndRemember(::requestConnection)
                     },
                     onDisconnect = {
                         TeamSpeakService.disconnect(this)

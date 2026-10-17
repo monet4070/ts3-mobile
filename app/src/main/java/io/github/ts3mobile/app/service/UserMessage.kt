@@ -2,6 +2,9 @@ package io.github.ts3mobile.app.service
 
 import io.github.ts3mobile.audio.opus.AudioRoutingError
 
+/** Conservative user guidance, not a server unban deadline or an automatic timer. */
+internal const val RECOMMENDED_RETRY_WAIT_SECONDS = 60L
+
 /**
  * User-facing text produced by the service layer, kept as data instead of a
  * formatted string so the Android boundary resolves it against the active
@@ -26,23 +29,8 @@ sealed interface UserMessage {
 
     data class Reconnecting(val attempt: Int) : UserMessage
 
-    /**
-     * The server refused a first connection because this identity already has too
-     * many clones, and a bounded retry is under way.
-     */
-    data object ClonesLimitRetrying : UserMessage
-
-    /** Same refusal, with the next attempt scheduled after a backoff. */
-    data class ClonesLimitRetryScheduled(
-        val seconds: Long,
-        val attempt: Int,
-    ) : UserMessage
-
-    /** Same refusal, waiting for a usable network; the window keeps draining. */
-    data object ClonesLimitWaitingForNetwork : UserMessage
-
-    /** The bounded window elapsed; the user has to check and retry manually. */
-    data object ClonesLimitExpired : UserMessage
+    /** Server refused this identity: no automatic attempts; wait and retry manually. */
+    data object ConnectionLimitWait : UserMessage
 
     data class ChannelJoinFailed(val cause: String) : UserMessage
 

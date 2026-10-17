@@ -26,6 +26,34 @@ import java.util.concurrent.atomic.AtomicReference
 
 class Ts3jSessionClientTest {
     @Test
+    fun anActiveTalkspurtRemainsReadyWhileItsQueueIsTemporarilyEmpty() {
+        var active = true
+        val frames = ArrayDeque(listOf(byteArrayOf(1, 2, 3, 4)))
+        val source =
+            object : EncodedVoiceSource {
+                override val isTransmitting get() = active
+
+                override fun isReady() = frames.isNotEmpty()
+
+                override fun pollEncodedFrame() = frames.removeFirstOrNull()
+            }
+        val socket = FakeSocket()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        try {
+            client.setVoiceSource(source)
+            client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+            val microphone = checkNotNull(socket.lastMicrophone)
+            assertEquals(4, microphone.provide().size)
+            assertTrue("a transient queue gap ended the talkspurt", microphone.isReady)
+            assertEquals(0, microphone.provide().size)
+            active = false
+            assertFalse(microphone.isReady)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun theFacadeCarriesTheObservedCloneCategoryAndReleasesTheFailedSocket() {
         val failure = IllegalStateException("fixture wrapper", CommandProcessException("TOO MANY CLONES ALREADY CONNECTED"))
         val socket = FakeSocket(failureOnConnect = failure)
@@ -35,7 +63,7 @@ class Ts3jSessionClientTest {
         assertEquals(failure, thrown)
         val status = listener.statuses.single { it.phase == ConnectionPhase.ERROR }
         assertEquals(ConnectionFailureCategory.CLONES_LIMIT, status.category)
-        assertTrue(status.retryable)
+        assertFalse(status.retryable)
         assertTrue(listener.statuses.none { it.phase == ConnectionPhase.CONNECTED })
         assertEquals(1, socket.closeCalls)
     }
