@@ -1,6 +1,7 @@
 # TS3 Mobile
 
 [![Android CI](https://github.com/monet4070/ts3-mobile/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/monet4070/ts3-mobile/actions/workflows/android.yml)
+[![Latest release](https://img.shields.io/github/v/release/monet4070/ts3-mobile?label=latest%20release)](https://github.com/monet4070/ts3-mobile/releases/latest)
 
 中文文档：[README_ZH.md](README_ZH.md)
 
@@ -8,16 +9,23 @@ TS3 Mobile is an experimental, open-source Android client for TeamSpeak 3,
 built on the full client protocol provided by
 [Manevolent/ts3j](https://github.com/Manevolent/ts3j).
 
+**[Download the latest APK](https://github.com/monet4070/ts3-mobile/releases/latest)**
+(Android 8.0+, about 14 MB). Do not install the old **v0.1** build; it predates
+password-protected server support and the fix for the identity-loading crash in
+0.11.1-m10. See [Download and install](#download-and-install).
+
 This is an unofficial community project. It is not affiliated with, endorsed
 by, or sponsored by TeamSpeak Systems GmbH. TeamSpeak and related names and
 marks are the property of their respective owners.
 
 ## Project status
 
-The latest M10 maintenance pre-release is **0.11.1-m10**. It fixes the Release
-identity-loading crash reported in issue #3, adds encrypted connection-form
-memory and manual-only identity-limit recovery, and improves the disconnect UI.
-Existing M10 installations can update in place without resetting identity.
+The latest M10 maintenance build is **0.11.1-m10**, published as a regular
+GitHub release; the app itself is still pre-release quality. It fixes the
+Release identity-loading crash reported in issue #3, adds encrypted
+connection-form memory and manual-only identity-limit recovery, and improves
+the disconnect UI. Existing M10 installations can update in place without
+resetting identity.
 
 Development is currently focused on the M11 production-beta preparation
 milestone. The automated build gate and the M10 code-hardening baseline are in
@@ -37,6 +45,33 @@ second-device testing.
 
 Treat the app as pre-release software and keep another client available when
 testing on important servers.
+
+## Download and install
+
+The current build is **0.11.1-m10**, available from the
+[latest release](https://github.com/monet4070/ts3-mobile/releases/latest):
+
+- APK: `ts3-mobile-0.11.1-m10-release.apk` (about 14 MB)
+- Android 8.0 (API 26) or newer, with `arm64-v8a`, `armeabi-v7a`, `x86` and
+  `x86_64` libraries
+- SHA-256 checksum: published in the release notes and in `SHA256SUMS.txt`
+- Existing M10 installations can install over the old build; identity and
+  settings are preserved
+
+The APK is signed with the M10 development certificate, not a production
+release key. A future production-signed build may require uninstalling this
+one. Keep another client available on important servers.
+
+The app does not check for updates yet. Follow the
+[releases page](https://github.com/monet4070/ts3-mobile/releases) or use
+**Watch → Custom → Releases** on GitHub to be notified of new builds.
+
+If you landed on the **v0.1** release page: that is the first experimental
+build from August 2026, released before password-protected server support and
+before the 0.11.1-m10 identity-loading fix. Use the latest release instead. If
+Android refuses to install the new APK over an older build because of a
+signature mismatch, uninstall the old app first; uninstalling also removes its
+locally stored TeamSpeak identity.
 
 ## Features
 
