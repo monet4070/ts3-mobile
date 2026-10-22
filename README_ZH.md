@@ -1,18 +1,24 @@
 # TS3 Mobile
 
 [![Android CI](https://github.com/monet4070/ts3-mobile/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/monet4070/ts3-mobile/actions/workflows/android.yml)
+[![Latest release](https://img.shields.io/github/v/release/monet4070/ts3-mobile?label=latest%20release)](https://github.com/monet4070/ts3-mobile/releases/latest)
 
 English documentation: [README.md](README.md)
 
 TS3 Mobile 是一个实验性的开源 Android TeamSpeak 3 客户端，基于
 [Manevolent/ts3j](https://github.com/Manevolent/ts3j) 提供的完整客户端协议构建。
 
+**[下载最新 APK](https://github.com/monet4070/ts3-mobile/releases/latest)**
+（Android 8.0+，约 14 MB）。请勿安装旧的 **v0.1** 版本：它早于服务器密码认证支持，
+也没有 0.11.1-m10 的身份读取崩溃修复。详见[下载与安装](#下载与安装)。
+
 本项目是非官方社区项目，与 TeamSpeak Systems GmbH 没有隶属、认可或赞助关系。
 TeamSpeak 及相关名称和商标归其各自所有者所有。
 
 ## 项目状态
 
-最新 M10 维护预发布版为 **0.11.1-m10**，修复 issue #3 的 Release 身份读取崩溃，
+最新 M10 维护版本为 **0.11.1-m10**，已作为常规 GitHub Release 发布（未标记为
+预发布），但应用本身仍属预发布质量。该版本修复 issue #3 的 Release 身份读取崩溃，
 新增连接表单加密记忆、连接限制后手动重试指引，并改善断开按钮。已有 M10 安装可直接
 覆盖升级，无需清除应用数据或重建身份。
 
@@ -28,6 +34,25 @@ TeamSpeak 及相关名称和商标归其各自所有者所有。
 实体 Bluetooth/热插拔、密码频道恢复和第二台 Android 设备测试。
 
 本应用仍属于预发布软件。在重要服务器上测试时，请保留其他可用客户端。
+
+## 下载与安装
+
+当前版本为 **0.11.1-m10**，请从[最新 Release](https://github.com/monet4070/ts3-mobile/releases/latest)下载：
+
+- APK：`ts3-mobile-0.11.1-m10-release.apk`（约 14 MB）
+- Android 8.0（API 26）及以上，包含 `arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64`
+- SHA-256 校验值见 Release 说明和 `SHA256SUMS.txt`
+- 已有 M10 安装可直接覆盖安装，身份和设置会保留
+
+APK 使用 M10 开发签名证书，不是正式生产签名。将来切换到生产签名时可能需要先卸载
+当前版本。在重要服务器上请保留其他可用客户端。
+
+应用目前不会自动检查更新。请关注 [Releases 页面](https://github.com/monet4070/ts3-mobile/releases)，
+或在 GitHub 上选择 **Watch → Custom → Releases**。
+
+如果你是从 **v0.1** 的 Release 页面进来的：那是 2026 年 8 月的第一个实验版本，
+早于服务器密码认证支持，也没有 0.11.1-m10 的身份读取修复，请改用最新版本。如果因为
+签名不一致无法覆盖安装，需要先卸载旧版本；卸载也会删除本地保存的 TeamSpeak 身份。
 
 ## 功能
 
