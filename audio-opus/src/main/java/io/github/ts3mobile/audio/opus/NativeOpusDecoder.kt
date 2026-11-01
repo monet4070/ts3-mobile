@@ -3,6 +3,19 @@ package io.github.ts3mobile.audio.opus
 internal class NativeOpusDecoder : OpusPacketDecoder {
     private var handle = nativeCreate(SAMPLE_RATE, CHANNEL_COUNT)
 
+    override fun packetInfo(packet: ByteArray): OpusPacketInfo = NativeOpusInfo.inspect(packet)
+
+    @Synchronized
+    override fun decodeFec(
+        packet: ByteArray,
+        frameSize: Int,
+    ): ShortArray {
+        check(handle != 0L) { "Opus decoder is closed" }
+        require(frameSize in setOf(480, 960))
+        return nativeDecodeFec(handle, packet, frameSize)
+    }
+
+    @Synchronized
     override fun decode(
         packet: ByteArray?,
         frameSize: Int,
@@ -12,11 +25,13 @@ internal class NativeOpusDecoder : OpusPacketDecoder {
         return nativeDecode(handle, packet, frameSize)
     }
 
+    @Synchronized
     override fun reset() {
         check(handle != 0L) { "Opus decoder is closed" }
         nativeReset(handle)
     }
 
+    @Synchronized
     override fun close() {
         val current = handle
         if (current == 0L) return
@@ -47,6 +62,12 @@ internal class NativeOpusDecoder : OpusPacketDecoder {
 
         @JvmStatic
         private external fun nativeReset(handle: Long)
+
+        @JvmStatic private external fun nativeDecodeFec(
+            handle: Long,
+            packet: ByteArray,
+            frameSize: Int,
+        ): ShortArray
 
         @JvmStatic
         private external fun nativeDestroy(handle: Long)

@@ -1,45 +1,43 @@
 package io.github.ts3mobile.app.ui
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.ConnectionFormState
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.bookmarks.BookmarkState
+import io.github.ts3mobile.app.bookmarks.ServerBookmark
+import io.github.ts3mobile.app.chat.ChatConversationKey
+import io.github.ts3mobile.app.chat.ChatState
+import io.github.ts3mobile.app.chat.PokeRecipient
 import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.service.UserMessage
+import io.github.ts3mobile.app.service.hasPlaybackFailure
+import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
+import io.github.ts3mobile.protocol.Ts3Channel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,10 +66,84 @@ fun MainScreen(
     onRefreshBackgroundRuntime: () -> Unit,
     onBatterySettings: () -> Unit,
     onAppSettings: () -> Unit,
+    chatState: ChatState = ChatState(),
+    onChatDraft: (String) -> Unit = {},
+    onChatSend: () -> Unit = {},
+    onChatVisible: (ChatConversationKey, Long) -> Unit = { _, _ -> },
+    onOpenPrivateChat: (Int) -> Unit = {},
+    onChatConversationSelected: (ChatConversationKey) -> Unit = {},
+    onChatConversationClosed: (ChatConversationKey) -> Unit = {},
+    onPoke: (PokeRecipient, String) -> Boolean = { _, _ -> false },
+    onPokeDismiss: (Long) -> Unit = {},
+    onMicrophoneSettingsChanged: (MicrophoneSettings) -> Unit = {},
+    bookmarks: BookmarkState = BookmarkState(),
+    canUseBookmarkConnection: Boolean = true,
+    onBookmarkSave: (ServerBookmark) -> Unit = {},
+    onBookmarkRemove: (ServerBookmark) -> Unit = {},
+    onBookmarkSelect: (ServerBookmark) -> Unit = {},
+    onBookmarkConnect: (ServerBookmark) -> Unit = {},
+    onBookmarkReload: () -> Unit = {},
+    onAwayChanged: (Boolean, String) -> Unit = { _, _ -> },
+    onPresenceRetry: () -> Unit = {},
+    onChannelInfo: (Int) -> Unit = {},
+    onChannelInfoDismiss: () -> Unit = {},
+    onResolveUserChannel: (Int, String) -> Int? = { _, _ -> null },
 ) {
+    chatState.pokeNotice?.let { PokeNoticeDialog(it, onPokeDismiss) { onPushToTalkChanged(false) } }
+    var showPresence by rememberSaveable { mutableStateOf(false) }
+    var showSearch by rememberSaveable { mutableStateOf(false) }
+    var joinTarget by androidx.compose.runtime.remember { mutableStateOf<Ts3Channel?>(null) }
+    LaunchedEffect(serviceState.status.phase) {
+        if (serviceState.status.phase != ConnectionPhase.CONNECTED) {
+            showPresence = false
+            showSearch = false
+            joinTarget = null
+        }
+    }
+    val joinFound: (Ts3Channel) -> Unit = { channel ->
+        if (channel.hasPassword) joinTarget = channel else onJoinChannel(channel.id, "")
+    }
+    joinTarget?.let {
+            channel ->
+        ChannelPasswordDialog(channel.name, { joinTarget = null }) { password ->
+            onJoinChannel(channel.id, password)
+            joinTarget = null
+        }
+    }
+    if (showPresence) PresenceDialog(serviceState, onAwayChanged, onPresenceRetry) { showPresence = false }
+    if (showSearch) {
+        SessionSearchDialog(serviceState, onChannelInfo, joinFound, { participant ->
+            val channelId = onResolveUserChannel(participant.id, participant.uniqueIdentifier)
+            serviceState.snapshot.channels.firstOrNull { it.id == channelId }?.let(joinFound)
+        }) { showSearch = false }
+    }
+    if (serviceState.channelInfo != null && serviceState.status.phase == ConnectionPhase.CONNECTED) {
+        ChannelInfoDialog(
+            serviceState,
+            onChannelInfo,
+            joinFound,
+            onChannelInfoDismiss,
+        )
+    }
+    var showBookmarks by rememberSaveable { mutableStateOf(false) }
+    if (showBookmarks) {
+        BookmarkDialogs(
+            bookmarks,
+            form,
+            canUseBookmarkConnection && serviceState.status.phase in setOf(ConnectionPhase.DISCONNECTED, ConnectionPhase.ERROR),
+            onBookmarkSave,
+            onBookmarkRemove,
+            onBookmarkSelect,
+            onBookmarkConnect,
+            onBookmarkReload,
+        ) { showBookmarks = false }
+    }
+    var showMicrophoneSettings by rememberSaveable { mutableStateOf(false) }
+    if (showMicrophoneSettings) {
+        MicrophoneSettingsDialog(serviceState, onMicrophoneSettingsChanged) { showMicrophoneSettings = false }
+    }
     var showBackgroundRuntime by rememberSaveable { mutableStateOf(false) }
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
-    var showMore by rememberSaveable { mutableStateOf(false) }
     if (showDiagnostics) {
         AlertDialog(
             onDismissRequest = { showDiagnostics = false },
@@ -93,66 +165,34 @@ fun MainScreen(
         )
     }
     val largeText = LocalDensity.current.fontScale > 1.3f
+    var chatSelected by androidx.compose.runtime.remember { mutableStateOf(false) }
+    val chatKeyboard = chatSelected && WindowInsets.ime.getBottom(LocalDensity.current) > 0
     Scaffold(
         topBar = {
-            TopAppBar(
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
+            if (!chatKeyboard) {
+                MainScreenAppBar(
+                    serviceState.status.phase,
+                    largeText,
+                    { onPushToTalkChanged(false) },
+                    listOf(
+                        MainMenuAction(
+                            R.string.presence_title,
+                            serviceState.status.phase == ConnectionPhase.CONNECTED,
+                        ) { showPresence = true },
+                        MainMenuAction(
+                            R.string.discovery_title,
+                            serviceState.status.phase == ConnectionPhase.CONNECTED,
+                        ) { showSearch = true },
+                        MainMenuAction(R.string.bookmarks_title) { showBookmarks = true },
+                        MainMenuAction(R.string.microphone_settings) { showMicrophoneSettings = true },
+                        MainMenuAction(R.string.background_runtime_title) {
+                            onRefreshBackgroundRuntime()
+                            showBackgroundRuntime = true
+                        },
+                        MainMenuAction(R.string.tab_diagnostics) { showDiagnostics = true },
                     ),
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        IconTile(UiIcon.Audio, Modifier.size(32.dp))
-                        Column {
-                            Text(
-                                stringResource(R.string.app_name),
-                                style = if (largeText) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (!largeText) {
-                                Text(
-                                    stringResource(R.string.app_tagline),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                },
-                actions = {
-                    Box {
-                        IconButton(onClick = {
-                            onPushToTalkChanged(false)
-                            showMore = true
-                        }) {
-                            AppIcon(UiIcon.Sliders, stringResource(R.string.action_more))
-                        }
-                        DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.background_runtime_title)) },
-                                onClick = {
-                                    showMore = false
-                                    onRefreshBackgroundRuntime()
-                                    showBackgroundRuntime = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.tab_diagnostics)) },
-                                onClick = {
-                                    showMore = false
-                                    showDiagnostics = true
-                                },
-                            )
-                        }
-                    }
-                    StatusIndicator(serviceState.status.phase)
-                    Spacer(Modifier.width(16.dp))
-                },
-            )
+                )
+            }
         },
     ) { contentPadding ->
         Column(
@@ -169,6 +209,9 @@ fun MainScreen(
             serviceState.microphoneError?.let { message ->
                 StatusMessage(ConnectionPhase.ERROR, message.resolve(context))
             }
+            if (serviceState.hasPlaybackFailure) {
+                StatusMessage(ConnectionPhase.ERROR, stringResource(R.string.playback_failed))
+            }
             serviceState.channelError?.let { message ->
                 StatusMessage(ConnectionPhase.ERROR, message.resolve(context))
             }
@@ -176,7 +219,8 @@ fun MainScreen(
                 StatusMessage(ConnectionPhase.ERROR, UserMessage.AudioRouting(error).resolve(context))
             }
 
-            if (serviceState.status.phase == ConnectionPhase.CONNECTED) {
+            val showRecoveringChat = chatState.established && chatState.scope != null && !chatState.connected
+            if (serviceState.status.phase == ConnectionPhase.CONNECTED || showRecoveringChat) {
                 ConnectedContent(
                     state = serviceState,
                     onDisconnect = onDisconnect,
@@ -187,6 +231,16 @@ fun MainScreen(
                     onMicrophoneModeChanged = onMicrophoneModeChanged,
                     onPushToTalkChanged = onPushToTalkChanged,
                     onJoinChannel = onJoinChannel,
+                    chat = chatState,
+                    onChatDraft = onChatDraft,
+                    onChatSend = onChatSend,
+                    onChatVisible = onChatVisible,
+                    onOpenPrivateChat = onOpenPrivateChat,
+                    onChatConversationSelected = onChatConversationSelected,
+                    onChatConversationClosed = onChatConversationClosed,
+                    onChatSelected = { chatSelected = it },
+                    onPoke = onPoke,
+                    onChannelInfo = onChannelInfo,
                 )
             } else {
                 ConnectionForm(
@@ -203,6 +257,7 @@ fun MainScreen(
                     onConnect = onConnect,
                     onDisconnect = onDisconnect,
                     statusText = statusText,
+                    onOpenBookmarks = { showBookmarks = true },
                 )
             }
         }

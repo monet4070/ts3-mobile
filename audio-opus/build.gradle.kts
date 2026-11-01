@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.ktlint)
 }
 
+val apmExperimentRoot = providers.gradleProperty("apmExperimentRoot").orNull
+val opusSourceArchive = providers.gradleProperty("opusSourceArchive").orNull
+
 android {
     namespace = "io.github.ts3mobile.audio.opus"
     compileSdk = 35
@@ -17,12 +20,11 @@ android {
             cmake {
                 cppFlags += "-std=c++17"
                 arguments += "-DANDROID_STL=c++_shared"
+                arguments += "-DTS3_APM_ROOT=${apmExperimentRoot.orEmpty()}"
+                arguments += "-DTS3_OPUS_ARCHIVE=${opusSourceArchive.orEmpty()}"
             }
         }
-    }
-
-    buildFeatures {
-        prefab = true
+        if (apmExperimentRoot != null) testInstrumentationRunnerArguments["apmExperiment"] = "true"
     }
 
     externalNativeBuild {
@@ -56,7 +58,6 @@ configurations.all {
 
 dependencies {
     implementation(project(":ts3-protocol"))
-    implementation(libs.opus)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)

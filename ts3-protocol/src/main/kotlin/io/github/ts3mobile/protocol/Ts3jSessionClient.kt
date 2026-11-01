@@ -10,6 +10,7 @@ import com.github.manevolent.ts3j.protocol.packet.PacketBody0Voice
 import com.github.manevolent.ts3j.protocol.packet.PacketBody1VoiceWhisper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.InetAddress
@@ -18,13 +19,15 @@ import java.util.concurrent.TimeoutException
 
 class Ts3jSessionClient : Ts3SessionClient {
     private val socketFactory: Ts3jClientSocketFactory
+    private val clockNanos: () -> Long
     private val generation = SessionGenerationGate()
     private val snapshotStore = SessionSnapshotStore()
 
     constructor() : this(Ts3jClientSocketFactory { LocalTeamspeakClientSocketAdapter() })
 
-    internal constructor(socketFactory: Ts3jClientSocketFactory) {
+    internal constructor(socketFactory: Ts3jClientSocketFactory, clockNanos: () -> Long = System::nanoTime) {
         this.socketFactory = socketFactory
+        this.clockNanos = clockNanos
     }
 
     @Volatile
@@ -202,7 +205,7 @@ class Ts3jSessionClient : Ts3SessionClient {
         reason: String,
         onRequestSent: () -> Unit,
     ): DisconnectOutcome {
-        val startedAt = System.nanoTime()
+        val startedAt = clockNanos()
         require(timeoutMs > 0L) { "Disconnect timeout must be positive" }
         val captured =
             generation.invalidate {
@@ -225,7 +228,7 @@ class Ts3jSessionClient : Ts3SessionClient {
         }
         return try {
             withContext(Dispatchers.IO) {
-                val remaining = timeoutMs - (System.nanoTime() - startedAt) / 1_000_000L
+                val remaining = timeoutMs - (clockNanos() - startedAt) / 1_000_000L
                 if (remaining <= 0) {
                     DisconnectOutcome.TIMED_OUT
                 } else {
@@ -240,6 +243,89 @@ class Ts3jSessionClient : Ts3SessionClient {
         } finally {
             runCatching { captured.close() }
         }
+    }
+
+    override suspend fun sendTextMessage(
+        target: TextTarget,
+        body: String,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ): TextSendOutcome =
+        submitToCapturedSocket(target, canSubmit) { captured, valid ->
+            captured.sendTextMessage(target, body, timeoutMs, valid)
+        }
+
+    override suspend fun pokeClient(
+        target: TextTarget.Private,
+        reason: String,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ): TextSendOutcome =
+        submitToCapturedSocket(target, canSubmit) { captured, valid ->
+            captured.pokeClient(target, reason, timeoutMs, valid)
+        }
+
+    private suspend fun submitToCapturedSocket(
+        target: TextTarget,
+        canSubmit: () -> Boolean,
+        submit: (Ts3jClientSocket, () -> Boolean) -> TextSendOutcome,
+    ): TextSendOutcome {
+        val token = generation.currentToken()
+        val captured =
+            generation.withCurrent(token) { socket?.takeIf { it.isConnected } }
+                ?: return TextSendOutcome.NotSent(TextNotSentReason.NOT_CONNECTED)
+        val valid = {
+            val currentTarget =
+                generation.withCurrent(token) {
+                    socket === captured && captured.isConnected &&
+                        when (target) {
+                            is TextTarget.Channel -> true
+                            is TextTarget.Private ->
+                                snapshotStore.snapshot().participants.singleOrNull { it.id == target.clientId }?.let {
+                                    target.expectedUid == null || it.uniqueIdentifier == target.expectedUid
+                                } == true
+                        }
+                } == true
+            currentTarget && canSubmit()
+        }
+        return runInterruptible(Dispatchers.IO) {
+            if (!valid()) {
+                TextSendOutcome.NotSent(TextNotSentReason.CONTEXT_CHANGED)
+            } else {
+                submit(captured, valid)
+            }
+        }
+    }
+
+    override suspend fun updatePresence(
+        presence: OwnPresence,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ): ControlOutcome =
+        capturedControl(
+            canSubmit,
+            ControlOutcome(ControlStatus.NOT_SENT),
+        ) { client, valid -> client.updatePresence(presence, timeoutMs, valid) }
+
+    override suspend fun channelInfo(
+        channelId: Int,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ): ChannelInfoResult =
+        capturedControl(
+            canSubmit,
+            ChannelInfoResult(ControlOutcome(ControlStatus.NOT_SENT)),
+        ) { client, valid -> client.channelInfo(channelId, timeoutMs, valid) }
+
+    private suspend fun <T> capturedControl(
+        canSubmit: () -> Boolean,
+        notSent: T,
+        action: (Ts3jClientSocket, () -> Boolean) -> T,
+    ): T {
+        val token = generation.currentToken()
+        val captured = generation.withCurrent(token) { socket?.takeIf { it.isConnected } } ?: return notSent
+        val valid = { generation.withCurrent(token) { socket === captured && captured.isConnected } == true && canSubmit() }
+        return runInterruptible(Dispatchers.IO) { if (valid()) action(captured, valid) else notSent }
     }
 
     override suspend fun verifyLiveness(timeoutMs: Long): Boolean {
@@ -338,6 +424,17 @@ class Ts3jSessionClient : Ts3SessionClient {
             client = client,
             publishSnapshot = { publishSnapshot(token) },
             handleDisconnected = { event -> handleServerDisconnect(client, token, event) },
+            onText = { event ->
+                val target =
+                    generation.withCurrent(token) {
+                        listener.takeIf { socket === client && client.isConnected }
+                    }
+                target?.onTextMessage(event)
+            },
+            onPoke = { event ->
+                val target = generation.withCurrent(token) { listener.takeIf { socket === client && client.isConnected } }
+                target?.onPoke(event)
+            },
         )
 
     private fun handleServerDisconnect(

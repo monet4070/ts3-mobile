@@ -322,7 +322,7 @@ class Ts3jSessionClientTest {
     @Test
     fun boundedDisconnectUsesTheCapturedSocketAndReportsItsOutcome() {
         val socket = FakeSocket()
-        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket }, clockNanos = { 0L })
         client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
         socket.boundedDisconnectOutcome = DisconnectOutcome.SERVER_CONFIRMED
 
@@ -334,6 +334,37 @@ class Ts3jSessionClientTest {
         assertEquals(REASON, socket.boundedDisconnectReason)
         // The old socket's microphone stops before the exit, so no further voice
         // frame can be sent while the server is still being asked to release us.
+        assertNull(socket.lastMicrophone)
+        assertEquals(1, socket.closeCalls)
+    }
+
+    @Test
+    fun boundedDisconnectDeductsPreparationTimeFromTheSocketBudget() {
+        val socket = FakeSocket()
+        val now = java.util.concurrent.atomic.AtomicLong(5_000_000L)
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket }, now::get)
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+        socket.beforeMicrophoneUpdate = { now.addAndGet(2_000_000L) }
+
+        val outcome = runBlocking { client.disconnectBounded(BUDGET_MS, REASON) }
+
+        assertEquals(DisconnectOutcome.SERVER_CONFIRMED, outcome)
+        assertEquals(BUDGET_MS - 2, socket.boundedDisconnectBudget)
+        assertEquals(1, socket.closeCalls)
+    }
+
+    @Test
+    fun boundedDisconnectDoesNotSubmitAfterPreparationExhaustsTheBudget() {
+        val socket = FakeSocket()
+        val now = java.util.concurrent.atomic.AtomicLong()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket }, now::get)
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+        socket.beforeMicrophoneUpdate = { now.addAndGet(BUDGET_MS * 1_000_000L) }
+
+        val outcome = runBlocking { client.disconnectBounded(BUDGET_MS, REASON) }
+
+        assertEquals(DisconnectOutcome.TIMED_OUT, outcome)
+        assertEquals(0, socket.boundedDisconnectCalls)
         assertNull(socket.lastMicrophone)
         assertEquals(1, socket.closeCalls)
     }
@@ -449,11 +480,97 @@ class Ts3jSessionClientTest {
             nickname = "Test User",
         )
 
+    @Test
+    fun staleTextAdapterCannotDeliverIntoReplacementListener() {
+        val first = FakeSocket()
+        val second = FakeSocket()
+        val sockets = ConcurrentLinkedQueue(listOf(first, second))
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { sockets.remove() })
+        val oldListener = RecordingListener()
+        val currentListener = RecordingListener()
+        val identity = Ts3IdentityCodec.generate()
+        client.connect(testConfig(), identity, oldListener)
+        client.connect(testConfig(), identity, currentListener)
+        first.fireText("stale")
+        second.fireText("current")
+        assertTrue(oldListener.texts.isEmpty())
+        assertEquals(listOf("current"), currentListener.texts.map { it.body })
+        client.close()
+    }
+
+    @Test
+    fun unsupportedFacadeAndDisconnectedSendNeverClaimSuccess() =
+        runBlocking {
+            assertEquals(
+                TextSendOutcome.Unsupported,
+                MinimalSessionClient().sendTextMessage(TextTarget.Channel(1), "hello", 100),
+            )
+            assertEquals(
+                TextSendOutcome.NotSent(TextNotSentReason.NOT_CONNECTED),
+                Ts3jSessionClient().sendTextMessage(TextTarget.Channel(1), "hello", 100),
+            )
+        }
+
+    @Test
+    fun privateSendChecksExpectedIdentityBeforeAndAtQueueOwnership() =
+        runBlocking {
+            val socket = FakeSocket()
+            val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+            client.connect(testConfig(), Ts3IdentityCodec.generate(), RecordingListener())
+            socket.fireClientJoin(8, 10, "Fixture", "first-uid")
+            assertEquals(TextSendOutcome.Accepted, client.sendTextMessage(TextTarget.Private(8, "first-uid"), "private", 1_000))
+            assertEquals(1, socket.textCalls)
+            socket.beforeTextSubmit = { socket.fireClientJoin(8, 10, "Fixture", "replacement-uid") }
+            assertEquals(
+                TextSendOutcome.NotSent(TextNotSentReason.CONTEXT_CHANGED),
+                client.sendTextMessage(TextTarget.Private(8, "first-uid"), "must not send", 1_000),
+            )
+            assertEquals(1, socket.textCalls)
+            client.close()
+        }
+
+    @Test fun pokeUsesDistinctPortRechecksIdentityAndRejectsStaleIncomingAdapter() =
+        runBlocking {
+            val sockets = listOf(FakeSocket(), FakeSocket())
+            var next = 0
+            val client = Ts3jSessionClient(Ts3jClientSocketFactory { sockets[next++] })
+            val old = RecordingListener()
+            client.connect(testConfig(), Ts3IdentityCodec.generate(), old)
+            sockets[0].fireClientJoin(8, 10, "Fixture", "first-uid")
+            assertEquals(TextSendOutcome.Accepted, client.pokeClient(TextTarget.Private(8, "first-uid"), "", 1_000))
+            assertEquals(1, sockets[0].pokeCalls)
+            assertEquals(0, sockets[0].textCalls)
+            sockets[0].beforeTextSubmit = { sockets[0].fireClientJoin(8, 10, "Fixture", "replacement") }
+            assertEquals(
+                TextSendOutcome.NotSent(TextNotSentReason.CONTEXT_CHANGED),
+                client.pokeClient(TextTarget.Private(8, "first-uid"), "", 1_000),
+            )
+            sockets[0].firePoke("current")
+            assertEquals(1, old.pokes.size)
+            val replacement = RecordingListener()
+            client.connect(testConfig(), Ts3IdentityCodec.generate(), replacement)
+            sockets[0].firePoke("stale")
+            sockets[1].firePoke("replacement")
+            assertEquals(1, old.pokes.size)
+            assertEquals(listOf("replacement"), replacement.pokes.map { it.body })
+            client.close()
+        }
+
     private class RecordingListener(
         private val onStatus: ((ConnectionStatus) -> Unit)? = null,
     ) : Ts3SessionListener {
         val statuses = mutableListOf<ConnectionStatus>()
         val snapshots = mutableListOf<SessionSnapshot>()
+        val texts = mutableListOf<Ts3TextEvent>()
+        val pokes = mutableListOf<Ts3PokeEvent>()
+
+        override fun onPoke(event: Ts3PokeEvent) {
+            pokes += event
+        }
+
+        override fun onTextMessage(event: Ts3TextEvent) {
+            texts += event
+        }
 
         override fun onStatusChanged(status: ConnectionStatus) {
             statuses += status
@@ -497,6 +614,35 @@ class Ts3jSessionClientTest {
         private var exceptionHandler: ((Throwable) -> Unit)? = null
         private var connected = false
         private var eventListener: TS3Listener? = null
+        var textCalls = 0
+        var pokeCalls = 0
+        var beforeTextSubmit: () -> Unit = {}
+        var beforeMicrophoneUpdate: () -> Unit = {}
+
+        override fun pokeClient(
+            target: TextTarget.Private,
+            reason: String,
+            timeoutMs: Long,
+            canSubmit: () -> Boolean,
+        ): TextSendOutcome {
+            beforeTextSubmit()
+            if (!canSubmit()) return TextSendOutcome.NotSent(TextNotSentReason.CONTEXT_CHANGED)
+            pokeCalls++
+            return TextSendOutcome.Accepted
+        }
+
+        override fun sendTextMessage(
+            target: TextTarget,
+            body: String,
+            timeoutMs: Long,
+            canSubmit: () -> Boolean,
+        ): TextSendOutcome {
+            beforeTextSubmit()
+            if (!canSubmit()) return TextSendOutcome.NotSent(TextNotSentReason.CONTEXT_CHANGED)
+            textCalls++
+            return TextSendOutcome.Accepted
+        }
+
         override val clientId: Int = 7
         var joinedChannel: Int? = null
             private set
@@ -519,6 +665,7 @@ class Ts3jSessionClientTest {
         override fun setHWID(hwid: String) = Unit
 
         override fun setMicrophone(microphone: Microphone?) {
+            beforeMicrophoneUpdate()
             lastMicrophone = microphone
         }
 
@@ -607,6 +754,7 @@ class Ts3jSessionClientTest {
             clientId: Int,
             channelId: Int,
             nickname: String,
+            uid: String = "test-user",
         ) {
             eventListener?.onClientJoin(
                 ClientJoinEvent(
@@ -615,11 +763,27 @@ class Ts3jSessionClientTest {
                         "ctid" to channelId.toString(),
                         "client_type" to "0",
                         "client_nickname" to nickname,
-                        "client_unique_identifier" to "test-user",
+                        "client_unique_identifier" to uid,
                         "client_input_muted" to "0",
                         "client_output_muted" to "0",
                         "client_flag_talking" to "0",
                     ),
+                ),
+            )
+        }
+
+        fun fireText(body: String) {
+            eventListener?.onTextMessage(
+                com.github.manevolent.ts3j.event.TextMessageEvent(
+                    mapOf("targetmode" to "2", "msg" to body, "invokerid" to "8"),
+                ),
+            )
+        }
+
+        fun firePoke(body: String) {
+            eventListener?.onClientPoke(
+                com.github.manevolent.ts3j.event.ClientPokeEvent(
+                    mapOf("msg" to body, "invokerid" to "8", "invokeruid" to "fixture-uid", "invokername" to "Fixture"),
                 ),
             )
         }

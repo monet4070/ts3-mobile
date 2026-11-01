@@ -9,21 +9,81 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.Density
 import io.github.ts3mobile.app.ConnectionFormState
+import io.github.ts3mobile.app.bookmarks.BookmarkCodec
+import io.github.ts3mobile.app.bookmarks.BookmarkState
+import io.github.ts3mobile.app.bookmarks.ServerBookmark
+import io.github.ts3mobile.app.bookmarks.withSelectedBookmark
+import io.github.ts3mobile.app.chat.ChatBinding
+import io.github.ts3mobile.app.chat.ChatState
+import io.github.ts3mobile.app.chat.ChatStore
+import io.github.ts3mobile.app.discovery.resolveParticipantChannel
 import io.github.ts3mobile.app.history.ServerHistoryEntry
+import io.github.ts3mobile.app.service.ChannelInfoState
 import io.github.ts3mobile.app.service.ParticipantAudioSettings
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import io.github.ts3mobile.app.withSelectedHistoryEntry
+import io.github.ts3mobile.protocol.ChannelDetails
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
+import io.github.ts3mobile.protocol.ControlOutcome
+import io.github.ts3mobile.protocol.ControlStatus
 import io.github.ts3mobile.protocol.SessionSnapshot
+import io.github.ts3mobile.protocol.TextSendOutcome
+import io.github.ts3mobile.protocol.TextTarget
+import io.github.ts3mobile.protocol.TextTargetMode
 import io.github.ts3mobile.protocol.Ts3Channel
 import io.github.ts3mobile.protocol.Ts3Participant
+import io.github.ts3mobile.protocol.Ts3PokeEvent
+import io.github.ts3mobile.protocol.Ts3TextEvent
 import java.util.Locale
 
 internal class UiFixture(connected: Boolean = false) {
+    val bookmarks = mutableStateOf(BookmarkState(loading = false))
+    val bookmarkConnections = mutableListOf<ServerBookmark>()
+    val awayRequests = mutableListOf<Pair<Boolean, String>>()
+    val channelInfoRequests = mutableListOf<Int>()
+    val chatStore = ChatStore()
+    val chat = mutableStateOf(ChatState())
+    val sentBodies = mutableListOf<String>()
+    val sentTargets = mutableListOf<TextTarget>()
+    val sentPokes = mutableListOf<Pair<TextTarget.Private, String>>()
+    var sendOutcome: TextSendOutcome = TextSendOutcome.Accepted
+
+    init {
+        if (connected) {
+            chatStore.begin(1)
+            chatStore.bind(1, 1, ChatBinding(1, 1, 1, 1), participants = connectedState().snapshot.participants)
+            refreshChat()
+        }
+    }
+
+    fun refreshChat() {
+        chat.value = chatStore.state.value
+    }
+
+    fun receiveText(body: String) {
+        chatStore.receive(1, 1, Ts3TextEvent(TextTargetMode.CHANNEL, null, 2, "fixture-uid", "Sam", body))
+        refreshChat()
+    }
+
+    fun receivePoke(body: String) {
+        chatStore.receivePoke(1, 1, Ts3PokeEvent(2, "fixture-2", "Sam", body))
+        refreshChat()
+    }
+
+    fun receivePrivate(
+        body: String,
+        clientId: Int = 2,
+    ) {
+        val peer = state.value.snapshot.participants.single { it.id == clientId }
+        chatStore.receive(1, 1, Ts3TextEvent(TextTargetMode.PRIVATE, 1, peer.id, peer.uniqueIdentifier, peer.nickname, body))
+        refreshChat()
+    }
+
     val form = mutableStateOf(ConnectionFormState(host = "voice.example.com", nickname = "Alex"))
     val state = mutableStateOf(if (connected) connectedState() else TeamSpeakServiceState())
     val history = mutableStateOf<List<ServerHistoryEntry>>(emptyList())
@@ -45,15 +105,23 @@ internal class UiFixture(connected: Boolean = false) {
         locale: String = "en",
         fontScale: Float = 1f,
     ) {
+        val keyboard = LocalSoftwareKeyboardController.current
         val base = LocalContext.current
         val originalConfig = remember(base) { Configuration(base.resources.configuration) }
         DisposableEffect(base) {
             onDispose {
+                keyboard?.hide()
                 @Suppress("DEPRECATION")
                 base.resources.updateConfiguration(originalConfig, base.resources.displayMetrics)
             }
         }
-        val config = remember(locale) { Configuration(base.resources.configuration).apply { setLocale(Locale.forLanguageTag(locale)) } }
+        val config =
+            remember(locale, fontScale) {
+                Configuration(base.resources.configuration).apply {
+                    setLocale(Locale.forLanguageTag(locale))
+                    this.fontScale = fontScale
+                }
+            }
         val context =
             remember(config) {
                 // Popup/Dialog obtain resources from their Android view context.
@@ -116,6 +184,104 @@ internal class UiFixture(connected: Boolean = false) {
                     onRefreshBackgroundRuntime = { refreshes++ },
                     onBatterySettings = { batterySettings++ },
                     onAppSettings = { appSettings++ },
+                    chatState = chat.value,
+                    onChatDraft = {
+                        chatStore.updateDraft(it)
+                        refreshChat()
+                    },
+                    onChatVisible = { key, sequence ->
+                        chatStore.markVisibleThrough(key, sequence)
+                        refreshChat()
+                    },
+                    onOpenPrivateChat = {
+                        chatStore.openPrivate(it)
+                        refreshChat()
+                    },
+                    onChatConversationSelected = {
+                        chatStore.select(it)
+                        refreshChat()
+                    },
+                    onChatConversationClosed = {
+                        chatStore.close(it)
+                        refreshChat()
+                    },
+                    onChatSend = {
+                        chat.value.binding?.let { binding ->
+                            chatStore.claimSend(binding)?.let {
+                                sentBodies += it.message.body
+                                sentTargets += it.target
+                                chatStore.complete(binding, it.message.id, sendOutcome)
+                            }
+                        }
+                        refreshChat()
+                    },
+                    onPoke = { recipient, reason ->
+                        val pending = chat.value.binding?.let { chatStore.claimPoke(it, recipient, reason) }
+                        if (pending != null) {
+                            sentPokes += recipient.target to reason
+                            chatStore.complete(pending.binding, pending.message.id, sendOutcome)
+                        }
+                        refreshChat()
+                        pending != null
+                    },
+                    bookmarks = bookmarks.value,
+                    onBookmarkSave = { bookmarks.value = BookmarkState(BookmarkCodec.save(bookmarks.value.entries, it), loading = false) },
+                    onBookmarkRemove = {
+                        bookmarks.value =
+                            BookmarkState(
+                                BookmarkCodec.remove(
+                                    bookmarks.value.entries,
+                                    it,
+                                ),
+                                loading = false,
+                            )
+                    },
+                    onBookmarkSelect = { form.value = form.value.withSelectedBookmark(it) },
+                    onBookmarkConnect = {
+                        bookmarkConnections += it
+                        form.value = form.value.withSelectedBookmark(it)
+                    },
+                    onBookmarkReload = {},
+                    onAwayChanged = { away, message ->
+                        awayRequests += away to message
+                        state.value =
+                            state.value.copy(
+                                presence =
+                                    state.value.presence.copy(
+                                        away = away,
+                                        awayMessage = message,
+                                        outcome = ControlOutcome(ControlStatus.ACCEPTED),
+                                    ),
+                            )
+                    },
+                    onPresenceRetry = {},
+                    onChannelInfo = { id ->
+                        channelInfoRequests += id
+                        val channel = state.value.snapshot.channels.single { it.id == id }
+                        state.value =
+                            state.value.copy(
+                                channelInfo =
+                                    ChannelInfoState(
+                                        id, false,
+                                        ChannelDetails(
+                                            id,
+                                            channel.name,
+                                            "Fixture topic",
+                                            "[b]Plain description[/b]",
+                                            12,
+                                            false,
+                                        ),
+                                        ControlOutcome(ControlStatus.ACCEPTED),
+                                    ),
+                            )
+                    },
+                    onChannelInfoDismiss = { state.value = state.value.copy(channelInfo = null) },
+                    onResolveUserChannel = { id, uid -> resolveParticipantChannel(state.value.snapshot, id, uid) },
+                    onMicrophoneSettingsChanged = { state.value = state.value.copy(microphoneSettings = it) },
+                    onPokeDismiss = {
+                        chatStore.dismissPoke(it)
+                        refreshChat()
+                    },
                 )
             }
         }
@@ -138,10 +304,10 @@ private fun connectedState() =
                     ),
                 participants =
                     listOf(
-                        Ts3Participant(1, 1, "Alex", false, false, false),
-                        Ts3Participant(2, 1, "Sam", true, false, false),
-                        Ts3Participant(3, 1, "Jamie", false, true, false),
-                        Ts3Participant(4, 2, "Morgan", false, false, false),
+                        Ts3Participant(1, 1, "Alex", false, false, false, uniqueIdentifier = "fixture-1"),
+                        Ts3Participant(2, 1, "Sam", true, false, false, uniqueIdentifier = "fixture-2"),
+                        Ts3Participant(3, 1, "Jamie", false, true, false, uniqueIdentifier = "fixture-3"),
+                        Ts3Participant(4, 2, "Morgan", false, false, false, uniqueIdentifier = "fixture-4"),
                     ),
                 ownClientId = 1,
             ),

@@ -8,9 +8,11 @@ import com.github.manevolent.ts3j.event.ChannelMovedEvent
 import com.github.manevolent.ts3j.event.ClientJoinEvent
 import com.github.manevolent.ts3j.event.ClientLeaveEvent
 import com.github.manevolent.ts3j.event.ClientMovedEvent
+import com.github.manevolent.ts3j.event.ClientPokeEvent
 import com.github.manevolent.ts3j.event.ClientUpdatedEvent
 import com.github.manevolent.ts3j.event.DisconnectedEvent
 import com.github.manevolent.ts3j.event.TS3Listener
+import com.github.manevolent.ts3j.event.TextMessageEvent
 
 /**
  * Adapts ts3j server events into snapshot mutations, gated by the session
@@ -26,7 +28,18 @@ internal class Ts3jEventAdapter(
     private val client: Ts3jClientSocket,
     private val publishSnapshot: () -> Unit,
     private val handleDisconnected: (DisconnectedEvent) -> Unit,
+    private val onText: (Ts3TextEvent) -> Unit = {},
+    private val onPoke: (Ts3PokeEvent) -> Unit = {},
 ) : TS3Listener {
+    override fun onClientPoke(event: ClientPokeEvent) {
+        if (generation.isCurrent(token)) onPoke(event.map.toPokeEvent())
+    }
+
+    override fun onTextMessage(event: TextMessageEvent) {
+        if (!generation.isCurrent(token)) return
+        onText(event.map.toTextEvent())
+    }
+
     override fun onDisconnected(event: DisconnectedEvent) = handleDisconnected(event)
 
     override fun onChannelList(event: ChannelListEvent) {
@@ -105,6 +118,8 @@ internal class Ts3jEventAdapter(
             isInputMuted = isClientInputMuted,
             isOutputMuted = isClientOutputMuted,
             uniqueIdentifier = uniqueClientIdentifier,
+            isAway = map["client_away"] == "1",
+            awayMessage = map["client_away_message"].orEmpty().boundedText(256),
         )
 
     private companion object {

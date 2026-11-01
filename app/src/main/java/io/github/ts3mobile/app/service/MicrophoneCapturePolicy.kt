@@ -18,7 +18,7 @@ internal object MicrophoneCapturePolicy {
         return when (mode) {
             MicrophoneMode.OFF -> false
             MicrophoneMode.PUSH_TO_TALK -> pushToTalkPressed
-            MicrophoneMode.CONTINUOUS -> true
+            MicrophoneMode.CONTINUOUS, MicrophoneMode.VOLUME_GATE -> true
         }
     }
 

@@ -1,5 +1,7 @@
 package io.github.ts3mobile.app.service
 
+import io.github.ts3mobile.app.chat.SessionChatController
+import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionFailureCategory
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
@@ -7,8 +9,14 @@ import io.github.ts3mobile.protocol.DisconnectOutcome
 import io.github.ts3mobile.protocol.EncodedVoiceSource
 import io.github.ts3mobile.protocol.ServerConfig
 import io.github.ts3mobile.protocol.SessionSnapshot
+import io.github.ts3mobile.protocol.TextNotSentReason
+import io.github.ts3mobile.protocol.TextSendOutcome
+import io.github.ts3mobile.protocol.TextTarget
+import io.github.ts3mobile.protocol.TextTargetMode
+import io.github.ts3mobile.protocol.Ts3Participant
 import io.github.ts3mobile.protocol.Ts3SessionClient
 import io.github.ts3mobile.protocol.Ts3SessionListener
+import io.github.ts3mobile.protocol.Ts3TextEvent
 import io.github.ts3mobile.protocol.VoiceFrame
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -38,15 +46,18 @@ import java.io.IOException
 class ConnectionCoordinatorTest {
     private lateinit var host: FakeHost
     private lateinit var coordinator: ConnectionCoordinator
+    private lateinit var chat: SessionChatController
 
     @Before
     fun setUp() {
         host = FakeHost()
+        chat = SessionChatController(host.scope)
         coordinator =
             ConnectionCoordinator(
                 host,
                 clockMs = host::readClockMs,
                 sessionFactory = { host.session },
+                chat = chat,
             )
         host.latestExitCheck = { coordinator.isLatestExit(it) }
     }
@@ -56,6 +67,87 @@ class ConnectionCoordinatorTest {
         coordinator.close()
         host.scope.cancel()
     }
+
+    @Test fun manualConnectionPreservesMicrophoneParametersWithoutCopyingActiveCaptureFlags() {
+        val settings = MicrophoneSettings(150, false, false, -35)
+        host.mutableState.value =
+            host.state.value.copy(
+                microphoneMode = MicrophoneMode.VOLUME_GATE,
+                microphoneSettings = settings,
+                isCapturing = true,
+                isTransmitting = true,
+            )
+        coordinator.beginConnection(CONFIG)
+        assertEquals(settings, host.state.value.microphoneSettings)
+        assertEquals(MicrophoneMode.VOLUME_GATE, host.state.value.microphoneMode)
+        assertFalse(host.state.value.isCapturing)
+        assertFalse(host.state.value.isTransmitting)
+        host.advance()
+        coordinator.beginConnection(CONFIG)
+        assertEquals(settings, host.state.value.microphoneSettings)
+    }
+
+    @Test fun bookmarkDefaultChannelIsJoinedOnInitialConnectionAndPlainConnectionDoesNotInheritIt() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG.copy(defaultChannelId = 7, channelPassword = "fixture-channel"))
+        host.advance()
+        assertEquals(listOf(7 to "fixture-channel"), host.session.joinedChannels)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertEquals(1, host.session.joinedChannels.size)
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+    }
+
+    @Test fun defaultChannelCompletionReleasesChatAfterSnapshotArrivesBeforeCommandResult() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.connectAction = { host.session.listener!!.onSnapshotChanged(ownChannel(1)) }
+        host.session.joinAction = { id -> host.session.listener!!.onSnapshotChanged(ownChannel(id)) }
+        coordinator.beginConnection(CONFIG.copy(defaultChannelId = 7))
+        host.advance()
+        chat.updateDraft("after default join")
+        assertEquals(7, chat.state.value.binding?.channelId)
+        assertFalse(chat.state.value.switching)
+        assertTrue(chat.state.value.canSend)
+    }
+
+    @Test fun failedDefaultChannelJoinReleasesChatInOriginalChannel() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.connectAction = { host.session.listener!!.onSnapshotChanged(ownChannel(1)) }
+        host.session.joinAction = { throw IOException("fixture refusal") }
+        coordinator.beginConnection(CONFIG.copy(defaultChannelId = 7))
+        host.advance()
+        chat.updateDraft("still in lobby")
+        assertTrue(host.state.value.channelError is UserMessage.ChannelRestoreFailed)
+        assertFalse(chat.state.value.switching)
+        assertTrue(chat.state.value.canSend)
+    }
+
+    @Test fun oldManualJoinCompletionCannotReplaceNewBookmarkTargetAndPassword() {
+        connectEstablished()
+        host.session.joinAction = {
+            host.session.joinAction = {}
+            coordinator.beginConnection(CONFIG.copy(defaultChannelId = 7, channelPassword = "new-fixture-password"))
+        }
+        coordinator.joinChannel(42, "old-fixture-password")
+        host.advance()
+        assertEquals(listOf(42 to "old-fixture-password", 7 to "new-fixture-password"), host.session.joinedChannels)
+        assertNull(host.state.value.channelError)
+    }
+
+    @Test fun queuedManualJoinCannotReportFailureInReplacementConnection() {
+        connectEstablished()
+        var replacementError: UserMessage? = null
+        host.session.connectAction = { replacementError = host.state.value.channelError }
+        coordinator.joinChannel(42, "old-fixture-password")
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertTrue(host.session.joinedChannels.isEmpty())
+        assertNull(replacementError)
+        assertNull(host.state.value.channelError)
+    }
+
+    private fun ownChannel(id: Int) =
+        SessionSnapshot(ownClientId = 7, participants = listOf(Ts3Participant(7, id, "Fixture", false, false, false)))
 
     @Test
     fun staleListenerCallbacksDoNotMutateStateOrReconnect() {
@@ -841,6 +933,103 @@ class ConnectionCoordinatorTest {
         assertEquals(0, host.removeForegroundNotificationCalls)
     }
 
+    @Test
+    fun chatReceiveSendReconnectAndManualExitStayInOneOwnedScope() {
+        connectEstablished()
+        host.network.value = true
+        val oldListener = checkNotNull(host.session.listener)
+        val snapshot =
+            SessionSnapshot(
+                ownClientId = 7,
+                participants =
+                    listOf(
+                        Ts3Participant(7, 10, "Fixture", false, false, false),
+                    ),
+            )
+        oldListener.onSnapshotChanged(snapshot)
+        oldListener.onTextMessage(Ts3TextEvent(TextTargetMode.CHANNEL, null, 8, null, "Fixture", "incoming"))
+        chat.updateDraft("outgoing")
+        chat.submit()
+        host.advance()
+        assertEquals(listOf("outgoing"), host.session.textBodies)
+        assertEquals(TextSendOutcome.Accepted, chat.state.value.messages.last().outcome)
+        chat.updateDraft("keep draft")
+
+        oldListener.onStatusChanged(ConnectionStatus(ConnectionPhase.ERROR, retryable = true))
+        assertFalse(chat.state.value.canSend)
+        assertEquals("keep draft", chat.state.value.draft)
+        host.advance()
+        advance(1_001L)
+        host.advance()
+        val replacement = checkNotNull(host.session.listener)
+        assertTrue(replacement !== oldListener)
+        replacement.onSnapshotChanged(snapshot)
+        oldListener.onTextMessage(Ts3TextEvent(TextTargetMode.CHANNEL, null, 8, null, "Fixture", "stale"))
+        assertFalse(chat.state.value.messages.any { it.body == "stale" })
+        assertTrue(chat.state.value.canSend)
+        coordinator.requestDisconnect()
+        assertTrue(chat.state.value.messages.isEmpty())
+        assertEquals("", chat.state.value.draft)
+        assertEquals(null, chat.state.value.scope)
+    }
+
+    @Test
+    fun waitingChatDoesNotOwnSessionMutexOrDelayDisconnectAndTerminalClear() {
+        connectEstablished()
+        checkNotNull(host.session.listener).onSnapshotChanged(
+            SessionSnapshot(
+                ownClientId = 7,
+                participants =
+                    listOf(
+                        Ts3Participant(7, 10, "Fixture", false, false, false),
+                    ),
+            ),
+        )
+        val response = CompletableDeferred<TextSendOutcome>()
+        host.session.textGate = { response.await() }
+        chat.updateDraft("pending")
+        chat.submit()
+        host.advance()
+        assertFalse(host.sessionMutex.isLocked)
+        coordinator.requestDisconnect()
+        assertTrue(chat.state.value.messages.isEmpty())
+        host.advance()
+        assertEquals(1, host.session.boundedDisconnectCalls)
+        response.complete(TextSendOutcome.Accepted)
+        host.advance()
+        assertTrue(chat.state.value.messages.isEmpty())
+    }
+
+    @Test
+    fun privateChatUsesSnapshotIdentityAndManualExitClearsAllConversations() {
+        connectEstablished()
+        val listener = checkNotNull(host.session.listener)
+        val peer = Ts3Participant(8, 10, "Fixture peer", false, false, false, "fixture-peer")
+        val snapshot = SessionSnapshot(ownClientId = 7, participants = listOf(peer))
+        listener.onSnapshotChanged(snapshot)
+        assertTrue(chat.openPrivate(8))
+        chat.updateDraft("private outgoing")
+        chat.submit()
+        host.advance()
+        assertEquals(listOf(TextTarget.Private(8, "fixture-peer")), host.session.textTargets)
+        listener.onTextMessage(Ts3TextEvent(TextTargetMode.PRIVATE, 7, 8, "fixture-peer", "Fixture peer", "private inbound"))
+        assertEquals("private inbound", chat.state.value.messages.last().body)
+        listener.onPoke(io.github.ts3mobile.protocol.Ts3PokeEvent(8, "fixture-peer", "Fixture peer", "poke inbound"))
+        assertEquals("poke inbound", chat.state.value.pokeNotice?.body)
+        listener.onSnapshotChanged(snapshot.copy(participants = listOf(peer.copy(uniqueIdentifier = "replacement"))))
+        chat.updateDraft("do not misdeliver")
+        assertFalse(chat.state.value.canSend)
+        chat.submit()
+        host.advance()
+        assertEquals(1, host.session.textBodies.size)
+        coordinator.requestDisconnect()
+        assertEquals(1, chat.state.value.conversations.size)
+        assertTrue(chat.state.value.messages.isEmpty())
+        assertEquals(null, chat.state.value.scope)
+        listener.onPoke(io.github.ts3mobile.protocol.Ts3PokeEvent(8, "fixture-peer", "Fixture peer", "stale poke"))
+        assertEquals(null, chat.state.value.pokeNotice)
+    }
+
     private fun connectEstablished() {
         host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
         coordinator.beginConnection(CONFIG)
@@ -972,6 +1161,21 @@ class ConnectionCoordinatorTest {
         var boundedDisconnectOutcome = DisconnectOutcome.SERVER_CONFIRMED
         var boundedDisconnectGate: (suspend () -> Unit)? = null
         var voiceSourceDetached = false
+        val textBodies = mutableListOf<String>()
+        val textTargets = mutableListOf<TextTarget>()
+        var textGate: (suspend () -> TextSendOutcome)? = null
+
+        override suspend fun sendTextMessage(
+            target: TextTarget,
+            body: String,
+            timeoutMs: Long,
+            canSubmit: () -> Boolean,
+        ): TextSendOutcome {
+            if (!canSubmit()) return TextSendOutcome.NotSent(TextNotSentReason.CONTEXT_CHANGED)
+            textBodies += body
+            textTargets += target
+            return textGate?.invoke() ?: TextSendOutcome.Accepted
+        }
 
         override fun connect(
             config: ServerConfig,
@@ -989,10 +1193,16 @@ class ConnectionCoordinatorTest {
             if (source == null) voiceSourceDetached = true
         }
 
+        val joinedChannels = mutableListOf<Pair<Int, String>>()
+        var joinAction: (Int) -> Unit = {}
+
         override fun joinChannel(
             channelId: Int,
             password: String,
-        ) = Unit
+        ) {
+            joinedChannels += channelId to password
+            joinAction(channelId)
+        }
 
         override fun disconnect(reason: String) = Unit
 

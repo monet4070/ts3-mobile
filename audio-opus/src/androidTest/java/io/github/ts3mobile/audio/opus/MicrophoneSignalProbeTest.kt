@@ -115,16 +115,13 @@ class MicrophoneSignalProbeTest {
                     ),
                 )
                 .build()
-        val effects = MicrophoneAudioEffects.create(record.audioSessionId)
+        val effects = MicrophoneAudioEffects(record.audioSessionId).apply { configure(echoCancellation = true) }
+        val probeAgc = if (variant == "voice-agc") AutomaticGainControl.create(record.audioSessionId) else null
         try {
             assertEquals(AudioRecord.STATE_INITIALIZED, record.state)
             manager.mode = AudioManager.MODE_IN_COMMUNICATION
-            if (variant == "voice-agc") {
-                effects.filterIsInstance<AutomaticGainControl>().forEach { effect -> effect.enabled = true }
-            }
-            effects.forEach { effect ->
-                Log.i(TAG, "effect type=${effect.descriptor.type} enabled=${effect.enabled} control=${effect.hasControl()}")
-            }
+            probeAgc?.enabled = true
+            Log.i(TAG, "echoState=${effects.echoState} probeAgcEnabled=${probeAgc?.enabled}")
             Log.i(
                 TAG,
                 "platformNsAvailable=${NoiseSuppressor.isAvailable()} " +
@@ -183,7 +180,8 @@ class MicrophoneSignalProbeTest {
         } finally {
             if (recordingStarted) record.stop()
             record.release()
-            MicrophoneAudioEffects.release(effects)
+            probeAgc?.release()
+            effects.close()
             manager.mode = oldMode
             instrumentation.uiAutomation.dropShellPermissionIdentity()
             instrumentation.runOnMainSync { activity.finish() }

@@ -43,6 +43,8 @@ internal fun ParticipantList(
     state: TeamSpeakServiceState,
     onMutedChange: (String, Boolean) -> Unit,
     onVolumeChange: (String, Int) -> Unit,
+    onPrivateMessage: (Int) -> Unit = {},
+    onPoke: (Ts3Participant) -> Unit = {},
 ) {
     val volumeLabelMinWidth = 44.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
     val channelsById =
@@ -56,7 +58,8 @@ internal fun ParticipantList(
     }
 
     LazyColumn(Modifier.fillMaxSize()) {
-        items(state.snapshot.participants, key = { it.audioControlKey() }) { participant ->
+        // Several connected clients may share an identity; list rows are client instances.
+        items(state.snapshot.participants, key = { it.id }) { participant ->
             val key = participant.audioControlKey()
             val settings = state.participantAudioSettings[key] ?: ParticipantAudioSettings()
             val isOwnClient = participant.id == state.snapshot.ownClientId
@@ -81,7 +84,15 @@ internal fun ParticipantList(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            text = participant.nickname,
+                            text =
+                                if (participant.isAway) {
+                                    stringResource(
+                                        R.string.participant_away_name,
+                                        participant.nickname,
+                                    )
+                                } else {
+                                    participant.nickname
+                                },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -96,8 +107,17 @@ internal fun ParticipantList(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        if (participant.isAway && participant.awayMessage.isNotBlank()) {
+                            Text(
+                                participant.awayMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                     if (!isOwnClient) {
+                        ParticipantChatAction(participant.nickname, { onPrivateMessage(participant.id) }, { onPoke(participant) })
                         IconButton(onClick = { onMutedChange(key, !settings.muted) }) {
                             AppIcon(
                                 icon =
@@ -235,7 +255,7 @@ internal fun ChannelParticipantRow(
         )
         Spacer(Modifier.width(10.dp))
         Text(
-            text = participant.nickname,
+            text = if (participant.isAway) stringResource(R.string.participant_away_name, participant.nickname) else participant.nickname,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (isOwnClient) FontWeight.SemiBold else FontWeight.Normal,

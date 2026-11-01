@@ -5,6 +5,8 @@ data class ServerConfig(
     val port: Int = 9987,
     val nickname: String,
     val password: String = "",
+    val defaultChannelId: Int? = null,
+    val channelPassword: String = "",
 ) {
     fun normalized(): ServerConfig =
         copy(
@@ -15,6 +17,7 @@ data class ServerConfig(
     fun validationError(): String? =
         when {
             host.trim().isEmpty() -> "Server address is required"
+            defaultChannelId != null && defaultChannelId <= 0 -> "Invalid default channel ID"
             port !in 1..65535 -> "Port must be between 1 and 65535"
             nickname.trim().length !in 3..30 -> "Nickname must contain 3 to 30 characters"
             else -> null
@@ -50,6 +53,9 @@ data class Ts3Channel(
     val clientCount: Int,
     val hasPassword: Boolean,
     val isDefault: Boolean,
+    val topic: String? = null,
+    val maxClients: Int? = null,
+    val unlimitedClients: Boolean? = null,
 )
 
 data class Ts3Participant(
@@ -60,6 +66,8 @@ data class Ts3Participant(
     val isInputMuted: Boolean,
     val isOutputMuted: Boolean,
     val uniqueIdentifier: String = "",
+    val isAway: Boolean = false,
+    val awayMessage: String = "",
 )
 
 data class SessionSnapshot(

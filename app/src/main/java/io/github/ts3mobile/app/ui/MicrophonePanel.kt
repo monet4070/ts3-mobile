@@ -42,6 +42,7 @@ internal fun MicrophoneControl(
     mode: MicrophoneMode,
     isTransmitting: Boolean,
     captureDeferred: Boolean,
+    isCapturing: Boolean = false,
     onMicrophoneModeChanged: (MicrophoneMode) -> Unit,
     onPushToTalkChanged: (Boolean) -> Unit,
 ) {
@@ -65,6 +66,7 @@ internal fun MicrophoneControl(
 
                 MicrophoneMode.OFF,
                 MicrophoneMode.CONTINUOUS,
+                MicrophoneMode.VOLUME_GATE,
                 ->
                     Row(
                         modifier = Modifier.height(58.dp),
@@ -91,8 +93,12 @@ internal fun MicrophoneControl(
                                 stringResource(
                                     if (mode == MicrophoneMode.OFF) {
                                         R.string.microphone_state_off
+                                    } else if (isTransmitting && mode == MicrophoneMode.VOLUME_GATE) {
+                                        R.string.microphone_talking
                                     } else if (isTransmitting) {
                                         R.string.microphone_state_continuous
+                                    } else if (mode == MicrophoneMode.VOLUME_GATE && isCapturing) {
+                                        R.string.microphone_state_listening
                                     } else if (captureDeferred) {
                                         R.string.microphone_state_deferred
                                     } else {
@@ -108,7 +114,7 @@ internal fun MicrophoneControl(
 }
 
 @Composable
-private fun PushToTalkButton(
+internal fun PushToTalkButton(
     isTransmitting: Boolean,
     onPushToTalkChanged: (Boolean) -> Unit,
 ) {

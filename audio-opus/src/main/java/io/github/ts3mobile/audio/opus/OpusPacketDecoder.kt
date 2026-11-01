@@ -6,6 +6,13 @@ package io.github.ts3mobile.audio.opus
  * concealment and pacing logic run without the JNI library.
  */
 internal interface OpusPacketDecoder : AutoCloseable {
+    fun packetInfo(packet: ByteArray): OpusPacketInfo
+
+    fun decodeFec(
+        packet: ByteArray,
+        frameSize: Int,
+    ): ShortArray
+
     fun decode(
         packet: ByteArray?,
         frameSize: Int,

@@ -50,7 +50,7 @@ internal class SessionNotifications(
         includeMicrophone: Boolean,
     ) {
         if (state.status.phase !in foregroundPhases || state.serverLabel == null) return
-        promote(build(state.copy(isTransmitting = includeMicrophone)), includeMicrophone)
+        promote(build(state.copy(isCapturing = includeMicrophone)), includeMicrophone)
     }
 
     fun stop() = service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
@@ -72,8 +72,12 @@ internal class SessionNotifications(
         val onlineCount = state.snapshot.participants.size
         val text =
             when {
+                state.hasPlaybackFailure ->
+                    service.getString(R.string.playback_failed)
                 state.microphoneError == UserMessage.MicrophoneResumeInApp && state.status.phase == ConnectionPhase.CONNECTED ->
                     service.getString(R.string.notification_resume_microphone)
+                state.isCapturing && !state.isTransmitting && state.microphoneMode == MicrophoneMode.VOLUME_GATE ->
+                    service.getString(R.string.notification_microphone_listening)
                 state.isTransmitting -> service.getString(R.string.notification_microphone_active, host, onlineCount)
                 else ->
                     when (state.status.phase) {
@@ -110,7 +114,7 @@ internal class SessionNotifications(
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
-        if (state.microphoneMode == MicrophoneMode.CONTINUOUS) {
+        if (state.microphoneMode.requiresContinuousCapture) {
             builder.addAction(
                 0,
                 service.getString(R.string.notification_mute_microphone),

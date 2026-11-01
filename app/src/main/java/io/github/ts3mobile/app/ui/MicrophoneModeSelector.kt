@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.onClick
@@ -37,7 +38,7 @@ internal fun MicrophoneModeSelector(
     mode: MicrophoneMode,
     onMicrophoneModeChanged: (MicrophoneMode) -> Unit,
 ) {
-    if (LocalDensity.current.fontScale <= 1.3f) {
+    if (LocalDensity.current.fontScale <= 1.3f && LocalConfiguration.current.screenWidthDp >= 380) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             MicrophoneMode.entries.forEachIndexed { index, option ->
                 SegmentedButton(
@@ -101,5 +102,6 @@ private fun microphoneModeLabel(mode: MicrophoneMode): String =
             MicrophoneMode.OFF -> R.string.microphone_mode_off
             MicrophoneMode.PUSH_TO_TALK -> R.string.microphone_mode_push_to_talk
             MicrophoneMode.CONTINUOUS -> R.string.microphone_mode_continuous
+            MicrophoneMode.VOLUME_GATE -> R.string.microphone_mode_gate
         },
     )

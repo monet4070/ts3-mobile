@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(ts3opus_jni LANGUAGES C CXX)
 
-find_package(opus REQUIRED CONFIG)
+include(opus-source.cmake)
 
 set(RNNOISE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/rnnoise)
 
@@ -30,8 +30,11 @@ target_compile_options(rnnoise PRIVATE -O3 -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(rnnoise PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(rnnoise PUBLIC m)
 
-add_library(ts3opus_jni SHARED opus_jni.cpp rnnoise_jni.cpp)
+add_library(ts3opus_jni SHARED opus_jni.cpp opus_receive_jni.cpp rnnoise_jni.cpp)
 
 target_compile_features(ts3opus_jni PRIVATE cxx_std_17)
 target_compile_options(ts3opus_jni PRIVATE -Wall -Wextra -Werror)
-target_link_libraries(ts3opus_jni PRIVATE opus::libopus.a rnnoise)
+target_link_libraries(ts3opus_jni PRIVATE Opus::opus rnnoise)
+target_link_options(ts3opus_jni PRIVATE -Wl,-z,max-page-size=16384 -Wl,--exclude-libs,ALL)
+
+include(apm-experiment.cmake)

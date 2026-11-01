@@ -9,6 +9,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -17,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -69,6 +72,7 @@ class MainScreenTest {
         val fixture = UiFixture(connected = true)
         rule.setContent { fixture.Render() }
         rule.onNodeWithText("Morgan").assertDoesNotExist()
+        rule.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Design studio"))
         rule.onNodeWithText("Design studio").performClick()
         // A single tap waits for the combined-clickable double-tap window.
         rule.waitUntil(timeoutMillis = 2_000) {
@@ -77,9 +81,11 @@ class MainScreenTest {
         rule.onNodeWithText("Morgan").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Design studio").performScrollTo().performTouchInput { doubleClick() }
         rule.runOnIdle { assertEquals(listOf(2 to ""), fixture.joins) }
+        rule.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Private room"))
         rule.onNodeWithText("Private room").performScrollTo().performTouchInput { doubleClick() }
         rule.onNodeWithText("Channel password").performTextInput("fixture-only")
         rule.onNodeWithText("Cancel").performClick()
+        rule.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Private room"))
         rule.onNodeWithText("Private room").performScrollTo().performTouchInput { doubleClick() }
         rule.onNodeWithText("Channel password").performTextInput("fixture-secret")
         rule.onNodeWithText("Join").performClick()
@@ -138,7 +144,9 @@ class MainScreenTest {
         val fixture = UiFixture(connected = true)
         rule.setContent { fixture.Render(fontScale = 1.8f) }
         rule.onNodeWithText("Users").performClick()
-        rule.onNodeWithContentDescription("Adjust volume for Sam").performClick()
+        rule.onNodeWithContentDescription("Adjust volume for Sam").performScrollTo().performClick()
+        rule.onNode(hasScrollToIndexAction())
+            .performScrollToNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress))
         rule.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress))
             .performSemanticsAction(SemanticsActions.SetProgress) { it(200f) }
         val layouts = mutableListOf<TextLayoutResult>()

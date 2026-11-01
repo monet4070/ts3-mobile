@@ -5,42 +5,74 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioDeviceInfo
 import androidx.core.content.ContextCompat
+import io.github.ts3mobile.audio.opus.MicrophoneCapture
+import io.github.ts3mobile.audio.opus.MicrophoneCaptureState
+import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.audio.opus.OpusMicrophoneCapture
 import io.github.ts3mobile.protocol.Ts3SessionClient
+import io.github.ts3mobile.protocol.sanitizedFailureTypes
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 internal class MicrophoneController(
     context: Context,
     private val scope: CoroutineScope,
     private val state: MutableStateFlow<TeamSpeakServiceState>,
-    private val diagnosticsRecorder: DiagnosticsRecorder,
-    private val refreshDiagnostics: () -> Unit,
+    diagnosticsRecorder: DiagnosticsRecorder,
+    refreshDiagnostics: () -> Unit,
     private val updateForegroundType: (includeMicrophone: Boolean) -> Unit,
     private val updateNotification: () -> Unit,
-    private val conciseMessage: (Throwable) -> String,
+    conciseMessage: (Throwable) -> String,
     private val recordEvent: (DiagnosticEventKind) -> Unit = {},
+    captureFactory: (Context, (Throwable) -> Unit, (MicrophoneCaptureState) -> Unit) -> MicrophoneCapture = ::OpusMicrophoneCapture,
+    private val permissionGranted: () -> Boolean = {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    },
+    private val captureDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : AutoCloseable {
-    private val applicationContext = context.applicationContext
     private val transmitMutex = Mutex()
     private val pushToTalkPressed = AtomicBoolean(false)
     private val appVisible = AtomicBoolean(false)
     private val closed = AtomicBoolean(false)
-    private val microphone = OpusMicrophoneCapture(applicationContext, ::onMicrophoneFailure)
+    private val feedback = MicrophoneFeedback(state, diagnosticsRecorder, refreshDiagnostics, conciseMessage, recordEvent)
+    private val microphone = captureFactory(context.applicationContext, ::onMicrophoneFailure, ::onCaptureState)
+    private val voiceSource = MicrophoneVoiceSource(microphone)
+    private val stopPending = AtomicBoolean(false)
+    private val afterRelease = AtomicReference<(() -> Unit)?>(null)
+    private val teardown =
+        MicrophoneTeardown(
+            microphone,
+            scope,
+            captureDispatcher,
+            { recordEvent(DiagnosticEventKind.MICROPHONE_STOP_TIMEOUT) },
+            {
+                state.update { it.copy(isTransmitting = false, isCapturing = false) }
+                updateForegroundType(false)
+            },
+        )
+
+    @Volatile private var lastCaptureState = MicrophoneCaptureState()
 
     fun attachTo(session: Ts3SessionClient) {
-        session.setVoiceSource(microphone)
+        session.setVoiceSource(voiceSource)
     }
 
     fun setPreferredDevice(device: AudioDeviceInfo?) {
         microphone.setPreferredDevice(device)
     }
+
+    fun invalidateRouting() = microphone.invalidateRouting()
 
     fun resetForConnection() {
         pushToTalkPressed.set(false)
@@ -51,18 +83,38 @@ internal class MicrophoneController(
         if (visible) reconcile()
     }
 
+    fun refreshPermission() = feedback.refreshPermission(hasPermission())
+
     fun setMode(mode: MicrophoneMode) {
-        if (mode == MicrophoneMode.CONTINUOUS && !hasPermission()) {
-            state.update {
-                it.copy(microphoneError = UserMessage.MicrophonePermissionForContinuous)
-            }
+        if (mode.requiresContinuousCapture && !hasPermission()) {
+            feedback.continuousPermissionRequired()
             return
         }
         if (mode != MicrophoneMode.PUSH_TO_TALK) pushToTalkPressed.set(false)
         state.update {
             it.copy(microphoneMode = mode, microphoneError = null)
         }
+        if (!shouldCapture()) {
+            stopImmediately()
+            return
+        }
+        microphone.configure(state.value.microphoneSettings, mode == MicrophoneMode.VOLUME_GATE)
         reconcile()
+    }
+
+    fun setSettings(settings: MicrophoneSettings) {
+        state.update { it.copy(microphoneSettings = settings) }
+        microphone.configure(settings, state.value.microphoneMode == MicrophoneMode.VOLUME_GATE)
+    }
+
+    private fun onCaptureState(capture: MicrophoneCaptureState) {
+        lastCaptureState = capture
+        feedback.captureChanged(capture, voiceSource.isEnabled())
+        if (!capture.capturing) {
+            updateForegroundType(false)
+            afterRelease.getAndSet(null)?.invoke()
+        }
+        scope.launch { updateNotification() }
     }
 
     fun setPushToTalkPressed(pressed: Boolean) {
@@ -77,14 +129,15 @@ internal class MicrophoneController(
                 requestedPressed = pressed,
             )
         pushToTalkPressed.set(accepted)
-        if (!accepted) state.update { it.copy(isTransmitting = false) }
-        reconcile()
+        if (!accepted) state.update { it.copy(isTransmitting = false, isCapturing = false) }
+        if (!accepted) stopImmediately() else reconcile()
     }
 
     fun reconcile() {
         if (closed.get()) return
-        scope.launch {
+        scope.launch(captureDispatcher) {
             transmitMutex.withLock {
+                if (stopPending.getAndSet(false)) stopLocked()
                 if (!shouldCapture()) {
                     stopLocked()
                     return@withLock
@@ -93,12 +146,7 @@ internal class MicrophoneController(
                 if (!hasPermission()) {
                     pushToTalkPressed.set(false)
                     stopLocked()
-                    state.update {
-                        it.copy(
-                            isTransmitting = false,
-                            microphoneError = UserMessage.MicrophonePermissionMissing,
-                        )
-                    }
+                    feedback.permissionMissing()
                     return@withLock
                 }
 
@@ -106,7 +154,11 @@ internal class MicrophoneController(
                     updateForegroundType(false)
                     pushToTalkPressed.set(false)
                     state.update {
-                        it.copy(isTransmitting = false, microphoneError = UserMessage.MicrophoneResumeInApp)
+                        it.copy(
+                            isTransmitting = false,
+                            isCapturing = false,
+                            microphoneError = UserMessage.MicrophoneResumeInApp,
+                        )
                     }
                     recordEvent(DiagnosticEventKind.MICROPHONE_DEFERRED)
                     updateNotification()
@@ -115,6 +167,7 @@ internal class MicrophoneController(
 
                 if (microphone.isCapturing) return@withLock
 
+                val sendRevision = voiceSource.currentRevision()
                 try {
                     updateForegroundType(true)
                     // Visibility may have changed while promoting the service type.
@@ -124,33 +177,32 @@ internal class MicrophoneController(
                         recordEvent(DiagnosticEventKind.MICROPHONE_DEFERRED)
                         return@withLock
                     }
-                    microphone.start()
                     if (!shouldCapture()) {
                         stopLocked()
+                        return@withLock
+                    }
+                    microphone.configure(state.value.microphoneSettings, state.value.microphoneMode == MicrophoneMode.VOLUME_GATE)
+                    microphone.start()
+                    if (!shouldCapture() || stopPending.get()) {
+                        stopLocked()
+                        if (shouldCapture()) reconcile()
                     } else {
+                        if (!voiceSource.tryEnable(sendRevision)) {
+                            stopLocked()
+                            if (shouldCapture()) reconcile()
+                            return@withLock
+                        }
+                        onCaptureState(lastCaptureState)
                         state.update {
-                            it.copy(isTransmitting = true, microphoneError = null)
+                            it.copy(microphoneError = null)
                         }
                         updateNotification()
                     }
                 } catch (error: Throwable) {
-                    diagnosticsRecorder.recordMicrophoneError()
-                    refreshDiagnostics()
-                    recordEvent(DiagnosticEventKind.MICROPHONE_FAILED)
+                    voiceSource.disable()
                     pushToTalkPressed.set(false)
-                    microphone.stop()
-                    state.update {
-                        it.copy(
-                            isTransmitting = false,
-                            microphoneError =
-                                if (!appVisible.get()) {
-                                    UserMessage.MicrophoneResumeInApp
-                                } else {
-                                    UserMessage.MicrophoneFailed(conciseMessage(error))
-                                },
-                        )
-                    }
-                    updateForegroundType(false)
+                    stopSafely()
+                    feedback.failed(error, !microphone.isReleased, deferred = !appVisible.get())
                 }
             }
         }
@@ -158,33 +210,50 @@ internal class MicrophoneController(
 
     fun stopImmediately() {
         pushToTalkPressed.set(false)
-        microphone.stop()
+        voiceSource.disable()
+        microphone.requestStop()
+        stopPending.set(true)
         state.update { it.copy(isTransmitting = false) }
-        updateForegroundType(false)
+        scope.launch(captureDispatcher) {
+            transmitMutex.withLock {
+                if (stopPending.getAndSet(false)) stopSafely()
+            }
+        }
     }
 
     suspend fun stopSerialized() {
         pushToTalkPressed.set(false)
-        transmitMutex.withLock { runInterruptible { stopLocked() } }
-    }
-
-    fun reportPermissionDenied() {
-        diagnosticsRecorder.recordMicrophoneError()
-        refreshDiagnostics()
-        pushToTalkPressed.set(false)
-        state.update {
-            it.copy(
-                isTransmitting = false,
-                microphoneError = UserMessage.MicrophonePermissionForVoice,
-            )
+        voiceSource.disable()
+        withContext(captureDispatcher) {
+            transmitMutex.withLock {
+                stopPending.set(false)
+                runInterruptible { stopLocked() }
+            }
         }
     }
 
+    fun reportPermissionDenied() {
+        pushToTalkPressed.set(false)
+        feedback.permissionDenied()
+    }
+
     override fun close() {
-        closed.set(true)
+        closeAfterRelease {}
+    }
+
+    fun closeAfterRelease(onReleased: () -> Unit) {
+        if (!closed.compareAndSet(false, true)) return
+        afterRelease.set(onReleased)
         appVisible.set(false)
         pushToTalkPressed.set(false)
-        microphone.close()
+        voiceSource.disable()
+        microphone.requestStop()
+        scope.launch(NonCancellable + captureDispatcher) {
+            transmitMutex.withLock {
+                stopSafely()
+                if (microphone.isReleased) afterRelease.getAndSet(null)?.invoke()
+            }
+        }
     }
 
     private fun shouldCapture(): Boolean {
@@ -197,31 +266,31 @@ internal class MicrophoneController(
         )
     }
 
-    private fun hasPermission(): Boolean =
-        ContextCompat.checkSelfPermission(
-            applicationContext,
-            Manifest.permission.RECORD_AUDIO,
-        ) == PackageManager.PERMISSION_GRANTED
+    private fun hasPermission(): Boolean = permissionGranted()
 
     private fun stopLocked() {
-        microphone.stop()
-        state.update { it.copy(isTransmitting = false) }
-        updateForegroundType(false)
+        voiceSource.disable()
+        teardown.stop()
+    }
+
+    private fun stopSafely() {
+        try {
+            stopLocked()
+        } catch (error: Exception) {
+            System.err.println("TS3_AUDIO: capture teardown failed: ${error.sanitizedFailureTypes()}")
+            feedback.failed(error, !microphone.isReleased)
+        }
     }
 
     private fun onMicrophoneFailure(error: Throwable) {
-        recordEvent(DiagnosticEventKind.MICROPHONE_FAILED)
-        diagnosticsRecorder.recordMicrophoneError()
-        refreshDiagnostics()
+        voiceSource.disable()
+        val failedGeneration = microphone.generation
         pushToTalkPressed.set(false)
-        state.update {
-            it.copy(
-                isTransmitting = false,
-                microphoneError = UserMessage.MicrophoneFailed(conciseMessage(error)),
-            )
-        }
-        scope.launch {
-            transmitMutex.withLock { stopLocked() }
+        feedback.failed(error, !microphone.isReleased)
+        scope.launch(captureDispatcher) {
+            transmitMutex.withLock {
+                if (microphone.generation == failedGeneration) stopLocked()
+            }
         }
     }
 }

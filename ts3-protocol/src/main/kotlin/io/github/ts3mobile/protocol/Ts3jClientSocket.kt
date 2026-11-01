@@ -69,6 +69,38 @@ internal interface Ts3jClientSocket {
         password: String,
     )
 
+    fun sendTextMessage(
+        target: TextTarget,
+        body: String,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ): TextSendOutcome = TextSendOutcome.Unsupported
+
+    fun pokeClient(
+        target: TextTarget.Private,
+        reason: String,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ): TextSendOutcome = TextSendOutcome.Unsupported
+
+    fun updatePresence(
+        presence: OwnPresence,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ): ControlOutcome =
+        ControlOutcome(
+            ControlStatus.UNSUPPORTED,
+        )
+
+    fun channelInfo(
+        channelId: Int,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ): ChannelInfoResult =
+        ChannelInfoResult(
+            ControlOutcome(ControlStatus.UNSUPPORTED),
+        )
+
     fun disconnect(reason: String)
 
     /**
@@ -98,6 +130,43 @@ internal fun interface Ts3jClientSocketFactory {
 internal class LocalTeamspeakClientSocketAdapter(
     private val delegate: LocalTeamspeakClientSocket = StateAwareTeamspeakClientSocket(),
 ) : Ts3jClientSocket {
+    private val textCommands = Ts3jTextCommands(delegate) { block -> withOperation(block) }
+    private val controlCommands = Ts3jControlCommands(textCommands)
+
+    override fun updatePresence(
+        presence: OwnPresence,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ) = controlCommands.updatePresence(
+        presence,
+        timeoutMs,
+        canSubmit,
+    )
+
+    override fun channelInfo(
+        channelId: Int,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ) = controlCommands.channelInfo(
+        channelId,
+        timeoutMs,
+        canSubmit,
+    )
+
+    override fun sendTextMessage(
+        target: TextTarget,
+        body: String,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ): TextSendOutcome = textCommands.send(target, body, timeoutMs, canSubmit)
+
+    override fun pokeClient(
+        target: TextTarget.Private,
+        reason: String,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean,
+    ): TextSendOutcome = textCommands.poke(target, reason, timeoutMs, canSubmit)
+
     override fun setIdentity(identity: LocalIdentity) {
         delegate.setIdentity(identity)
     }
@@ -184,7 +253,7 @@ internal class LocalTeamspeakClientSocketAdapter(
         channelId: Int,
         password: String,
     ) {
-        withOperation { delegate.joinChannel(channelId, password) }
+        withOperation { textCommands.join(channelId, password) }
     }
 
     override fun disconnect(reason: String) {

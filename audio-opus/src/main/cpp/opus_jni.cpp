@@ -1,5 +1,5 @@
 #include <jni.h>
-#include <opus/opus.h>
+#include <opus.h>
 
 #include <string>
 #include <vector>
@@ -26,6 +26,11 @@ std::string opus_error(const char* operation, int code) {
 }
 
 }  // namespace
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_io_github_ts3mobile_audio_opus_NativeOpusInfo_nativeVersion(JNIEnv* env, jclass) {
+    return env->NewStringUTF(opus_get_version_string());
+}
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_io_github_ts3mobile_audio_opus_NativeOpusDecoder_nativeCreate(

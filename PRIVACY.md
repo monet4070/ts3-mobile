@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: 2026-10-18
+Last updated: 2026-10-23
 
 TS3 Mobile is an unofficial client that connects directly from the Android
 device to TeamSpeak servers selected by the user. The maintainers do not
@@ -20,13 +20,32 @@ operate an intermediary service for those connections.
   the previous password. Deleting a history entry does not clear the form snapshot.
   Save failures are shown in the connection form; edits killed before the short
   delayed save finishes may not survive.
+- Up to 50 explicit server bookmarks are stored in a separate versioned AES-GCM
+  snapshot with a separate Android Keystore key, excluded from backup and device
+  transfer. It includes names, endpoints, nicknames, optional default channel IDs
+  and opt-in server/channel passwords. No existing history or form passwords are
+  migrated. Disabling password retention removes both bookmark passwords from
+  that snapshot; deleting a bookmark does not erase independent form memory,
+  history or identity. Loading bookmarks never connects automatically.
+- Away status/message and input/output mute flags are sent to the selected server
+  through clientupdate. Away messages stay in service memory and are not logged or
+  saved. Local mute/stop still works if server synchronization is refused or uncertain.
+- Channel details are requested on demand, displayed as bounded plain text and
+  kept in service memory. Search queries stay in the current dialog, search loaded
+  snapshot data locally, and are not saved or logged. Channel descriptions do not
+  execute markup or load remote images.
 - The generated TeamSpeak identity is encrypted locally with AES-GCM using a key
   protected by Android Keystore.
 - Server and channel passwords are used only for the requested connection or
   channel operation. A channel password needed for reconnection is retained in
   foreground-service memory and is discarded when that service process ends.
-- Microphone audio is captured only while the selected microphone mode is
-  transmitting. It is encoded and sent directly to the connected server.
+- Microphone audio is captured for push-to-talk while pressed, continuously in
+  always-on mode, and throughout volume-gate listening, including silence. Gate
+  mode sends activated audio plus a bounded 120 ms onset buffer and 300 ms tail
+  directly to the connected server. Off stops capture and discards buffered audio.
+  The microphone foreground-service type remains active during gate listening.
+  Gain, suppression, echo and gate parameters stay in service memory and reset
+  when the service is recreated; they cannot start capture by themselves.
 - Incoming voice traffic is decoded and played locally. The app does not record
   or archive voice traffic.
 - A local journal retains at most 128 service, network, power, microphone and
@@ -36,6 +55,26 @@ operate an intermediary service for those connections.
   to copy and share them. The CPU-awake preference is also stored locally.
 - Per-user mute and volume preferences are stored locally and keyed by the
   participant's stable TeamSpeak identity when available.
+
+Channel and private text (in development) are sent directly to the selected TeamSpeak server.
+Received text, sender names and drafts stay in foreground-service memory with a
+500-message / 2 MiB retained-text budget shared by at most 20 conversations and
+bounded incoming events/drafts. Participant UIDs are in-memory conversation keys;
+numeric conversation IDs and scroll metadata (position, last handled sequence and
+follow intent) are the only saved conversation UI state.
+Messages, names, UIDs and drafts are not stored in preferences, saved Activity
+state, diagnostics or logs.
+Ordinary reconnect keeps them in memory; a new manual connection, manual exit,
+terminal session failure or process death removes them. Explicit long-press Copy
+puts only the selected message body on Android's clipboard, subject to Android's
+clipboard behavior. Server operators and participants may retain received text.
+Closing a private conversation removes its in-memory messages and draft. A private
+conversation without a stable UID is also removed when its connection attempt ends.
+Poke sender names and optional reasons use the same in-memory private history and
+retention limits. Unsubmitted reasons stay only in the current dialog's memory;
+they are not saved across Activity recreation. The latest retained incoming poke
+can show an in-app dialog, referencing its existing message rather than storing a
+separate copy. Poke adds no sound, vibration, Android text notification or permission.
 
 ## Data not collected by this project
 

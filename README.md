@@ -27,9 +27,17 @@ connection-form memory and manual-only identity-limit recovery, and improves
 the disconnect UI. Existing M10 installations can update in place without
 resetting identity.
 
-Development is currently focused on the M11 production-beta preparation
-milestone. The automated build gate and the M10 code-hardening baseline are in
-place, but the complete physical-device acceptance matrix is not finished. See
+The next feature proposal prioritizes text chat, named server favorites and
+voice activation. See the [feature roadmap (2026-10-23, Chinese)](docs/plans/NEXT_PHASE_2026-10-23_ZH.md).
+Channel/private chat, poke, microphone gain/volume gate and named bookmarks are
+implemented in the development workspace. This does not change
+the published 0.11.1-m10 release.
+Tasks, interface contracts and acceptance criteria are in the
+[detailed execution plan (Chinese)](docs/plans/FEATURE_EXECUTION_PLAN_2026-10-23_ZH.md).
+
+Feature development and M11 production-beta release acceptance are tracked
+separately. The automated build gate and M10 code-hardening baseline are in
+place; the unfinished physical-device matrix does not block new feature work. See
 the [continuation plan](docs/release/CONTINUATION_PLAN.md), the
 [M11 release checklist](docs/release/M11_RELEASE_CHECKLIST.md) and the
 [M10 stability matrix](docs/testing/M10_STABILITY_MATRIX.md) for the remaining
@@ -92,20 +100,92 @@ locally stored TeamSpeak identity.
 - single-tap channel expansion and double-tap channel joining
 - public and password-protected channel switching with current-channel state
 
+### Channel and private text (development)
+
+- Channel / Users / Chat navigation, plain-text messages, long-press copy and unread counts
+- Users → user actions → Send private message; switch conversations with the chat header
+- Users → user actions → Poke, with an optional message (100 UTF-8 bytes); received pokes show an in-app dialog and private history
+- Separate drafts and unread counts; stable identity checks pause offline or ambiguous targets
+- Explicit sending, server-accepted, rejected and unknown outcomes; no automatic resend
+- Up to 20 conversations sharing 500 messages / 2 MiB in service memory, with 1,024-byte UTF-8 input validation
+- Messages and drafts survive ordinary reconnect; manual exit, terminal failure and new manual sessions clear them
+- Keyboard-aware composer and compact voice controls; input focus/tab changes release PTT
+- Close private conversations to clear their messages and drafts; no chat history on disk, text notifications or read receipts
+
+See [channel checks](docs/testing/F1A_CHANNEL_CHAT_2026-10-23.md) and
+[private conversation checks](docs/testing/F1B_PRIVATE_CHAT_2026-10-23.md).
+Poke implementation and offline checks are tracked [separately](docs/testing/POKE_2026-10-23.md).
+Channel interoperability passed on the Android 16 Debug package; private and
+Release text interoperability remain unverified, as does live poke interoperability. See [phone results](docs/testing/F1A_DEVICE_2026-10-23.md).
+
+### Bookmarks, presence and channel discovery (development)
+
+- More options → Server bookmarks: name/edit/delete up to 50 servers, optional
+  encrypted server/channel passwords, nickname, default channel ID, fill form and quick connect
+- Disconnect from the current server before selecting another bookmark to connect
+- More options → Away and status: away/message and confirmed server-visible input/output mute
+- Channel information buttons: topic, plain-text description, users and configured user limit
+- More options → Find channels and users: local name/topic/nickname search and join actions
+
+Bookmark storage is separate from history, form memory and identity. New installs
+start empty; loading does not connect. Clearing a bookmark password does not clear
+independent form memory. Quiet gate listening and released PTT remain available
+rather than toggling the server mute flag every frame. These features have offline
+checks; real-server presence and channel-info permissions remain unverified. See
+[delivery record](docs/testing/FEATURES_134_2026-10-23.md).
+The subsequent [workspace review](docs/testing/REVIEW_2026-10-24.md) covers session
+replacement, restored-chat availability, permission synchronization and shared-identity UI fixes.
+The current requested scope is bookmarks, presence and channel discovery; identity
+import/export, friends/block lists, moderation, connection-quality dashboards and
+file transfer are outside it.
+
 ### Voice and audio
+
+The [audio review repair plan](docs/plans/AUDIO_REVIEW_FIXES_2026-10-24_ZH.md)
+tracks playback recovery, capture shutdown and route-boundary regressions.
+The [follow-up](docs/plans/AUDIO_REVIEW_FOLLOWUP_2026-10-24_ZH.md) covers failure
+guidance, worker-owned retirement and processing continuity during volume updates.
+Physical route/acoustic acceptance remains pending.
 
 - OPUS_VOICE and OPUS_MUSIC receive support through official libopus
 - per-speaker jitter buffers, packet-loss concealment and PCM mixing
 - foreground playback with speaker mute and per-user mute controls
 - per-user 0–200% playback gain keyed by stable TeamSpeak identity
-- always-off, push-to-talk and continuous microphone modes
+- off, push-to-talk, continuous and RMS volume-gate microphone modes
 - 48 kHz mono, 20 ms, 64 kbps Opus voice encoding and ts3j voice transmission
 - constrained VBR, fullband Opus, acoustic echo cancellation and RNNoise v0.2
-- always-on 10 ms neural denoising with Android automatic gain control disabled
+- microphone input volume (0–200%), optional 10 ms RNNoise suppression and device AEC controls
+- adjustable volume gate with bounded onset/tail; distinct listening/transmitting states
+- Android AGC and platform NS disabled when controllable; actual AEC status shown
 - bounded capture and encoded-frame queues to prevent latency growth
-- microphone foreground-service activation only while transmitting
+- microphone foreground-service activation during capture, including silent gate listening
 - communication-device selection for earpiece, speaker, wired, Bluetooth and USB
 - automatic fallback to system routing when a selected device is disconnected
+
+Microphone controls: More options → Microphone settings. Gain and processing settings
+stay in service memory; restarting the service restores unity gain, suppression/AEC on
+and push-to-talk. Gate defaults are offline starting values; acoustic performance
+remains unverified. See [implementation and checks](docs/testing/MICROPHONE_2026-10-23.md).
+
+The [audio quality upgrade plan](docs/plans/AUDIO_QUALITY_UPGRADE_2026-10-24_ZH.md)
+is now in staged implementation. A0 baseline fixtures and A1 playback continuity
+retain output across short gaps, account for partial writes and drain accepted
+tail samples before releasing focus. Forced stops still discard immediately.
+See [offline checks and remaining acceptance](docs/testing/AUDIO_A0_A1_2026-10-24.md).
+A2 adds float gain with 20 ms volume ramps and a -1 dBFS limiter. Mixing preserves
+single-talker unity without count-based volume jumps; concurrent voices sum before
+bus limiting. See [A2 implementation and checks](docs/testing/AUDIO_A2_2026-10-24.md).
+Limiter parameters await device acceptance. A3 provides an opt-in standalone APM
+development prototype with bounded render references and synthetic AEC/NS checks;
+default builds do not include its native library. See [A3 build and evidence](docs/testing/AUDIO_A3_2026-10-24.md).
+Opus is now built from pinned 1.6.1 sources; existing encoder settings are retained,
+with old/new mono/stereo/DTX compatibility fixtures. See [A4a verification](docs/testing/AUDIO_A4A_2026-10-24.md).
+A4b bounds global input residence to 60 ms, shares a 240 ms per-speaker media
+budget and adapts startup buffering within 40–120 ms. FEC requires confirmed
+framing and actual redundancy; unknown TS3 framing retains bounded PLC.
+See [A4b implementation and offline traces](docs/testing/AUDIO_A4B_2026-10-24.md).
+Live APM capture integration and physical-route acceptance remain pending;
+capture defaults, permissions and protocol formats are unchanged.
 
 ### Interface and diagnostics
 
@@ -125,9 +205,8 @@ locally stored TeamSpeak identity.
   participant data
 - fixture-based protocol mapping regression tests and sanitized failure logging
 
-There is currently no in-app language selector. Whisper transmission, automatic
-voice activation, text chat, file transfer, permissions administration,
-bookmarks and multi-server tabs are also not implemented.
+There is currently no in-app language selector. Whisper transmission, file
+transfer, permissions administration and multi-server tabs are not implemented.
 
 ## Removing the task
 
@@ -193,7 +272,7 @@ the reviewed lockfile diff. A maintained fork of ts3j is still required before
 a stable product release; see
 [ADR-0004](docs/decisions/0004-take-ownership-of-ts3j-dependency.md).
 
-The app uses the BSD-licensed Xiph libopus 1.3.1 Prefab package and vendors the
+The app builds BSD-licensed Xiph libopus 1.6.1 from a SHA-256-pinned source archive and vendors the
 official Xiph RNNoise v0.2 model at commit `904a876d`. License texts and exact
 provenance are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -206,6 +285,10 @@ Requirements:
 - Android Build Tools 35.0.0
 - Android NDK 27.0.12077973
 - CMake 3.22.1
+
+The first native build downloads the verified Opus source archive. An offline
+archive can be supplied with `-PopusSourceArchive=/absolute/path/opus-1.6.1.tar.gz`;
+the same pinned SHA-256 is always required. See [native compatibility checks](CONTRIBUTING.md#opus-source-and-compatibility).
 
 Set `sdk.dir` in an untracked `local.properties`, then verify the local setup:
 

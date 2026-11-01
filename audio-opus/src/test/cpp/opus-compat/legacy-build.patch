@@ -1,0 +1,16 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -6,5 +6,5 @@
+ message(STATUS "Opus library version: ${OPUS_LIBRARY_VERSION}")
+ 
+-get_package_version(PACKAGE_VERSION)
++set(PACKAGE_VERSION "1.3.1")
+ message(STATUS "Opus package version: ${PACKAGE_VERSION}")
+ 
+@@ -16,6 +16,5 @@
+ message(STATUS "Opus project version: ${PROJECT_VERSION}")
+ 
+ project(Opus LANGUAGES C VERSION ${PROJECT_VERSION})
+-include(opus_buildtype.cmake)
+ 
+ option(OPUS_STACK_PROTECTOR "Use stack protection" ON)

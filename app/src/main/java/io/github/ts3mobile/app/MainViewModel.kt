@@ -3,6 +3,10 @@ package io.github.ts3mobile.app
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.ts3mobile.app.bookmarks.BookmarkController
+import io.github.ts3mobile.app.bookmarks.BookmarkVault
+import io.github.ts3mobile.app.bookmarks.ServerBookmark
+import io.github.ts3mobile.app.bookmarks.withSelectedBookmark
 import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.app.history.ServerHistoryPrefill
 import io.github.ts3mobile.app.history.successServerHistoryStore
@@ -66,6 +70,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     internal var pendingConnection: ServerConfig? = null
     internal var notificationPermissionResolved = false
     internal var pendingMicrophoneMode: MicrophoneMode? = null
+    private val bookmarkController = BookmarkController(viewModelScope, BookmarkVault(application))
+    val bookmarks = bookmarkController.state
+
+    fun saveBookmark(entry: ServerBookmark) = bookmarkController.save(entry)
+
+    fun removeBookmark(entry: ServerBookmark) = bookmarkController.remove(entry)
+
+    fun reloadBookmarks() = bookmarkController.reload()
+
+    private var bookmarkChannelId: Int? = null
+    private var bookmarkChannelPassword = ""
+
+    fun applyBookmark(entry: ServerBookmark) {
+        editedFields = ConnectionFormEdits(true, true, true, true)
+        connectionFieldsEdited = true
+        bookmarkChannelId = entry.defaultChannelId
+        bookmarkChannelPassword = entry.channelPassword
+        update { withSelectedBookmark(entry) }
+    }
+
     private val historyStore = successServerHistoryStore(application)
     private val settingsVault = ConnectionSettingsVault(application)
     private val settingsLoaded = CompletableDeferred<Unit>()
@@ -127,12 +151,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setHost(value: String) {
+        bookmarkChannelId = null
+        bookmarkChannelPassword = ""
         editedFields = editedFields.copy(host = true, password = true)
         connectionFieldsEdited = true
         update { copy(host = value, password = if (value == host) password else "", submitted = false) }
     }
 
     fun setPort(value: String) {
+        bookmarkChannelId = null
+        bookmarkChannelPassword = ""
         editedFields = editedFields.copy(port = true, password = true)
         connectionFieldsEdited = true
         update { copy(port = value.filter(Char::isDigit), password = if (value == port) password else "", submitted = false) }
@@ -149,6 +177,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun applyHistoryEntry(entry: ServerHistoryEntry) {
+        bookmarkChannelId = null
+        bookmarkChannelPassword = ""
         editedFields = editedFields.copy(host = true, port = true, password = true)
         connectionFieldsEdited = true
         mutableHistoryError.value = false
@@ -169,7 +199,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun submit(): ServerConfig? {
         mutableForm.update { it.copy(submitted = true) }
-        return mutableForm.value.toServerConfigOrNull()
+        return mutableForm.value.toServerConfigOrNull()?.copy(
+            defaultChannelId = bookmarkChannelId,
+            channelPassword = bookmarkChannelPassword,
+        )
     }
 
     fun submitAndRemember(onReady: (ServerConfig) -> Unit) {

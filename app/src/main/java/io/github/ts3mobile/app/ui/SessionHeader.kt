@@ -37,9 +37,10 @@ internal fun SessionHeader(
     onDisconnect: () -> Unit,
     onPlaybackMutedChange: (Boolean) -> Unit,
     onAudioRouteSelected: (Int) -> Unit,
+    compact: Boolean = false,
 ) {
     Panel(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(if (compact) 8.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             IconTile(UiIcon.Server)
             Spacer(Modifier.size(12.dp))
             Column(Modifier.weight(1f)) {
@@ -79,15 +80,17 @@ internal fun SessionHeader(
                 Text(stringResource(R.string.action_disconnect), maxLines = 1, softWrap = false)
             }
         }
-        androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) { AudioRouteMenu(state.audioRouting, onAudioRouteSelected) }
-            IconButton(onClick = { onPlaybackMutedChange(!state.playbackMuted) }) {
-                AppIcon(
-                    if (state.playbackMuted) UiIcon.VolumeOff else UiIcon.Volume,
-                    stringResource(if (state.playbackMuted) R.string.action_unmute_playback else R.string.action_mute_playback),
-                    tint = if (state.playbackMuted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        if (!compact) {
+            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { AudioRouteMenu(state.audioRouting, onAudioRouteSelected) }
+                IconButton(onClick = { onPlaybackMutedChange(!state.playbackMuted) }) {
+                    AppIcon(
+                        if (state.playbackMuted) UiIcon.VolumeOff else UiIcon.Volume,
+                        stringResource(if (state.playbackMuted) R.string.action_unmute_playback else R.string.action_mute_playback),
+                        tint = if (state.playbackMuted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

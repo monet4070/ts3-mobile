@@ -6,7 +6,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.util.concurrent.TimeUnit
 
 /**
  * Covers the pure buffering/reordering logic of the jitter pipeline with a
@@ -18,7 +17,7 @@ class TalkerJitterPipelineTest {
     fun reordersOutOfOrderPacketsBeforeDecoding() {
         val decoder = FakeDecoder()
         val pipeline = TalkerJitterPipeline(decoderFactory = { decoder })
-        val now = System.nanoTime()
+        val now = 0L
         pipeline.offer(queued(2, now))
         pipeline.offer(queued(0, now))
         pipeline.offer(queued(1, now))
@@ -33,7 +32,7 @@ class TalkerJitterPipelineTest {
     fun ignoresDuplicateAndStalePackets() {
         val decoder = FakeDecoder()
         val pipeline = TalkerJitterPipeline(decoderFactory = { decoder })
-        val now = System.nanoTime()
+        val now = 0L
 
         // Start consuming at sequence 1, then deliver a stale packet 0 and a
         // duplicate packet 1; both must be ignored.
@@ -52,7 +51,7 @@ class TalkerJitterPipelineTest {
     fun notReadyBeforeInitialHoldAndEmptyAfterTalkspurt() {
         val decoder = FakeDecoder()
         val pipeline = TalkerJitterPipeline(decoderFactory = { decoder })
-        val now = System.nanoTime()
+        val now = 0L
 
         pipeline.offer(queued(0, now))
         assertFalse(pipeline.readyToStart(now + 5))
@@ -70,7 +69,7 @@ class TalkerJitterPipelineTest {
     fun concealsMissingPacketThenResumes() {
         val decoder = FakeDecoder()
         val pipeline = TalkerJitterPipeline(decoderFactory = { decoder })
-        val now = System.nanoTime()
+        val now = 0L
         pipeline.offer(queued(0, now))
         pipeline.offer(queued(2, now))
         val readyAt = now + INITIAL_HOLD_NANOS + 10
@@ -98,9 +97,9 @@ class TalkerJitterPipelineTest {
     private fun advance(
         pipeline: TalkerJitterPipeline,
         startNanos: Long,
-        elapsedMs: Long,
+        elapsedNanos: Long,
     ) {
-        pipeline.fillPcm(startNanos + TimeUnit.MILLISECONDS.toNanos(elapsedMs))
+        pipeline.fillPcm(startNanos + elapsedNanos)
     }
 
     private fun queued(
@@ -120,6 +119,13 @@ class TalkerJitterPipelineTest {
         )
 
     private class FakeDecoder : OpusPacketDecoder {
+        override fun packetInfo(packet: ByteArray) = OpusPacketInfo(960)
+
+        override fun decodeFec(
+            packet: ByteArray,
+            frameSize: Int,
+        ): ShortArray = error("No FEC in this fixture")
+
         val decodedPacketIds = mutableListOf<Long>()
         var nullDecodeCount = 0
 
@@ -146,7 +152,7 @@ class TalkerJitterPipelineTest {
     }
 
     private companion object {
-        val INITIAL_HOLD_NANOS = TalkerJitterPipeline.INITIAL_HOLD_NANOS
+        const val INITIAL_HOLD_NANOS = ReceivePolicy.INITIAL_TARGET_MS * 1_000_000L
         const val TALKER_SAMPLES = 480
     }
 }

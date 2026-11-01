@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakService
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
@@ -52,6 +53,7 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) { granted ->
+            serviceBinder?.refreshMicrophonePermission()
             val requestedMode = viewModel.pendingMicrophoneMode
             viewModel.pendingMicrophoneMode = null
             if (granted && requestedMode != null) {
@@ -87,8 +89,11 @@ class MainActivity : ComponentActivity() {
                 val fallbackState = remember { MutableStateFlow(TeamSpeakServiceState()) }
                 val serviceState by (serviceBinder?.state ?: fallbackState)
                     .collectAsStateWithLifecycle()
+                val fallbackChat = remember { MutableStateFlow(ChatState()) }
+                val chatState by (serviceBinder?.chatState ?: fallbackChat).collectAsStateWithLifecycle()
                 val form by viewModel.form.collectAsStateWithLifecycle()
                 val history by viewModel.history.collectAsStateWithLifecycle()
+                val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
                 val historyError by viewModel.historyError.collectAsStateWithLifecycle()
 
                 MainScreen(
@@ -130,6 +135,36 @@ class MainActivity : ComponentActivity() {
                     onRefreshBackgroundRuntime = { serviceBinder?.refreshBackgroundRuntime() },
                     onBatterySettings = ::openBatterySettings,
                     onAppSettings = ::openAppSettings,
+                    chatState = chatState,
+                    onChatDraft = { serviceBinder?.updateChatDraft(it) },
+                    onChatSend = { serviceBinder?.submitText() },
+                    onChatVisible = { key, sequence -> serviceBinder?.markChatVisibleThrough(key, sequence) },
+                    onOpenPrivateChat = { serviceBinder?.openPrivateChat(it) },
+                    onChatConversationSelected = { serviceBinder?.selectChat(it) },
+                    onChatConversationClosed = { serviceBinder?.closeChat(it) },
+                    onPoke = { recipient, reason -> serviceBinder?.poke(recipient, reason) ?: false },
+                    onPokeDismiss = { serviceBinder?.dismissPoke(it) },
+                    onMicrophoneSettingsChanged = { serviceBinder?.setMicrophoneSettings(it) },
+                    bookmarks = bookmarks,
+                    canUseBookmarkConnection = serviceBinder != null,
+                    onBookmarkSave = viewModel::saveBookmark,
+                    onBookmarkRemove = viewModel::removeBookmark,
+                    onBookmarkSelect = viewModel::applyBookmark,
+                    onBookmarkConnect = { entry ->
+                        val phase = serviceBinder?.state?.value?.status?.phase
+                        if (phase == io.github.ts3mobile.protocol.ConnectionPhase.DISCONNECTED ||
+                            phase == io.github.ts3mobile.protocol.ConnectionPhase.ERROR
+                        ) {
+                            viewModel.applyBookmark(entry)
+                            viewModel.submitAndRemember(::requestConnection)
+                        }
+                    },
+                    onBookmarkReload = viewModel::reloadBookmarks,
+                    onAwayChanged = { away, message -> serviceBinder?.setAway(away, message) },
+                    onPresenceRetry = { serviceBinder?.retryPresence() },
+                    onChannelInfo = { serviceBinder?.showChannelInfo(it) },
+                    onChannelInfoDismiss = { serviceBinder?.dismissChannelInfo() },
+                    onResolveUserChannel = { id, uid -> serviceBinder?.resolveUserChannel(id, uid) },
                 )
             }
         }
@@ -245,7 +280,7 @@ class MainActivity : ComponentActivity() {
         pushToTalkPressed = false
         serviceBinder?.releasePushToTalk()
         if (
-            mode == MicrophoneMode.CONTINUOUS &&
+            mode.requiresContinuousCapture &&
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.RECORD_AUDIO,

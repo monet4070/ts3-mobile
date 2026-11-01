@@ -19,8 +19,10 @@ internal class CaptureSessionStats {
     private var inputEnergy = 0.0
     private var outputEnergy = 0.0
     private var measuredSamples = 0L
+    private var rawSamples = 0L
 
     fun noteRawFrame(pcm: ShortArray) {
+        rawSamples += pcm.size
         var rawNonZero = false
         pcm.forEach { sample ->
             val value = sample.toDouble()
@@ -38,12 +40,13 @@ internal class CaptureSessionStats {
         totalDenoiseNanos += denoiseNanos
         maxDenoiseNanos = max(maxDenoiseNanos, denoiseNanos)
         vadTotal += vadProbability
-        pcm.forEach { sample ->
-            val value = sample.toDouble()
-            outputEnergy += value * value
-        }
-        measuredSamples += pcm.size
+        noteBypassedFrame(pcm)
         denoisedFrameCount++
+    }
+
+    fun noteBypassedFrame(pcm: ShortArray) {
+        pcm.forEach { sample -> outputEnergy += sample.toDouble() * sample }
+        measuredSamples += pcm.size
     }
 
     fun capturedNonZero(): Boolean = capturedNonZeroPcm.get()
@@ -61,10 +64,10 @@ internal class CaptureSessionStats {
                 totalDenoiseNanos / denoisedFrameCount / 1_000L
             }
         val inputRms =
-            if (measuredSamples == 0L) {
+            if (rawSamples == 0L) {
                 0
             } else {
-                sqrt(inputEnergy / measuredSamples).toInt()
+                sqrt(inputEnergy / rawSamples).toInt()
             }
         val outputRms =
             if (measuredSamples == 0L) {

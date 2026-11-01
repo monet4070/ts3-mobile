@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +41,7 @@ import io.github.ts3mobile.protocol.Ts3Participant
 internal fun ChannelList(
     state: TeamSpeakServiceState,
     onJoinChannel: (Int, String) -> Unit,
+    onChannelInfo: (Int) -> Unit = {},
 ) {
     var passwordChannel by remember { mutableStateOf<Ts3Channel?>(null) }
     var expandedChannelIds by rememberSaveable { mutableStateOf(intArrayOf()) }
@@ -167,6 +169,9 @@ internal fun ChannelList(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    IconButton(onClick = {
+                        onChannelInfo(row.channel.id)
+                    }) { AppIcon(UiIcon.Info, stringResource(R.string.channel_info_for, row.channel.name)) }
                     if (isCurrent) {
                         Spacer(Modifier.width(10.dp))
                         AppIcon(
