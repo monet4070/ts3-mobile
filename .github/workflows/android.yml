@@ -59,23 +59,27 @@ jobs:
         with:
           cache-read-only: false
 
+      - name: Verify Opus source compatibility
+        run: python3 tools/check-opus-compat.py --sdk "$ANDROID_HOME"
+
       - name: Test, lint, and assemble
         run: >-
           ./gradlew
           quality
-          :ts3-protocol:test
-          :audio-opus:testDebugUnitTest
+          :ts3-protocol:test --rerun
+          :audio-opus:testDebugUnitTest --rerun
           :audio-opus:lintDebug
-          :app:testDebugUnitTest
+          :app:testDebugUnitTest --rerun
           :app:lintDebug
           :app:lintRelease
           :app:assembleDebug
           :app:assembleRelease
           --max-workers=2
+          --no-build-cache
           --stacktrace
 
-      - name: Verify identity loading in the minified APK
-        timeout-minutes: 8
+      - name: Verify release probes and audio lifecycle regressions
+        timeout-minutes: 12
         shell: bash
         run: |
           ./gradlew --stop
@@ -129,3 +133,7 @@ jobs:
             exit 1
           fi
           pwsh -NoProfile -File ./tools/check-release-identity.ps1 -DeviceSerial emulator-5554 -SdkRoot "$ANDROID_HOME"
+          python3 tools/check-release-codec.py --device emulator-5554 --sdk "$ANDROID_HOME"
+          python3 -m unittest discover -s tools/tests -p 'test_audio_build_config.py'
+          ./gradlew :audio-opus:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.audio.opus.OpusAudioPlayerFocusTest,io.github.ts3mobile.audio.opus.NativeAudioLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackLifecycleTest --max-workers=2
+          ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.app.service.MicrophoneControllerTest,io.github.ts3mobile.app.ui.PlaybackFailureTest --max-workers=2

@@ -1,9 +1,80 @@
 # Changelog
 
-This project follows milestone-style pre-release versioning while core protocol
-and audio behavior is still being validated.
+**1.0.0**, released on **2026-11-04**, is the first stable release. Earlier versions
+used milestone naming. After 1.0.0, patch versions are intended for compatible fixes
+and minor versions for compatible features; Android versionCode increases for
+each distributed update.
 
-## Unreleased
+## 1.0.0 — 2026-11-04
+
+Tag: [`v1.0.0`](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0),
+versionCode 13. The signed APK keeps the public 0.11.1-m10 certificate; an API 35
+emulator upgrade retained the UID and synthetic private files, preferences and
+Keystore ciphertext. Physical-device coverage and remaining checks are disclosed
+in [compatibility](docs/COMPATIBILITY.md) and the
+[release decision](docs/decisions/0021-stable-release-acceptance.md).
+[中文 Release 文案](docs/release/1.0.0/RELEASE_NOTES_ZH.md) ·
+[English release copy](docs/release/1.0.0/RELEASE_NOTES.md).
+
+### Added
+
+- Channel and private chat with independent drafts, unread positions, copy,
+  identity-aware targets and explicit send results; no automatic retry.
+- Named encrypted server bookmarks, optional default channel/password storage,
+  per-entry revision guards and explicit disconnect before switching.
+- Channel-member poke shortcut, optional reason, private history, in-app receive
+  notices and generic background notifications without sender/reason content.
+- Away/message and server-visible mute synchronization, local channel/user
+  search, and a project repository menu entry.
+- Microphone input gain, RMS volume gate, RNNoise and device AEC controls.
+- Bilingual user guides, install/upgrade instructions, troubleshooting, support,
+  compatibility matrix and first stable release/signing documentation.
+
+### Changed
+
+- Warm elevated surfaces in both palettes; clearer connection/session hierarchy,
+  compact navigation, fine poke/away icons and large-text/keyboard layouts.
+- Bookmark cards separate the primary Connect action from management menus;
+  Add remains outside scrolling, and the editor groups optional settings.
+- Poking preserves the current page and conversation with brief result feedback.
+- Build official pinned Opus 1.6.1 for four ABIs; improve receive buffering,
+  bounded queues, mixing/limiting, gain transitions and audio resource lifetimes.
+- Keep chat through ordinary reconnect, clear it on manual/new/terminal sessions
+  and reject stale session/target callbacks.
+
+### Fixed
+
+- Automatically select available Bluetooth communication headsets. Mute listening
+  on device removal, Bluetooth fallback or failed route restoration; reconnecting
+  selects the headset without clearing the safety mute. Resume listening manually.
+- Accept incoming pokes that omit the optional reason; add background alerts
+  and cleanup/deduplication across visibility and session boundaries.
+- Restore chat availability after channel restoration; prevent old channel work
+  from replacing a new connection's restore settings.
+- Refresh permission-derived microphone mute and avoid duplicate roster keys
+  when several clients use the same identity.
+- Bound audio recovery/focus retries, preserve microphone teardown ownership,
+  invalidate old route/capture data and improve playback failure feedback.
+
+### Removed and limits
+
+- Remove channel-detail entry points; expansion, joining and search remain.
+- Default packages exclude the optional APM experiment. Identity export,
+  Whisper, file transfer, administration and multi-server tabs remain absent.
+- Tested coverage and remaining physical-device checks are recorded in
+  [compatibility](docs/COMPATIBILITY.md); automated results do not establish
+  acoustic behavior on every phone or headset.
+
+### 中文摘要
+
+首个稳定版 1.0.0（versionCode 13）于 2026-11-04 发布，带来频道/私聊、独立草稿与未读、
+服务器加密收藏、戳一下及后台提醒、暂离与状态同步、界面优化和 Opus 1.6.1 音频改进。
+蓝牙通话耳机自动选择，断开或意外回退时收听静音，重连后需手动恢复。
+沿用公开 0.11.1-m10 证书，模拟器保留数据升级通过；最终包蓝牙真机复核和第二设备覆盖仍待补齐。
+完整[中文发布说明](docs/release/1.0.0/RELEASE_NOTES_ZH.md)与英文说明同步维护。
+
+Detailed pre-1.0 implementation notes are preserved in the
+[development archive](docs/release/DEVELOPMENT_NOTES_PRE_1_0.md).
 
 ## 0.11.1-m10 — 2026-10-18
 

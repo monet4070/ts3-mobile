@@ -3,12 +3,20 @@ package io.github.ts3mobile.audio.opus
 internal class NativeOpusEncoder : AutoCloseable {
     private var handle = nativeCreate(SAMPLE_RATE, CHANNEL_COUNT, BITRATE)
 
+    @Synchronized
     fun encode(pcm: ShortArray): ByteArray {
         check(handle != 0L) { "Opus encoder is closed" }
         require(pcm.size == FRAME_SAMPLES) { "Expected $FRAME_SAMPLES PCM samples" }
         return nativeEncode(handle, pcm)
     }
 
+    @Synchronized fun reset() {
+        check(handle != 0L) { "Opus encoder is closed" }
+        close()
+        handle = nativeCreate(SAMPLE_RATE, CHANNEL_COUNT, BITRATE)
+    }
+
+    @Synchronized
     override fun close() {
         val current = handle
         if (current == 0L) return

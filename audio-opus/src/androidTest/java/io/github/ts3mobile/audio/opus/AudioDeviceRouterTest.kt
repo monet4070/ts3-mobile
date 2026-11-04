@@ -22,7 +22,8 @@ class AudioDeviceRouterTest {
         try {
             router.start()
             val initialState = router.state
-            assertEquals(SYSTEM_AUDIO_ROUTE_ID, initialState.selectedRouteId)
+            val expectedRoute = initialState.routes.firstOrNull { it.kind == AudioRouteKind.BLUETOOTH }?.id ?: SYSTEM_AUDIO_ROUTE_ID
+            assertEquals(expectedRoute, initialState.selectedRouteId)
             assertTrue(initialState.routes.any { it.id == SYSTEM_AUDIO_ROUTE_ID })
 
             val firstRoute =

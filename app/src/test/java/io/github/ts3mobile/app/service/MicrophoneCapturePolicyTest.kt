@@ -60,6 +60,16 @@ class MicrophoneCapturePolicyTest {
         )
     }
 
+    @Test fun volumeGateListensWithoutPushToTalkButCannotRestartInBackground() {
+        assertTrue(shouldCapture(MicrophoneMode.VOLUME_GATE, pushToTalkPressed = false))
+        assertTrue(MicrophoneMode.VOLUME_GATE.requiresContinuousCapture)
+        assertTrue(MicrophoneMode.CONTINUOUS.requiresContinuousCapture)
+        assertFalse(MicrophoneMode.PUSH_TO_TALK.requiresContinuousCapture)
+        assertFalse(MicrophoneMode.OFF.requiresContinuousCapture)
+        assertFalse(MicrophoneCapturePolicy.acceptedPushToTalkState(MicrophoneMode.VOLUME_GATE, true))
+        assertFalse(MicrophoneCapturePolicy.canStartCapture(appVisible = false, alreadyCapturing = false))
+    }
+
     private fun shouldCapture(
         mode: MicrophoneMode,
         pushToTalkPressed: Boolean,

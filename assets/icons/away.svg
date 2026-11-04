@@ -1,0 +1,8 @@
+<!-- Original TS3 Mobile icon: coffee and a clock for a brief break. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 10h12v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/>
+  <path d="M15 11h2a3 3 0 0 1 0 6h-2M2 23h16M6 6V3M10 7V5"/>
+  <circle cx="18" cy="5" r="4"/>
+  <path d="M18 3v2l1.5 1"/>
+</svg>

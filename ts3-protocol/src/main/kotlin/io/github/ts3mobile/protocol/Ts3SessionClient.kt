@@ -6,6 +6,10 @@ interface Ts3SessionListener {
     fun onSnapshotChanged(snapshot: SessionSnapshot)
 
     fun onVoiceFrame(frame: VoiceFrame)
+
+    fun onTextMessage(event: Ts3TextEvent) {}
+
+    fun onPoke(event: Ts3PokeEvent) {}
 }
 
 interface Ts3SessionClient : AutoCloseable {
@@ -21,6 +25,38 @@ interface Ts3SessionClient : AutoCloseable {
         channelId: Int,
         password: String = "",
     )
+
+    /** One attempt only; Unknown never authorizes an automatic retry. */
+    suspend fun sendTextMessage(
+        target: TextTarget,
+        body: String,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean = { true },
+    ): TextSendOutcome = TextSendOutcome.Unsupported
+
+    /** A distinct clientpoke command; an empty reason is allowed. */
+    suspend fun pokeClient(
+        target: TextTarget.Private,
+        reason: String,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean = { true },
+    ): TextSendOutcome = TextSendOutcome.Unsupported
+
+    suspend fun updatePresence(
+        presence: OwnPresence,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean = {
+            true
+        },
+    ): ControlOutcome = ControlOutcome(ControlStatus.UNSUPPORTED)
+
+    suspend fun channelInfo(
+        channelId: Int,
+        timeoutMs: Long,
+        canSubmit: () -> Boolean = {
+            true
+        },
+    ): ChannelInfoResult = ChannelInfoResult(ControlOutcome(ControlStatus.UNSUPPORTED))
 
     fun disconnect(reason: String = DEFAULT_DISCONNECT_REASON)
 

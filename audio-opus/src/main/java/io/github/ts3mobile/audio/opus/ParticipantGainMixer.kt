@@ -1,41 +1,49 @@
 package io.github.ts3mobile.audio.opus
 
-import kotlin.math.sqrt
-
-internal object ParticipantGainMixer {
+internal class ParticipantGainMixer {
     data class Input(
+        val clientId: Int,
         val samples: ShortArray,
         val gain: Float,
     )
+
+    private val gains = mutableMapOf<Int, GainEnvelope>()
+    private val limiter = PcmLimiter()
 
     fun mix(
         inputs: List<Input>,
         sampleCount: Int,
     ): ShortArray {
         require(sampleCount >= 0)
-        val audible = inputs.filter { it.gain > 0f && it.samples.isNotEmpty() }
-        if (audible.isEmpty()) return ShortArray(0)
-
-        val output = ShortArray(sampleCount)
-        val normalization =
-            if (audible.size == 1) {
-                1.0
-            } else {
-                1.0 / sqrt(audible.size.toDouble())
+        require(inputs.map { it.clientId }.distinct().size == inputs.size)
+        var hasSamples = false
+        val mixed = FloatArray(sampleCount)
+        for (input in inputs) {
+            require(input.samples.size <= sampleCount)
+            val envelope = gains.getOrPut(input.clientId) { GainEnvelope() }
+            envelope.setTarget(input.gain)
+            if (input.gain == 0f || input.samples.isEmpty()) continue
+            hasSamples = true
+            for (sampleIndex in mixed.indices) {
+                val gain = envelope.next()
+                if (sampleIndex < input.samples.size) mixed[sampleIndex] += input.samples[sampleIndex] * gain
             }
-        for (sampleIndex in output.indices) {
-            var sum = 0.0
-            audible.forEach { input ->
-                if (sampleIndex < input.samples.size) {
-                    sum += input.samples[sampleIndex] * input.gain
-                }
-            }
-            output[sampleIndex] =
-                (sum * normalization)
-                    .toLong()
-                    .coerceIn(Short.MIN_VALUE.toLong(), Short.MAX_VALUE.toLong())
-                    .toShort()
         }
-        return output
+        if (!hasSamples) {
+            limiter.advanceSilence(sampleCount)
+            return ShortArray(0)
+        }
+        return limiter.process(mixed)
+    }
+
+    fun forget(clientId: Int) {
+        gains.remove(clientId)
+    }
+
+    fun advanceSilence(samples: Int) = limiter.advanceSilence(samples)
+
+    fun reset() {
+        gains.clear()
+        limiter.reset()
     }
 }

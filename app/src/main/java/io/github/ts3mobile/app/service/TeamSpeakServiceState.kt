@@ -1,6 +1,10 @@
 package io.github.ts3mobile.app.service
 
 import io.github.ts3mobile.audio.opus.AudioRoutingState
+import io.github.ts3mobile.audio.opus.EchoCancellationState
+import io.github.ts3mobile.audio.opus.MicrophoneSettings
+import io.github.ts3mobile.audio.opus.PlaybackStatus
+import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.SessionSnapshot
 
@@ -10,9 +14,14 @@ data class TeamSpeakServiceState(
     val serverLabel: String? = null,
     val identityReady: Boolean = false,
     val playbackMuted: Boolean = false,
+    val playbackStatus: PlaybackStatus = PlaybackStatus.STOPPED,
     val participantAudioSettings: Map<String, ParticipantAudioSettings> = emptyMap(),
     val microphoneMode: MicrophoneMode = MicrophoneMode.PUSH_TO_TALK,
+    val presence: PresenceSyncState = PresenceSyncState(),
     val isTransmitting: Boolean = false,
+    val isCapturing: Boolean = false,
+    val microphoneSettings: MicrophoneSettings = MicrophoneSettings(),
+    val echoCancellationState: EchoCancellationState = EchoCancellationState.PENDING,
     val microphoneError: UserMessage? = null,
     val switchingChannelId: Int? = null,
     val channelError: UserMessage? = null,
@@ -25,6 +34,9 @@ data class TeamSpeakServiceState(
      */
     val statusMessage: UserMessage? = null,
 )
+
+val TeamSpeakServiceState.hasPlaybackFailure: Boolean
+    get() = status.phase == ConnectionPhase.CONNECTED && playbackStatus == PlaybackStatus.FAILED
 
 /**
  * Replaces the connection status together with its user-facing message so a

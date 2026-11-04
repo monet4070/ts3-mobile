@@ -1,202 +1,243 @@
 package io.github.ts3mobile.audio.opus
 
-import io.github.ts3mobile.protocol.VoiceFrame
-import java.util.ArrayDeque
 import java.util.TreeMap
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.min
 
-/**
- * A single participant's jitter pipeline: reorders 16-bit-wrapped packet
- * sequences, decodes Opus frames in order, conceals up to
- * MAX_CONCEALED_PACKETS missing packets per gap, and exposes decoded PCM
- * through a bounded FIFO. Extracted from OpusAudioPlayer so the buffering
- * logic is testable without an AudioTrack.
- */
 internal class TalkerJitterPipeline(
-    /** Optional shared decoded-packet counter; null means no accounting. */
     private val decodedPacketCount: AtomicLong? = null,
     private val decoderFactory: () -> OpusPacketDecoder = { NativeOpusDecoder() },
+    private val policy: ReceivePolicy = ReceivePolicy(),
+    private val budget: ReceiveMediaBudget = ReceiveMediaBudget(),
 ) : AutoCloseable {
-    private val pcm = PcmFifo(PCM_FIFO_CAPACITY_SAMPLES)
+    private val pcm = ReceivePcmBuffer(budget.stats)
     private val decoder = decoderFactory()
     private val pending = TreeMap<Long, QueuedFrame>()
-    private val sequenceUnwrapper = PacketSequenceUnwrapper()
-    private var expectedSequence: Long? = null
-    private var firstArrivalNanos: Long? = null
+    private val sequence = PacketSequenceUnwrapper()
+    private val delay = AdaptiveJitterDelay(policy)
+    private var expected: Long? = null
+    private var retiredBefore: Long? = null
+    private var firstArrival: Long? = null
     private var started = false
-    private var lastFrameSamples = DEFAULT_PACKET_SAMPLES
+    private var token: Long? = null
+    private var clientId = -1
+    private var lastSamples = DEFAULT_PACKET_SAMPLES
     private var missingRun = 0
-
-    var lastArrivalNanos: Long = System.nanoTime()
+    private var concealedSamples = 0
+    private var lastNow = 0L
+    private var holdUntil = 0L
+    private var rebufferedSequence: Long? = null
+    private var fadeRemaining = 0
+    private var framingConfirmed = policy.confirmedPacketSamples != null
+    var activeTargetMs = ReceivePolicy.INITIAL_TARGET_MS
+        private set
+    val nextTargetMs: Int get() = delay.targetMs
+    val oldestReadArrival: Long? get() = pcm.oldestReadArrival
+    var resetDroppedPcmSamples = 0L
+        private set
+    var lastArrivalNanos = 0L
         private set
 
     fun offer(queued: QueuedFrame) {
-        var extended = sequenceUnwrapper.unwrap(queued.frame.packetId)
-        val expected = expectedSequence
-        if (expected != null && extended - expected > MAX_FORWARD_PACKET_GAP) {
-            resetPipeline(clearSequence = true)
-            extended = sequenceUnwrapper.unwrap(queued.frame.packetId)
+        if (queued.frame.encodedData.isEmpty()) return
+        val info = queued.info ?: decoder.packetInfo(queued.frame.encodedData)
+        val lease =
+            queued.lease ?: budget.reserve(
+                queued.frame.clientId, info.samples,
+                queued.frame.encodedData.size, queued.arrivalNanos,
+            ) ?: return
+        if (!lease.valid) return
+        if (token != null && token != lease.token) {
+            reset(clearSequence = true)
+            fadeRemaining = ReceivePolicy.FADE_SAMPLES
         }
-        if (expectedSequence?.let { extended < it } == true || pending.containsKey(extended)) return
-        if (pending.size >= MAX_PENDING_PACKETS) {
-            resetPipeline(clearSequence = false)
+        clientId = queued.frame.clientId
+        token = lease.token
+        var extended = sequence.unwrap(queued.frame.packetId)
+        if (expected?.let { extended - it > MAX_FORWARD_PACKET_GAP } == true) {
+            reset(clearSequence = true)
+            extended = sequence.unwrap(queued.frame.packetId)
         }
-
-        pending[extended] = queued
-        if (firstArrivalNanos == null) firstArrivalNanos = queued.arrivalNanos
-        lastArrivalNanos = queued.arrivalNanos
+        if ((expected ?: retiredBefore)?.let { extended < it } == true) {
+            lease.release()
+            budget.stats.latePackets.incrementAndGet()
+            delay.noteLate()
+            return
+        }
+        if (pending.containsKey(extended)) {
+            lease.release()
+            budget.stats.duplicates.incrementAndGet()
+            return
+        }
+        pending[extended] = queued.copy(info = info, lease = lease)
+        if (info.samples != policy.confirmedPacketSamples || info.timingUncertain) framingConfirmed = false
+        if (firstArrival == null) firstArrival = queued.arrivalNanos
+        lastArrivalNanos = maxOf(lastArrivalNanos, queued.arrivalNanos)
+        delay.observe(extended, queued.arrivalNanos, info)
     }
 
     fun readyToStart(now: Long): Boolean {
-        if (pcm.availableSamples > 0) return true
+        if (pcm.available > 0) return true
         if (started) return pending.isNotEmpty()
-        val firstArrival = firstArrivalNanos ?: return false
-        return pending.isNotEmpty() && now - firstArrival >= INITIAL_HOLD_NANOS
+        val first = firstArrival ?: return false
+        return pending.isNotEmpty() && now - first >= activeTargetMs * MILLIS
     }
 
     fun fillPcm(now: Long) {
+        lastNow = now
+        if (token != null && budget.generation(clientId) != token) {
+            reset(clearSequence = true)
+            token = null
+            return
+        }
         if (!started) {
             if (!readyToStart(now)) return
-            expectedSequence = pending.firstKey()
+            expected = pending.firstKey()
             started = true
         }
-
-        while (pcm.availableSamples < PCM_TARGET_SAMPLES) {
-            var expected = expectedSequence ?: break
-            while (pending.isNotEmpty() && pending.firstKey() < expected) {
-                pending.pollFirstEntry()
-            }
-
-            val packet = pending.remove(expected)
+        if (now < holdUntil) return
+        while (pcm.available < PCM_TARGET_SAMPLES) {
+            val current = expected ?: break
+            val packet = pending.remove(current)
             if (packet != null) {
-                val decoded = decoder.decode(packet.frame.encodedData, OpusPacketDecoder.MAX_FRAME_SIZE)
-                if (decoded.isNotEmpty()) {
-                    pcm.add(decoded)
-                    lastFrameSamples = decoded.size
-                    decodedPacketCount?.incrementAndGet()
+                val lease = checkNotNull(packet.lease)
+                if (!lease.valid) continue
+                val info = checkNotNull(packet.info)
+                val decoded =
+                    try {
+                        decoder.decode(packet.frame.encodedData, OpusPacketDecoder.MAX_FRAME_SIZE).also {
+                            check(it.size == info.samples) { "Opus duration disagrees with decoded PCM" }
+                        }
+                    } catch (failure: RuntimeException) {
+                        lease.release()
+                        throw failure
+                    }
+                for (index in 0 until minOf(fadeRemaining, decoded.size)) {
+                    decoded[index] =
+                        (decoded[index].toInt() * (ReceivePolicy.FADE_SAMPLES + 1 - fadeRemaining) / ReceivePolicy.FADE_SAMPLES).toShort()
+                    fadeRemaining--
                 }
-                expectedSequence = expected + 1
+                pcm.add(decoded, lease, packet.transferredAt ?: packet.arrivalNanos)
+                lastSamples = decoded.size
+                decodedPacketCount?.incrementAndGet()
+                expected = current + 1
                 missingRun = 0
+                concealedSamples = 0
                 continue
             }
-
-            val nextSequence = pending.firstKeyOrNull() ?: break
-            val gap = nextSequence - expected
-            if (gap > MAX_CONCEALED_PACKETS || missingRun >= MAX_CONCEALED_PACKETS) {
+            val next = pending.firstEntry() ?: break
+            val gap = next.key - current
+            if (gap > MAX_CONCEALED_PACKETS || missingRun >= MAX_CONCEALED_PACKETS ||
+                concealedSamples >= MAX_CONCEALED_SAMPLES
+            ) {
                 decoder.reset()
-                expectedSequence = nextSequence
+                delay.discontinuity()
+                expected = next.key
                 missingRun = 0
+                concealedSamples = 0
                 continue
             }
-            if (pcm.availableSamples >= MIX_TICK_SAMPLES) break
-
-            pcm.add(decoder.decode(null, lastFrameSamples))
-            expected++
-            expectedSequence = expected
+            if (pcm.available >= MIX_TICK_SAMPLES) break
+            if (policy.adaptive && pcm.available == 0 && nextTargetMs > activeTargetMs && rebufferedSequence != current) {
+                activeTargetMs = minOf(ReceivePolicy.MAX_TARGET_MS, activeTargetMs + ReceivePolicy.TARGET_STEP_MS)
+                holdUntil = now + ReceivePolicy.TARGET_STEP_MS * MILLIS
+                rebufferedSequence = current
+                budget.stats.rebuffers.incrementAndGet()
+                return
+            }
+            val concealSize = min(lastSamples, MAX_CONCEALED_SAMPLES - concealedSamples)
+            val source = checkNotNull(next.value.lease)
+            val lease = budget.conceal(source, concealSize, now)
+            if (lease == null) {
+                decoder.reset()
+                expected = next.key
+                continue
+            }
+            val info = checkNotNull(next.value.info)
+            val confirmed = policy.confirmedPacketSamples
+            val useFec =
+                gap == 1L && confirmed != null && lastSamples == confirmed &&
+                    info.samples == confirmed && info.hasFec && !info.timingUncertain && concealSize == confirmed &&
+                    framingConfirmed && next.value.arrivalNanos <= now
+            val concealed =
+                try {
+                    val result =
+                        if (useFec) {
+                            budget.stats.fecAttempts.incrementAndGet()
+                            decoder.decodeFec(next.value.frame.encodedData, concealSize)
+                        } else {
+                            budget.stats.plcPackets.incrementAndGet()
+                            decoder.decode(null, concealSize)
+                        }
+                    check(result.size == concealSize) { "Opus concealment duration mismatch" }
+                    result
+                } catch (failure: RuntimeException) {
+                    lease.release()
+                    if (useFec) {
+                        budget.stats.fecFailures.incrementAndGet()
+                        decoder.reset()
+                        expected = next.key
+                        missingRun = 0
+                        concealedSamples = 0
+                        fadeRemaining = ReceivePolicy.FADE_SAMPLES
+                        delay.discontinuity()
+                        continue
+                    }
+                    throw failure
+                }
+            pcm.add(concealed, lease, now)
+            concealedSamples += concealSize
             missingRun++
+            expected = current + 1
+            delay.discontinuity()
         }
     }
 
-    fun isFinishedTalkspurt(): Boolean = started && pending.isEmpty() && pcm.availableSamples == 0
+    fun isFinishedTalkspurt(): Boolean = started && pending.isEmpty() && pcm.available == 0
 
-    fun readPcm(maxSamples: Int): ShortArray = pcm.read(maxSamples)
+    fun readPcm(maxSamples: Int): ShortArray = pcm.read(maxSamples, lastNow)
 
     fun finishTalkspurt() {
-        decoder.reset()
-        expectedSequence = null
-        firstArrivalNanos = null
-        started = false
-        missingRun = 0
+        retiredBefore = expected
+        reset(clearSequence = false)
     }
 
     override fun close() {
+        pending.values.forEach { it.lease?.release() }
         pending.clear()
         pcm.clear()
         decoder.close()
     }
 
-    private fun resetPipeline(clearSequence: Boolean) {
+    private fun reset(clearSequence: Boolean) {
         decoder.reset()
+        pending.values.forEach { it.lease?.release() }
         pending.clear()
-        pcm.clear()
-        expectedSequence = null
-        firstArrivalNanos = null
+        resetDroppedPcmSamples += pcm.clear()
+        expected = null
+        firstArrival = null
         started = false
         missingRun = 0
-        lastFrameSamples = DEFAULT_PACKET_SAMPLES
+        concealedSamples = 0
+        lastSamples = DEFAULT_PACKET_SAMPLES
+        holdUntil = 0
+        rebufferedSequence = null
+        activeTargetMs = delay.targetMs
+        framingConfirmed = policy.confirmedPacketSamples != null
+        delay.discontinuity()
         if (clearSequence) {
-            sequenceUnwrapper.reset()
-        }
-    }
-
-    internal class PcmFifo(private val capacity: Int) {
-        private val chunks = ArrayDeque<ShortArray>()
-        private var firstChunkOffset = 0
-
-        var availableSamples: Int = 0
-            private set
-
-        fun add(samples: ShortArray) {
-            val accepted = min(samples.size, capacity - availableSamples)
-            if (accepted <= 0) return
-            chunks.addLast(if (accepted == samples.size) samples else samples.copyOf(accepted))
-            availableSamples += accepted
-        }
-
-        fun read(maxSamples: Int): ShortArray {
-            val sampleCount = min(maxSamples, availableSamples)
-            if (sampleCount == 0) return ShortArray(0)
-            val output = ShortArray(sampleCount)
-            var outputOffset = 0
-            while (outputOffset < sampleCount) {
-                val first = chunks.first()
-                val copied = min(sampleCount - outputOffset, first.size - firstChunkOffset)
-                first.copyInto(
-                    destination = output,
-                    destinationOffset = outputOffset,
-                    startIndex = firstChunkOffset,
-                    endIndex = firstChunkOffset + copied,
-                )
-                outputOffset += copied
-                firstChunkOffset += copied
-                availableSamples -= copied
-                if (firstChunkOffset == first.size) {
-                    chunks.removeFirst()
-                    firstChunkOffset = 0
-                }
-            }
-            return output
-        }
-
-        fun clear() {
-            chunks.clear()
-            firstChunkOffset = 0
-            availableSamples = 0
+            sequence.reset()
+            retiredBefore = null
         }
     }
 
     companion object {
-        /** PCM samples consumed per 10 ms playback mix tick (48 kHz). */
         internal const val MIX_TICK_SAMPLES = 480
         internal const val DEFAULT_PACKET_SAMPLES = 960
         internal const val PCM_TARGET_SAMPLES = 2_880
-        internal const val PCM_FIFO_CAPACITY_SAMPLES = 5_760
-        internal const val MAX_PENDING_PACKETS = 64
         internal const val MAX_CONCEALED_PACKETS = 3
+        internal const val MAX_CONCEALED_SAMPLES = ReceivePolicy.MAX_PLC_SAMPLES
         internal const val MAX_FORWARD_PACKET_GAP = 64
-        internal val INITIAL_HOLD_NANOS = TimeUnit.MILLISECONDS.toNanos(60)
-
-        private fun <V> TreeMap<Long, V>.firstKeyOrNull(): Long? = if (isEmpty()) null else firstKey()
+        private const val MILLIS = 1_000_000L
     }
 }
-
-/**
- * A voice frame paired with its arrival timestamp, shared by the player's
- * input queue and the per-talker jitter pipelines.
- */
-internal data class QueuedFrame(
-    val frame: VoiceFrame,
-    val arrivalNanos: Long,
-)

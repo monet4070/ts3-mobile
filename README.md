@@ -1,273 +1,304 @@
 # TS3 Mobile
 
 [![Android CI](https://github.com/monet4070/ts3-mobile/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/monet4070/ts3-mobile/actions/workflows/android.yml)
-[![Latest release](https://img.shields.io/github/v/release/monet4070/ts3-mobile?label=latest%20release)](https://github.com/monet4070/ts3-mobile/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/monet4070/ts3-mobile?label=release)](https://github.com/monet4070/ts3-mobile/releases/latest)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-中文文档：[README_ZH.md](README_ZH.md)
+[简体中文](README_ZH.md) · [Download APK](https://github.com/monet4070/ts3-mobile/releases/latest) · [Documentation](docs/README.md) · [Report a problem](https://github.com/monet4070/ts3-mobile/issues)
 
-TS3 Mobile is an experimental, open-source Android client for TeamSpeak 3,
-built on the full client protocol provided by
-[Manevolent/ts3j](https://github.com/Manevolent/ts3j).
+**Use TeamSpeak 3 on Android: join voice channels, exchange messages, reach your teammates and save your usual servers.**
 
-**[Download the latest APK](https://github.com/monet4070/ts3-mobile/releases/latest)**
-(Android 8.0+, about 14 MB). Do not install the old **v0.1** build; it predates
-password-protected server support and the fix for the identity-loading crash in
-0.11.1-m10. See [Download and install](#download-and-install).
+TS3 Mobile is an open-source, unofficial client with a warm cream/terracotta interface, outline icons,
+English and Simplified Chinese. Connect directly to your TeamSpeak server; there is no project account
+to register.
 
-This is an unofficial community project. It is not affiliated with, endorsed
-by, or sponsored by TeamSpeak Systems GmbH. TeamSpeak and related names and
-marks are the property of their respective owners.
+> **Latest stable: [1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)**,
+> released on **2026-11-04** (versionCode 13). Download the signed APK and checksums
+> from the release. Its certificate matches the public 0.11.1-m10 APK; keep your
+> existing installation when updating. See [installation](docs/INSTALLATION.md),
+> [tested coverage](docs/COMPATIBILITY.md) and the [changelog](CHANGELOG.md).
 
-## Project status
+## Contents
 
-The latest M10 maintenance build is **0.11.1-m10**, published as a regular
-GitHub release; the app itself is still pre-release quality. It fixes the
-Release identity-loading crash reported in issue #3, adds encrypted
-connection-form memory and manual-only identity-limit recovery, and improves
-the disconnect UI. Existing M10 installations can update in place without
-resetting identity.
-
-Development is currently focused on the M11 production-beta preparation
-milestone. The automated build gate and the M10 code-hardening baseline are in
-place, but the complete physical-device acceptance matrix is not finished. See
-the [continuation plan](docs/release/CONTINUATION_PLAN.md), the
-[M11 release checklist](docs/release/M11_RELEASE_CHECKLIST.md) and the
-[M10 stability matrix](docs/testing/M10_STABILITY_MATRIX.md) for the remaining
-release evidence.
-
-A short Android 16 device smoke test has verified password-protected server
-connection, manual disconnect and reconnect, channel and participant loading,
-the foreground service and notification, and both English and Simplified
-Chinese resources. The native device suite also passes all Opus, RNNoise,
-audio-focus and route-selection checks. This does not replace the outstanding
-long-duration, physical Bluetooth/hot-plug, password-channel restore or
-second-device testing.
-
-Treat the app as pre-release software and keep another client available when
-testing on important servers.
-
-## Download and install
-
-The current build is **0.11.1-m10**, available from the
-[latest release](https://github.com/monet4070/ts3-mobile/releases/latest):
-
-- APK: `ts3-mobile-0.11.1-m10-release.apk` (about 14 MB)
-- Android 8.0 (API 26) or newer, with `arm64-v8a`, `armeabi-v7a`, `x86` and
-  `x86_64` libraries
-- SHA-256 checksum: published in the release notes and in `SHA256SUMS.txt`
-- Existing M10 installations can install over the old build; identity and
-  settings are preserved
-
-The APK is signed with the M10 development certificate, not a production
-release key. A future production-signed build may require uninstalling this
-one. Keep another client available on important servers.
-
-The app does not check for updates yet. Follow the
-[releases page](https://github.com/monet4070/ts3-mobile/releases) or use
-**Watch → Custom → Releases** on GitHub to be notified of new builds.
-
-If you landed on the **v0.1** release page: that is the first experimental
-build from August 2026, released before password-protected server support and
-before the 0.11.1-m10 identity-loading fix. Use the latest release instead. If
-Android refuses to install the new APK over an older build because of a
-signature mismatch, uninstall the old app first; uninstalling also removes its
-locally stored TeamSpeak identity.
+[Features](#features) · [Installation](#installation) · [First use](#first-use) ·
+[Interface tour](#interface-tour) · [Voice and audio](#voice-and-audio) ·
+[Channels and users](#channels-and-users) · [Chat and pokes](#chat-and-pokes) ·
+[Server bookmarks](#server-bookmarks) · [Away and background](#away-background-and-disconnect) ·
+[More menu](#settings-and-the-more-menu) · [Privacy and limits](#data-privacy-and-limits) · [FAQ](#frequently-asked-questions)
 
 ## Features
 
-### Connection and sessions
+| What you want to do | What the app provides |
+| --- | --- |
+| Talk with teammates | Push-to-talk, continuous, volume gate and Off; input gain, noise suppression and device AEC |
+| Browse and join channels | Channel hierarchy, expandable members, public/password-protected joins and local search |
+| Send text | Channel/private chat, separate drafts, unread counts, conversation switching and long-press copy |
+| Get someone's attention | A member-list poke icon, optional reason, in-app notices and generic background notifications |
+| Keep servers handy | Up to 50 named bookmarks, Connect, Edit, Delete, optional default channel and encrypted passwords |
+| Control listening | Playback mute, per-user mute/volume and Android's available audio devices |
+| Step away or use it in background | Away/message, reconnect handling, background checks and notification disconnect |
+| Keep data local | Separately encrypted identity/form/bookmarks; no ads, analytics SDK or project relay |
 
-- TeamSpeak identity generation with AES-GCM storage backed by Android Keystore
-- foreground UDP connection service with a notification disconnect action
-- server address, port, TeamSpeak server password and nickname input, restored from an encrypted local snapshot
-- up to ten successfully connected addresses and ports, with recent-address prefill and individual deletion
-- correct TeamSpeak Base64(SHA1) server-password authentication
-- connection, cancellation, disconnection and error states
-- cancellable automatic reconnection with network-aware 1–30 second backoff
-- active session exit when Android delivers a task-removal callback, with a two-second protocol budget
-- manual retry guidance after an identity connection-limit refusal; no automatic retry
-- default-network identity and blocked-state tracking, with a bounded control-response check on network switches
-- stale-session callback rejection and in-memory restoration of the last channel
-- hierarchical channel view with direct channel-member rosters
-- single-tap channel expansion and double-tap channel joining
-- public and password-protected channel switching with current-channel state
+## Installation
 
-### Voice and audio
+1. Open [GitHub Releases](https://github.com/monet4070/ts3-mobile/releases) and read the version's notes.
+2. Download the APK from **Assets**. Source code ZIP/TAR archives are not installers.
+3. Compare its SHA-256 with `SHA256SUMS.txt` from the same release, then install
+   through a trusted browser or file manager.
+4. Allow installation from that source if Android asks. The app does not
+   automatically check for or install later updates.
 
-- OPUS_VOICE and OPUS_MUSIC receive support through official libopus
-- per-speaker jitter buffers, packet-loss concealment and PCM mixing
-- foreground playback with speaker mute and per-user mute controls
-- per-user 0–200% playback gain keyed by stable TeamSpeak identity
-- always-off, push-to-talk and continuous microphone modes
-- 48 kHz mono, 20 ms, 64 kbps Opus voice encoding and ts3j voice transmission
-- constrained VBR, fullband Opus, acoustic echo cancellation and RNNoise v0.2
-- always-on 10 ms neural denoising with Android automatic gain control disabled
-- bounded capture and encoded-frame queues to prevent latency growth
-- microphone foreground-service activation only while transmitting
-- communication-device selection for earpiece, speaker, wired, Bluetooth and USB
-- automatic fallback to system routing when a selected device is disconnected
+**Android 8.0 (API 26)+** is required. The universal APK contains arm64-v8a, armeabi-v7a, x86
+and x86_64. Installability does not mean every device/version has been tested; see
+[compatibility and validation](docs/COMPATIBILITY.md).
 
-### Interface and diagnostics
+**Keep the existing app when upgrading.** An in-place update needs the same application ID and
+compatible signing. Do not fix a conflict by immediately uninstalling or clearing storage: that removes
+the local identity, bookmarks and encrypted form. There is no built-in identity export/restore. Separate
+TS3 Mobile UI test packages have their own data and do not migrate into the release. See [installation
+and upgrades](docs/INSTALLATION.md) for checksums and certificates.
 
-- TailSync-inspired warm cream visual style with terracotta accents, compact cards
-  and licensed Lucide outline icons
+## First use
 
-- English UI by default, with Simplified Chinese selected automatically for a
-  Chinese system or app locale
-- localized service status, notification, audio-route and error messages
-- diagnostics and background voice checks in the secondary More options menu
-- a labeled, accented Disconnect button beside the server information
-- background voice runtime check with an Android battery-optimization entry, a system app-settings entry, and an optional, session-scoped CPU wake-lock request that the system or a vendor battery policy can disable
-- a bounded local event journal and Android process-exit reasons that survive process recreation
-- background reconnection restores listening; stopped microphone capture resumes when the app is visible
-- silent protocol transport closures trigger recovery even when the default network is unchanged; failed retries share one recovery wake-lock budget
-- redacted JSON export that excludes server, password, nickname, channel and
-  participant data
-- fixture-based protocol mapping regression tests and sanitized failure logging
+### Get the connection details
 
-There is currently no in-app language selector. Whisper transmission, automatic
-voice activation, text chat, file transfer, permissions administration,
-bookmarks and multi-server tabs are also not implemented.
+Ask the server administrator for its address, **voice port** and any password. You do not need
+ServerQuery credentials. First use creates a local TeamSpeak identity; your nickname is a display name,
+not that identity.
 
-## Removing the task
+| Field | What to enter |
+| --- | --- |
+| Server address | The hostname or address, for example `voice.example.com`; this is an example, not a live service |
+| Port | Usually `9987`; use the administrator's configured voice port |
+| Nickname | Your display name, 3–30 characters |
+| Server password | Leave empty if none is required; the eye icon shows/hides the input |
 
-Removing the app from recents requests a disconnect if Android delivers the
-callback. Home, app switching and locking the screen keep the existing background
-session. The exit result distinguishes a request sent from server-confirmed
-release; if the network is unavailable, the server may retain the session until
-its own timeout. Force stop and vendor process killing may provide no callback.
-Reopening the app does not connect automatically.
+### Make your first call
 
-On the tested Xiaomi / Android 16 device, launcher swipe removal kills the process
-before delivering the callback to a newly created service. That service cannot
-disconnect the lost socket, even with unrestricted battery policy or a locked
-recent task. Use the app or notification disconnect action before removal for a
-server-confirmed exit. See the [device report](docs/testing/TASK_REMOVAL_DEVICE_2026-10-17.md).
+1. Fill the form and press the orange **Connect** button. Wait for Connected.
+2. On Channels, tap a row to expand members; **double-tap the channel row to join**.
+   A protected channel asks for its separate channel password.
+3. Select Hold in the microphone controls, allow microphone access if requested,
+   then hold Push to talk while speaking.
+4. Release to stop that talk. Choose Off for listening only. Playback mute prevents
+   you hearing others and is a separate control.
+5. Finish with Disconnect beside the server, or the connection notification's action.
 
-If the server refuses an identity connection limit, the app stops retrying and
-explains leftover sessions and other clients using that identity. Wait at least
-60 seconds before manually reconnecting; this is guidance, not a guaranteed
-server cleanup deadline. Repeated attempts may trigger a temporary server ban.
-Ordinary network interruption recovery remains automatic. Disconnect with the
-app or notification before swiping the app away. The complete localized guidance
-scrolls with the form. See [ADR-0011](docs/decisions/0011-manual-refusal-and-form-memory.md).
+Server and channel passwords are different. If connection fails, check the voice port, network and
+permissions before retrying. Follow connection-limit guidance rather than repeatedly submitting the same
+refused identity.
 
-Local regressions and a debug build cover the implementation. Callback delivery,
-actual microphone stop time and server release still require device acceptance:
-see [the review and device matrix](docs/testing/TASK_REMOVAL_DISCONNECT_REVIEW_2026-10-13.md).
+## Interface tour
 
-## Privacy
+![Connection, channel and More-menu views with synthetic sample data](docs/images/interface-overview.png)
 
-The project includes no analytics, advertising, telemetry, crash-reporting SDK
-or project-operated backend. The app connects directly to servers selected by
-the user. The TeamSpeak identity is encrypted locally using Android Keystore.
-Up to ten successful server addresses and ports are stored as history. The last
-connection form (address, port, nickname and server password) is saved separately
-with AES-GCM and an Android Keystore key, excluded from Android backup. Edits
-are saved after a short delay; connecting waits for a save attempt. A
-password used to restore a channel remains in the foreground service's memory
-only. Local diagnostics retain at most 128 events with fixed categories and
-numeric system state; they exclude connection details and audio.
+The illustration uses the Chinese UI in different states, with sample server
+and member data. Session-dependent menu entries are disabled while disconnected.
 
-See [PRIVACY.md](PRIVACY.md) for the complete data-handling statement.
+| Area | What it is for |
+| --- | --- |
+| Top app bar | Connection status; the top-right ellipsis opens More options |
+| Disconnected form | Server parameters, saved servers and Connect; recent successful endpoints appear when available |
+| Connected server card | Server name, channel/online counts and Disconnect |
+| Audio row below the card | Left to right: route, channel/user search, Away, playback mute |
+| Channels / Users / Chat tabs | Channel tree, user list and text conversations; Chat has an unread badge |
+| Microphone controls | Mode selection, the talk button and listening/transmitting status |
 
-## Architecture
+Icon reference: **headphones + arrow** selects a route; **magnifier** searches; **coffee cup + clock**
+opens Away; **speaker** controls listening; the member's **hand icon** opens Poke; a user's **sliders
+icon** expands their playback volume.
 
-- `app`: Compose UI, Android lifecycle, foreground service and identity vault
-- `ts3-protocol`: JVM-only ts3j facade, models, session generation and channel ordering
-- `audio-opus`: JNI libopus codec, capture, denoising, jitter buffering, mixing
-  and Android audio I/O
+Tabs scroll horizontally on narrow/large-text layouts, and microphone modes may collapse into a menu.
+Opening the chat keyboard compacts the interface while keeping the composer and voice controls. Changing
+tabs or focusing input releases push-to-talk to avoid unintended transmission.
 
-The Android interface depends on the protocol and audio adapters; the JVM
-protocol module does not depend on Android. Service state is exposed to Compose
-as immutable `StateFlow` data, and user-facing messages are resolved at the
-Android boundary. See [ARCHITECTURE.md](ARCHITECTURE.md) and the records under
-[`docs/decisions`](docs/decisions/) for the detailed boundaries and rationale.
+## Voice and audio
 
-The compatibility layer pins ts3j commit
-`db57d60c989e399626aa16d921390f5033e6cdeb` through JitPack. Every module's
-dependency graph is locked to committed `gradle.lockfile` files in STRICT mode,
-and ts3j's transitive dependencies are additionally capped by explicit Gradle
-constraints. Version bumps must run the build with `--write-locks` and include
-the reviewed lockfile diff. A maintained fork of ts3j is still required before
-a stable product release; see
-[ADR-0004](docs/decisions/0004-take-ownership-of-ts3j-dependency.md).
+### Choose a microphone mode
 
-The app uses the BSD-licensed Xiph libopus 1.3.1 Prefab package and vendors the
-official Xiph RNNoise v0.2 model at commit `904a876d`. License texts and exact
-provenance are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+| Mode | Capture and transmission | Useful for |
+| --- | --- | --- |
+| Off | Stops capture and discards buffered audio; listening stays available | Listening only or stopping capture completely |
+| Hold / push-to-talk | Captures and sends while the button is held | First-time use, noisy rooms, precise control |
+| Always on (continuous) | Captures and sends continuously | Ongoing speech, preferably with headphones |
+| Gate / volume gate | Captures continuously; sends above a threshold with short onset/tail buffers | Automatic transmission based on volume |
 
-## Build and verification
+**A quiet gate still uses the microphone.** Listening is not Off; select Off to stop capture. With the
+chat keyboard open, the compact voice bar's microphone-off icon can stop capture directly.
 
-Requirements:
+### Adjust input and output
 
-- JDK 17
-- Android SDK Platform 35
-- Android Build Tools 35.0.0
-- Android NDK 27.0.12077973
-- CMake 3.22.1
+Open **More options → Microphone settings**. Input gain ranges from 0–200%; you can switch RNNoise and
+device echo cancellation, and adjust the gate threshold. Lower thresholds let quieter sounds trigger it.
+Lower it if soft speech is missed; raise it if background noise triggers transmission. Settings apply
+immediately, opening the dialog does not start capture, and service recreation restores defaults.
 
-Set `sdk.dir` in an untracked `local.properties`, then verify the local setup:
+Tap the audio row's device name to choose from Android's available earpiece, speaker, headset, Bluetooth
+or USB routes. Available Bluetooth communication headsets are selected automatically at session start
+and when connected. Removing the selected device or losing an active Bluetooth output mutes listening
+to prevent speaker playback. Reconnecting selects Bluetooth again but keeps listening muted until you
+check the route and unmute manually. System/device delays still require physical-headset validation.
+Playback mute and microphone Off serve different purposes. Prefer headphones if speaker echo occurs;
+device AEC status is not a guarantee of equal acoustic performance on every phone.
 
-```powershell
-.\tools\check-build-environment.ps1
+## Channels and users
+
+### Browse, join and search
+
+- **Tap a channel row:** expand/collapse its direct members and see talking,
+  input-muted and output-muted states.
+- **Double-tap:** request to join. Locked channels ask for a password; server
+  permissions still apply.
+- **Tap the magnifier:** search loaded names/topics/nicknames, then join a channel
+  or a user's current channel.
+
+Search stays on the current server snapshot and cannot reveal permission-hidden data. The
+current channel is marked. Channel details and server administration are not provided.
+
+### Control one user's audio
+
+On Users, another member's row has an arrow, speaker and sliders:
+
+| Action | Where and what it does |
+| --- | --- |
+| Private message / Poke | Open the down-arrow menu and choose the action |
+| Per-user mute | Toggle that user's speaker icon; it leaves others audible |
+| Per-user volume | Open sliders and adjust playback from 0–200% |
+
+These controls change your playback, not the user's server talk permission.
+Per-user mute/volume settings remain in service memory.
+
+## Chat and pokes
+
+### Channel and private messages
+
+1. Open Chat, enter text at the bottom and send to the current channel.
+2. For private text, open a user's down-arrow menu → Send private message.
+3. Tap the conversation name/arrow at the top of the chat area to switch between
+   the channel and open private conversations.
+4. Long-press a message to copy its body. When viewing older messages, use the
+   new-message action to return to the latest position.
+5. The trash icon in a private chat means Close private conversation. If it has
+   messages/draft, confirmation clears that conversation's retained memory.
+
+Each conversation keeps its own draft, unread and scroll position. Status separates sending,
+server-accepted, rejected and unknown. **Server acceptance is not a read receipt.** Unknown results are
+not automatically retried. Offline or uncertain identity targets pause sending. Input is limited to
+1,024 UTF-8 bytes; CJK/emoji may use multiple bytes per character.
+
+### Poke a member
+
+Tap the hand icon beside a channel member, or Poke in their user menu. Check the recipient, leave the
+reason blank or enter up to 100 UTF-8 bytes, then confirm. Opening the dialog does not send. Submission
+keeps your tab/conversation and gives brief feedback.
+
+Foreground receives show an in-app notice. Background/locked receives use the Poke alerts notification
+channel, with no sender or reason in notification content. Android permission, channel and DND settings
+control appearance/sound. Returning to the app can show the retained pending notice.
+
+## Server bookmarks
+
+![Bookmark cards and the add/edit form](docs/images/bookmarks-and-editor.png)
+
+Open Choose a saved server on the form, or **More options → Server bookmarks**. Each card separates
+name, address and nickname. Connect is the primary action; its top-right ellipsis contains management
+actions.
+
+| Goal | Action |
+| --- | --- |
+| Add a usual server | Add bookmark at the bottom → name and connection fields → Save |
+| Connect directly | Connect on its card; disconnect an existing session first |
+| Check parameters first | Card menu → Fill form; this does not connect |
+| Change / remove | Card menu → Edit / Delete; deletion requires confirmation |
+| Channel and passwords | Editor → More settings → default channel ID and password opt-in |
+
+New entries prefill the current address/port/nickname, **without copying the form password**. Saving
+does not connect. Up to 50 entries; leave the numeric default channel ID empty if unsure. Passwords are
+retained only with Save passwords. Turning it off clears that bookmark's server/channel passwords, not
+the separate connection form's password.
+
+## Away, background and disconnect
+
+Tap the coffee-cup/clock → select Away, optionally enter a message → Apply status. Warm emphasis appears
+after server confirmation. Clear Away and apply to return. Away does not stop capture or listening; use
+the microphone controls if leaving an active mic unattended.
+
+Home, switching apps and screen lock retain the session. Ordinary network loss can trigger recovery;
+background reconnect restores listening first, while stopped capture may need a return to the
+foreground. **More options → Background voice check** shows battery/wake state, system-settings links
+and optional CPU-awake. This cannot override all Android/vendor restrictions or guarantee indefinite
+use.
+
+Leave with Disconnect in the app or notification. Task swiping can kill the process before an exit
+callback, leaving the server to time out the session. For identity connection-limit refusals, follow the
+minimum 60-second wait/manual retry guidance; cleanup can take longer and repeated attempts may trigger
+bans. Reopening does not connect automatically.
+
+## Settings and the More menu
+
+| Item | Purpose |
+| --- | --- |
+| Away and status | Away/message and server-state synchronization; connected only |
+| Find channels and users | Search the loaded snapshot; connected only |
+| Server bookmarks | Manage saved servers, including while disconnected |
+| Microphone settings | Input gain, RNNoise, device AEC and gate threshold |
+| Background voice check | Battery restrictions, CPU-awake and Android settings |
+| Diagnostics | Inspect runtime information and manually copy redacted diagnostics |
+| Give the project a Star | Open GitHub externally; starring remains your choice |
+
+The app currently defaults to the warm light interface. English or Simplified
+Chinese follows Android's system/app locale. There is no in-app language/theme switch.
+
+## Data privacy and limits
+
+| Content | Lifetime and handling |
+| --- | --- |
+| TeamSpeak identity | Encrypted locally with Keystore support; uninstall/clear-data removes it and may lose identity-bound server permissions |
+| Connection form | Address/port/nickname/password encrypted separately, including unsubmitted edits; loading does not connect |
+| Recent endpoints | Up to ten successful endpoints; deleting history does not clear bookmarks or the form |
+| Bookmarks | Separate encrypted storage with opt-in passwords; no cross-package transfer/in-app restore |
+| Messages/drafts | Service memory only; reconnect keeps them, manual/new/terminal sessions or process death clear them |
+| Voice/diagnostics | No voice archive; diagnostics leave only when you choose to copy/share |
+
+Up to 20 conversations share 500 messages / 2 MiB; older content may be evicted. Servers/recipients can
+retain received text. No ads, analytics or automatic project crash backend. Read [privacy](PRIVACY.md)
+for complete details.
+
+One active server. Whisper, file transfer, administration, identity import/export and
+multi-server tabs are absent. Tested Bluetooth/background/acoustic coverage is recorded in
+[compatibility](docs/COMPATIBILITY.md).
+
+## Frequently asked questions
+
+| Symptom | Check first |
+| --- | --- |
+| Others cannot hear you | Mode, microphone permission, channel talk permission and gate threshold |
+| No output | Playback/per-user mute, user gain, Android communication volume and route |
+| Quiet gate shows a mic indicator | Expected capture; choose Off to stop it |
+| No incoming poke alert | Permission, app notifications, Pokes channel, DND and background policy |
+| Chat gone after restart | Records are memory-only, with no permanent history |
+| APK conflicts with existing app | Compare package/certificate; keep current data and avoid immediate uninstall |
+
+See [troubleshooting](docs/TROUBLESHOOTING.md) and the [user guide](docs/USER_GUIDE.md). For unresolved
+problems, open an [issue](https://github.com/monet4070/ts3-mobile/issues) with version/device, steps and
+sanitized diagnostics. Do not disclose endpoints, passwords, identities or participant data. Report
+vulnerabilities [privately](SECURITY.md).
+
+## Build and contribute
+
+Use JDK 17, SDK Platform 35, Build Tools 35.0.0, NDK 27.0.12077973 and CMake
+3.22.1. Set your SDK path using [local.properties.example](local.properties.example), then:
+
+```sh
+./gradlew quality :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease
 ```
 
-Run the complete automated gate:
+Use `gradlew.bat` on Windows. See [contributing](CONTRIBUTING.md),
+[architecture](ARCHITECTURE.md), [releases](docs/release/README.md) and [support](SUPPORT.md).
+Release assembly and production signing/publication are separate steps.
 
-```powershell
-.\gradlew.bat quality :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --stacktrace
-.\tools\check-repository-privacy.ps1
-```
-
-With a booted Android emulator or an authorized device, verify identity loading
-in the minified release APK (JDK 17 and PowerShell 7; set `ANDROID_HOME` or pass
-`-SdkRoot` with your SDK path):
-
-```powershell
-.\tools\check-release-identity.ps1 -DeviceSerial emulator-5554
-```
-
-Use the serial reported by `adb devices`. The check loads the APK without installing
-it and tests temporary identity reloads and INI parse/store entirely offline.
-Its separate probe cannot change R8's reachability analysis. Output is saved under
-`build/release-identity-smoke/`. See the [issue #3 report](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
-
-With an authorized physical Android device connected, run the native device
-suite:
-
-```powershell
-.\gradlew.bat :audio-opus:connectedDebugAndroidTest
-```
-
-The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
-For opt-in microphone signal comparisons and the latest device findings, see
-[the audio diagnosis record](docs/testing/AUDIO_QUALITY_DIAGNOSIS_2026-10-13.md).
-GitHub Actions runs the privacy scan, formatting checks, JVM/unit tests, Android
-Lint, debug/release assembly and the minified identity smoke check for every pull
-request and push to `main`.
-
-## Android support
-
-The APK remains installable on Android 8.0 (API 26) and newer. The beta quality
-target is Android 10 and newer; Android 8/9 receive compatibility fixes when
-practical but are not part of the primary physical-device matrix.
-
-## Contributing and security
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change and follow
-the [Code of Conduct](CODE_OF_CONDUCT.md). Do not open a public issue for a
-suspected vulnerability; use the process in [SECURITY.md](SECURITY.md).
-
-Thanks to [Rupert Polley (@polleyr)](https://github.com/polleyr) for reporting
-and fixing TeamSpeak server-password authentication in
-[PR #1](https://github.com/monet4070/ts3-mobile/pull/1), and for the English
-localization work that informed the current resource-based implementation.
-
-See [CHANGELOG.md](CHANGELOG.md) for milestone history and unreleased changes.
-
-## License
-
-TS3 Mobile is licensed under the [Apache License 2.0](LICENSE). Components from
-other projects remain under their respective licenses; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Built on [ts3j](https://github.com/Manevolent/ts3j), licensed [Apache-2.0](LICENSE) with
+[third-party licenses](THIRD_PARTY_NOTICES.md). Not affiliated with, endorsed by or sponsored
+by TeamSpeak Systems GmbH. Thanks to [@polleyr](https://github.com/polleyr) for
+[server-password authentication](https://github.com/monet4070/ts3-mobile/pull/1) and English
+localization. Follow the [Code of Conduct](CODE_OF_CONDUCT.md) when contributing.

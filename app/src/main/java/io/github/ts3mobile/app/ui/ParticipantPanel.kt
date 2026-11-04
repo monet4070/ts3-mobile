@@ -1,6 +1,5 @@
 package io.github.ts3mobile.app.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
@@ -43,6 +40,8 @@ internal fun ParticipantList(
     state: TeamSpeakServiceState,
     onMutedChange: (String, Boolean) -> Unit,
     onVolumeChange: (String, Int) -> Unit,
+    onPrivateMessage: (Int) -> Unit = {},
+    onPoke: (Ts3Participant) -> Unit = {},
 ) {
     val volumeLabelMinWidth = 44.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
     val channelsById =
@@ -56,7 +55,8 @@ internal fun ParticipantList(
     }
 
     LazyColumn(Modifier.fillMaxSize()) {
-        items(state.snapshot.participants, key = { it.audioControlKey() }) { participant ->
+        // Several connected clients may share an identity; list rows are client instances.
+        items(state.snapshot.participants, key = { it.id }) { participant ->
             val key = participant.audioControlKey()
             val settings = state.participantAudioSettings[key] ?: ParticipantAudioSettings()
             val isOwnClient = participant.id == state.snapshot.ownClientId
@@ -81,7 +81,15 @@ internal fun ParticipantList(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            text = participant.nickname,
+                            text =
+                                if (participant.isAway) {
+                                    stringResource(
+                                        R.string.participant_away_name,
+                                        participant.nickname,
+                                    )
+                                } else {
+                                    participant.nickname
+                                },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -96,8 +104,17 @@ internal fun ParticipantList(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        if (participant.isAway && participant.awayMessage.isNotBlank()) {
+                            Text(
+                                participant.awayMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                     if (!isOwnClient) {
+                        ParticipantChatAction(participant.nickname, { onPrivateMessage(participant.id) }, { onPoke(participant) })
                         IconButton(onClick = { onMutedChange(key, !settings.muted) }) {
                             AppIcon(
                                 icon =
@@ -188,66 +205,5 @@ internal fun EmptyList(label: String) {
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-internal fun ChannelParticipantRow(
-    participant: Ts3Participant,
-    isOwnClient: Boolean,
-    depth: Int,
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(
-                    start = (48 + depth * 20).coerceAtMost(112).dp,
-                    end = 16.dp,
-                    top = 9.dp,
-                    bottom = 9.dp,
-                ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AppIcon(
-            icon =
-                when {
-                    participant.isTalking -> UiIcon.Audio
-                    participant.isInputMuted -> UiIcon.MicOff
-                    participant.isOutputMuted -> UiIcon.VolumeOff
-                    else -> UiIcon.User
-                },
-            contentDescription =
-                when {
-                    participant.isTalking -> stringResource(R.string.participant_talking)
-                    participant.isInputMuted -> stringResource(R.string.participant_input_muted)
-                    participant.isOutputMuted -> stringResource(R.string.participant_output_muted)
-                    else -> null
-                },
-            modifier = Modifier.size(19.dp),
-            tint =
-                if (participant.isTalking) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-        )
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = participant.nickname,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (isOwnClient) FontWeight.SemiBold else FontWeight.Normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (isOwnClient) {
-            Text(
-                text = stringResource(R.string.participant_self),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
     }
 }

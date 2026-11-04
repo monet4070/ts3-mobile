@@ -1,317 +1,140 @@
 package io.github.ts3mobile.audio.opus
 
-import android.annotation.SuppressLint
 import android.content.Context
-import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
-import android.media.AudioManager
-import android.os.Build
-import android.os.Handler
-import android.os.Looper
+import io.github.ts3mobile.protocol.sanitizedFailureTypes
 
-class AudioDeviceRouter(
-    context: Context,
+class AudioDeviceRouter internal constructor(
+    private val platform: AudioRoutePlatform,
     private val onRoutingChanged: (AudioRoutingState) -> Unit,
 ) : AutoCloseable {
-    private val audioManager = context.applicationContext.getSystemService(AudioManager::class.java)
-    private val callbackHandler = Handler(Looper.getMainLooper())
-    private val lifecycleLock = Any()
+    constructor(context: Context, onRoutingChanged: (AudioRoutingState) -> Unit) :
+        this(AndroidAudioRoutePlatform(context), onRoutingChanged)
 
-    @Volatile
+    private val lifecycleLock = Any()
     private var started = false
-    private var previousMode = AudioManager.MODE_NORMAL
-    private var previousSpeakerphoneOn = false
-    private var previousBluetoothScoOn = false
-    private var selectedRouteId = SYSTEM_AUDIO_ROUTE_ID
+    private var knownBluetoothIds: Set<Int>? = null
 
     @Volatile
     var state: AudioRoutingState = AudioRoutingState.Default
         private set
 
-    private val deviceCallback =
-        object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
-                refreshDevices()
-            }
-
-            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-                refreshDevices()
-            }
-        }
-
-    @Suppress("DEPRECATION")
-    fun start() {
+    fun start() =
         synchronized(lifecycleLock) {
             if (started) return
-            previousMode = audioManager.mode
-            previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
-            previousBluetoothScoOn = audioManager.isBluetoothScoOn
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager.registerAudioDeviceCallback(deviceCallback, callbackHandler)
             started = true
-        }
-        refreshDevices()
-    }
-
-    fun selectRoute(routeId: Int) {
-        val routes = availableRoutes()
-        if (routes.none { it.id == routeId }) {
-            publishState(
-                routes = routes,
-                error = AudioRoutingError(AudioRoutingErrorKind.DEVICE_UNAVAILABLE),
-            )
-            return
-        }
-
-        val output = outputDevice(routeId)
-        val switched =
-            runCatching { applySystemRoute(output) }
-                .getOrElse { error ->
-                    publishState(
-                        routes,
-                        AudioRoutingError(
-                            AudioRoutingErrorKind.SWITCH_FAILED,
-                            error.message ?: error.javaClass.simpleName,
-                        ),
-                    )
-                    return
+            try {
+                platform.start(::refreshDevices, ::onBluetoothRouteLost)
+                refreshDevices()
+            } catch (error: RuntimeException) {
+                started = false
+                try {
+                    platform.stop()
+                } catch (cleanup: RuntimeException) {
+                    error.addSuppressed(cleanup)
                 }
-        if (!switched) {
-            publishState(routes, AudioRoutingError(AudioRoutingErrorKind.SWITCH_DENIED))
-            return
-        }
-
-        selectedRouteId = routeId
-        publishState(routes, error = null)
-    }
-
-    fun preferredOutputDevice(): AudioDeviceInfo? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return null
-        return outputDevice(selectedRouteId)
-    }
-
-    fun preferredInputDevice(): AudioDeviceInfo? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return null
-        val output = outputDevice(selectedRouteId) ?: return null
-        val inputs = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS).toList()
-        val preferredTypes = inputTypesFor(output.type)
-        val sameAddressInput =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                inputs.firstOrNull { candidate ->
-                    candidate.type == output.type &&
-                        output.address.isNotBlank() &&
-                        candidate.address == output.address
-                }
-            } else {
-                null
+                knownBluetoothIds = null
+                state = AudioRoutingState.Default
+                throw error
             }
-        return sameAddressInput ?: preferredTypes.firstNotNullOfOrNull { type ->
-            inputs.firstOrNull { it.type == type }
         }
-    }
+
+    fun selectRoute(routeId: Int) =
+        synchronized(lifecycleLock) {
+            if (!started) return
+            refreshDevices()
+            val routes = state.routes
+            if (routes.none { it.id == routeId }) {
+                publish(state.copy(routes = routes, error = AudioRoutingError(AudioRoutingErrorKind.DEVICE_UNAVAILABLE)))
+                return
+            }
+            switchRoute(routeId, routes, error = null)
+        }
+
+    fun preferredOutputDevice(): AudioDeviceInfo? = synchronized(lifecycleLock) { platform.preferredOutput(state.selectedRouteId) }
+
+    fun preferredInputDevice(): AudioDeviceInfo? = synchronized(lifecycleLock) { platform.preferredInput(state.selectedRouteId) }
+
+    /** Also called by playback when its actual output disagrees with Bluetooth protection. */
+    fun onBluetoothRouteLost() =
+        synchronized(lifecycleLock) {
+            if (!started) return
+            publish(state.copy(safetyMuted = true, error = AudioRoutingError(AudioRoutingErrorKind.BLUETOOTH_ROUTE_LOST)))
+        }
+
+    /** Only a deliberate listening action clears a safety mute; reconnecting never does. */
+    fun acknowledgeSafetyMute() =
+        synchronized(lifecycleLock) {
+            if (!state.safetyMuted) return
+            publish(state.copy(safetyMuted = false, error = null))
+            if (state.selectedRoute.kind == AudioRouteKind.BLUETOOTH) switchRoute(state.selectedRouteId, platform.routes(), error = null)
+        }
 
     override fun close() = stop()
 
-    @Suppress("DEPRECATION")
-    fun stop() {
+    fun stop() =
         synchronized(lifecycleLock) {
             if (!started) return
-            audioManager.unregisterAudioDeviceCallback(deviceCallback)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                audioManager.clearCommunicationDevice()
-            } else {
-                if (previousBluetoothScoOn) {
-                    audioManager.startBluetoothSco()
-                } else {
-                    audioManager.stopBluetoothSco()
-                }
-                audioManager.isBluetoothScoOn = previousBluetoothScoOn
-                audioManager.isSpeakerphoneOn = previousSpeakerphoneOn
-            }
-            audioManager.mode = previousMode
-            selectedRouteId = SYSTEM_AUDIO_ROUTE_ID
-            state = AudioRoutingState.Default
             started = false
+            platform.stop()
+            knownBluetoothIds = null
+            state = AudioRoutingState.Default
         }
-    }
 
-    private fun refreshDevices() {
-        if (!started) return
-        val routes = availableRoutes()
-        val resolvedRouteId = resolveSelectedRouteId(selectedRouteId, routes)
-        val routeWasRemoved = resolvedRouteId != selectedRouteId
-        if (routeWasRemoved) {
-            selectedRouteId = SYSTEM_AUDIO_ROUTE_ID
-            runCatching { applySystemRoute(null) }
-        } else if (selectedRouteId != SYSTEM_AUDIO_ROUTE_ID) {
-            runCatching { applySystemRoute(outputDevice(selectedRouteId)) }
-        }
-        publishState(
-            routes = routes,
-            error =
-                if (routeWasRemoved) {
-                    AudioRoutingError(AudioRoutingErrorKind.DEVICE_DISCONNECTED)
+    private fun refreshDevices() =
+        synchronized(lifecycleLock) {
+            if (!started) return
+            val routes = platform.routes()
+            val bluetooth = routes.filter { it.kind == AudioRouteKind.BLUETOOTH }
+            val previousBluetooth = knownBluetoothIds
+            knownBluetoothIds = bluetooth.map { it.id }.toSet()
+            val removed = state.selectedRouteId != resolveSelectedRouteId(state.selectedRouteId, routes)
+            val newBluetooth = bluetooth.filter { previousBluetooth == null || it.id !in previousBluetooth }
+            val selectedBluetooth = bluetooth.firstOrNull { it.id == state.selectedRouteId }
+            val automaticBluetooth =
+                if (previousBluetooth == null || newBluetooth.isNotEmpty() || removed) {
+                    selectedBluetooth ?: newBluetooth.firstOrNull() ?: bluetooth.firstOrNull()
                 } else {
                     null
-                },
-        )
-    }
+                }
+            val target = automaticBluetooth?.id ?: resolveSelectedRouteId(state.selectedRouteId, routes)
+            val error = if (removed) AudioRoutingError(AudioRoutingErrorKind.DEVICE_DISCONNECTED) else state.error
+            if (removed) {
+                // Mute before requesting fallback; Android itself may already have rerouted.
+                publish(state.copy(routes = routes, safetyMuted = true, error = error))
+            }
+            if (target != state.selectedRouteId || previousBluetooth == null) {
+                switchRoute(target, routes, error)
+            } else {
+                publish(state.copy(routes = routes, error = error))
+            }
+        }
 
-    private fun publishState(
+    private fun switchRoute(
+        routeId: Int,
         routes: List<AudioRouteOption>,
         error: AudioRoutingError?,
     ) {
-        val newState =
-            AudioRoutingState(
-                routes = routes,
-                selectedRouteId = resolveSelectedRouteId(selectedRouteId, routes),
-                error = error,
-            )
-        state = newState
-        onRoutingChanged(newState)
+        publish(state.copy(routes = routes, selectedRouteId = routeId, switching = true, error = error))
+        val failure =
+            try {
+                if (platform.select(routeId)) null else AudioRoutingError(AudioRoutingErrorKind.SWITCH_DENIED)
+            } catch (cause: RuntimeException) {
+                AudioRoutingError(AudioRoutingErrorKind.SWITCH_FAILED, cause.sanitizedFailureTypes())
+            }
+        publish(state.copy(switching = false, safetyMuted = state.safetyMuted || failure != null, error = failure ?: state.error))
     }
 
-    private fun availableRoutes(): List<AudioRouteOption> {
-        val outputs =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                audioManager.availableCommunicationDevices
-            } else {
-                audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
-            }
-        return buildList {
-            add(AudioRoutingState.SystemRoute)
-            outputs
-                .mapNotNull(::toRouteOption)
-                .distinctBy(AudioRouteOption::id)
-                .sortedWith(compareBy({ routeOrder(it.kind) }, { it.deviceName.orEmpty() }))
-                .forEach(::add)
-        }
-    }
-
-    private fun outputDevice(routeId: Int): AudioDeviceInfo? {
-        if (routeId == SYSTEM_AUDIO_ROUTE_ID) return null
-        val outputs =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                audioManager.availableCommunicationDevices
-            } else {
-                audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
-            }
-        return outputs.firstOrNull { it.id == routeId }
-    }
-
-    @SuppressLint("MissingPermission")
-    @Suppress("DEPRECATION")
-    private fun applySystemRoute(output: AudioDeviceInfo?): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (output == null) {
-                audioManager.clearCommunicationDevice()
-                return true
-            }
-            return audioManager.setCommunicationDevice(output)
-        }
-
-        when (output?.let(::routeKind)) {
-            AudioRouteKind.SPEAKER -> {
-                audioManager.stopBluetoothSco()
-                audioManager.isBluetoothScoOn = false
-                audioManager.isSpeakerphoneOn = true
-            }
-
-            AudioRouteKind.BLUETOOTH -> {
-                audioManager.isSpeakerphoneOn = false
-                audioManager.startBluetoothSco()
-                audioManager.isBluetoothScoOn = true
-            }
-
-            else -> {
-                audioManager.stopBluetoothSco()
-                audioManager.isBluetoothScoOn = false
-                audioManager.isSpeakerphoneOn = false
-            }
-        }
-        return true
-    }
-
-    private fun toRouteOption(device: AudioDeviceInfo): AudioRouteOption? {
-        val kind = routeKind(device)
-        if (kind == AudioRouteKind.OTHER) return null
-        val productName = device.productName?.toString()?.trim().orEmpty()
-        val shouldShowProductName =
-            kind in
-                setOf(
-                    AudioRouteKind.WIRED,
-                    AudioRouteKind.BLUETOOTH,
-                    AudioRouteKind.USB,
-                )
-        return AudioRouteOption(
-            id = device.id,
-            kind = kind,
-            deviceName = productName.takeIf { shouldShowProductName && it.isNotBlank() },
-        )
+    private fun publish(updated: AudioRoutingState) {
+        state = updated
+        onRoutingChanged(updated)
     }
 
     companion object {
-        private fun routeKind(device: AudioDeviceInfo): AudioRouteKind = routeKindForDeviceType(device.type)
+        internal fun routeKindForDeviceType(type: Int): AudioRouteKind = AudioRouteDevices.routeKindForDeviceType(type)
 
-        internal fun routeKindForDeviceType(type: Int): AudioRouteKind =
-            when (type) {
-                AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> AudioRouteKind.EARPIECE
-                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> AudioRouteKind.SPEAKER
-                AudioDeviceInfo.TYPE_WIRED_HEADSET,
-                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-                AudioDeviceInfo.TYPE_LINE_ANALOG,
-                -> AudioRouteKind.WIRED
+        fun routeOrder(kind: AudioRouteKind): Int = AudioRouteDevices.routeOrder(kind)
 
-                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-                AudioDeviceInfo.TYPE_BLE_HEADSET,
-                AudioDeviceInfo.TYPE_BLE_SPEAKER,
-                AudioDeviceInfo.TYPE_HEARING_AID,
-                -> AudioRouteKind.BLUETOOTH
-
-                AudioDeviceInfo.TYPE_USB_ACCESSORY,
-                AudioDeviceInfo.TYPE_USB_DEVICE,
-                AudioDeviceInfo.TYPE_USB_HEADSET,
-                -> AudioRouteKind.USB
-
-                else -> AudioRouteKind.OTHER
-            }
-
-        fun routeOrder(kind: AudioRouteKind): Int =
-            when (kind) {
-                AudioRouteKind.SYSTEM -> 0
-                AudioRouteKind.EARPIECE -> 1
-                AudioRouteKind.SPEAKER -> 2
-                AudioRouteKind.WIRED -> 3
-                AudioRouteKind.BLUETOOTH -> 4
-                AudioRouteKind.USB -> 5
-                AudioRouteKind.OTHER -> 6
-            }
-
-        fun inputTypesFor(outputType: Int): List<Int> =
-            when (outputType) {
-                AudioDeviceInfo.TYPE_WIRED_HEADSET ->
-                    listOf(
-                        AudioDeviceInfo.TYPE_WIRED_HEADSET,
-                        AudioDeviceInfo.TYPE_BUILTIN_MIC,
-                    )
-
-                AudioDeviceInfo.TYPE_BLUETOOTH_SCO ->
-                    listOf(
-                        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-                        AudioDeviceInfo.TYPE_BUILTIN_MIC,
-                    )
-
-                AudioDeviceInfo.TYPE_USB_ACCESSORY,
-                AudioDeviceInfo.TYPE_USB_DEVICE,
-                AudioDeviceInfo.TYPE_USB_HEADSET,
-                ->
-                    listOf(
-                        AudioDeviceInfo.TYPE_USB_HEADSET,
-                        AudioDeviceInfo.TYPE_USB_DEVICE,
-                        AudioDeviceInfo.TYPE_BUILTIN_MIC,
-                    )
-
-                else -> listOf(AudioDeviceInfo.TYPE_BUILTIN_MIC)
-            }
+        fun inputTypesFor(outputType: Int): List<Int> = AudioRouteDevices.inputTypesFor(outputType)
     }
 }

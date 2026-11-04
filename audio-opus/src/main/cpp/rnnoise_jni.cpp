@@ -2,9 +2,9 @@
 #include <rnnoise.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
-#include <vector>
 
 namespace {
 
@@ -56,7 +56,7 @@ Java_io_github_ts3mobile_audio_opus_NativeRnNoiseProcessor_nativeProcessInPlace(
 
     const int frame_size = rnnoise_get_frame_size();
     const jsize sample_count = env->GetArrayLength(pcm);
-    if (sample_count <= 0 || sample_count % frame_size != 0) {
+    if (frame_size != 480 || sample_count <= 0 || sample_count % frame_size != 0) {
         throw_java(env, "java/lang/IllegalArgumentException", "PCM must contain complete RNNoise frames");
         return 0;
     }
@@ -64,8 +64,8 @@ Java_io_github_ts3mobile_audio_opus_NativeRnNoiseProcessor_nativeProcessInPlace(
     jshort* samples = env->GetShortArrayElements(pcm, nullptr);
     if (samples == nullptr) return 0;
 
-    std::vector<float> input(static_cast<size_t>(frame_size));
-    std::vector<float> output(static_cast<size_t>(frame_size));
+    std::array<float, 480> input{};
+    std::array<float, 480> output{};
     float vad_total = 0;
     for (jsize offset = 0; offset < sample_count; offset += frame_size) {
         for (int index = 0; index < frame_size; ++index) {

@@ -3,6 +3,7 @@ package io.github.ts3mobile.audio.opus
 internal class NativeRnNoiseProcessor : AutoCloseable {
     private var handle = nativeCreate()
 
+    @Synchronized
     fun processInPlace(pcm: ShortArray): Float {
         check(handle != 0L) { "RNNoise processor is closed" }
         require(pcm.isNotEmpty() && pcm.size % FRAME_SAMPLES == 0) {
@@ -11,6 +12,13 @@ internal class NativeRnNoiseProcessor : AutoCloseable {
         return nativeProcessInPlace(handle, pcm)
     }
 
+    @Synchronized fun reset() {
+        check(handle != 0L) { "RNNoise processor is closed" }
+        close()
+        handle = nativeCreate()
+    }
+
+    @Synchronized
     override fun close() {
         val current = handle
         if (current == 0L) return

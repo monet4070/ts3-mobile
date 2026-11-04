@@ -1,6 +1,21 @@
 # Continuation plan
 
+> 2026-11-02：此文件保留历史里程碑计划与证据，不是当前版本状态。
+> 首个稳定版正在按 [1.0.0 发布资料](README.md)准备；
+> [新清单](1.0.0/CHECKLIST.md)明确承接未完成的签名、依赖与设备验收，未执行项不会自动转为通过。
+
+
 中文版：[CONTINUATION_PLAN_ZH.md](CONTINUATION_PLAN_ZH.md)
+
+> Update, 2026-10-23: the baseline and sequencing below were recorded on
+> 2026-09-24. Some version, test-count, persistence and extraction tasks are now
+> outdated. See the [current-code review and next-phase proposal (Chinese)](../plans/NEXT_PHASE_2026-10-23_ZH.md).
+> Release acceptance remains in the evidence-backed M11 checklist and M10
+> matrix; the proposal adds no new passing results.
+> This document is retained as a release-readiness backlog, not the current
+> feature schedule. The user's latest request and [ADR-0012](../decisions/0012-feature-roadmap-with-deferred-device-acceptance.md)
+> supersede the acceptance-before-features sequencing below: feature work may
+> proceed while physical-device acceptance is deferred.
 
 This plan takes the project from the current M11 preparation state to a
 signed production-beta release candidate, then into the first post-beta

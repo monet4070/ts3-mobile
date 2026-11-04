@@ -10,7 +10,14 @@ body:
     id: version
     attributes:
       label: App version or commit
-      placeholder: 0.9.0-m8 or a commit SHA
+      placeholder: Exact version from the APK, or a commit SHA
+    validations:
+      required: true
+  - type: input
+    id: distribution
+    attributes:
+      label: Download source and package
+      description: Release URL or local build; note whether this is TS3 Mobile, TS3 Mobile UI, or another test package.
     validations:
       required: true
   - type: input
@@ -50,6 +57,11 @@ body:
         2. ...
     validations:
       required: true
+  - type: textarea
+    id: session_state
+    attributes:
+      label: Session and permission state
+      description: For notifications/background/audio problems, include foreground or locked state, relevant permission/channel settings, and battery restrictions. Do not include private server details.
   - type: textarea
     id: logs
     attributes:

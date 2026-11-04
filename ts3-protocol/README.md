@@ -66,7 +66,10 @@ it does not establish server release, and ACKs do not establish it either.
 
 ## Fixed ts3j blocking points
 
-The pinned artifact is `com.github.Manevolent:ts3j:db57d60c989e399626aa16d921390f5033e6cdeb`.
+The maintained artifact is `com.github.monet4070:ts3j:ts3mobile-1`, built from the
+unchanged upstream revision `db57d60c989e399626aa16d921390f5033e6cdeb` in
+[monet4070/ts3j](https://github.com/monet4070/ts3j). The tag is immutable; dependency
+updates require a new tag and reviewed lockfile changes (ADR-0004).
 The findings below come from the cached jar (`javap -p -c` on
 `LocalTeamspeakClientSocket`, `AbstractTeamspeakClientSocket`, `PacketResponse`,
 `PacketBodyType`) and the matching upstream source.
@@ -165,3 +168,49 @@ without an ABI promise for precompiled clients. Category and retryability use th
 same cycle-safe cause-chain decision. The first command failure takes precedence:
 only the observed CommandProcessException clone-limit text qualifies. No guessed
 server error code or generic text exception starts clone-limit recovery.
+
+## Channel and private text
+
+The additive `Ts3SessionListener.onTextMessage` callback has a no-op default.
+`Ts3SessionClient.sendTextMessage(target, body, timeoutMs, canSubmit)` defaults to
+`Unsupported` for adapters without text support. The optional submission predicate
+must be quick and free of I/O. The pinned adapter checks it on the captured socket
+before queue ownership; supported targets are Channel (mode 2) and Private (mode 1).
+Private carries a numeric client ID and an optional expected UID. The facade
+rechecks its current participant snapshot before submission and queue ownership;
+the application additionally verifies attempt ownership and the conversation mapping.
+The optional trailing UID preserves existing Kotlin constructor calls; all modules
+are rebuilt together, without a precompiled-client ABI promise. Nicknames never select targets.
+
+Accepted requires a successful command response. Rejected contains fixed categories
+and an optional numeric code; NotSent requires an unclaimed request. Timeout,
+interruption or transport failure after queue ownership yields Unknown. Caller
+cancellation propagates. There is no retry, delivery/read receipt or queue migration.
+The five-second application budget limits local waiting; pinned commands may still
+execute after timeout until the owning socket closes. See ADR-0013.
+
+## Poke
+
+`Ts3SessionClient.pokeClient(Private, reason, timeoutMs, canSubmit)` and
+`Ts3SessionListener.onPoke(Ts3PokeEvent)` are additive ports with Unsupported/no-op
+defaults. The adapter encodes `clientpoke clid=... msg=...`, allows an empty reason
+and conservatively limits outgoing reasons to 100 UTF-8 bytes. Incoming reason
+text is bounded at 16 KiB; missing fields remain explicit and model strings redact
+identity/content. Poke and text share queue ownership, context checks, response
+categories and the single bounded worker, including Unknown/no-retry semantics.
+No upstream dependency changes are required. See ADR-0015 and the poke delivery record.
+
+## Presence and channel details
+
+The additive updatePresence and channelInfo ports return typed control outcomes
+and default to Unsupported. The production adapter uses clientupdate (away/message,
+input/output mute) and channelinfo cid=... through the same BoundedSessionCommands
+runner as text/poke. Server success is acknowledged; timeout after ownership remains
+Unknown, with no automatic replay of that submission. A new connection may apply
+current desired presence, and callers may explicitly request retry.
+Away text is limited to 256 UTF-8 bytes and escaped exactly once. Descriptions are
+plain text bounded to 16 KiB. Missing/invalid optional channel and away fields stay
+unknown or preserve prior values. Caller context and the captured socket generation
+are rechecked before queue claim; stale response data is not published into a new
+application session. Default channel configuration is application-side channel
+restore, not a change to identity, password hashing or the handshake wire format.

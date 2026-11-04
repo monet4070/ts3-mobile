@@ -1,5 +1,10 @@
 # M11 Release Checklist
 
+> 2026-11-02：此文件保留历史里程碑计划与证据，不是当前版本状态。
+> 首个稳定版正在按 [1.0.0 发布资料](README.md)准备；
+> [新清单](1.0.0/CHECKLIST.md)明确承接未完成的签名、依赖与设备验收，未执行项不会自动转为通过。
+
+
 M11 is the production-beta preparation milestone. It does not declare the M10
 physical-device matrix complete; deferred long-duration, Bluetooth, password
 channel and second-device rows remain release blockers until they are executed.

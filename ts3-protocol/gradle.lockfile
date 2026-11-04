@@ -3,7 +3,7 @@
 # This file is expected to be part of source control.
 ch.qos.logback:logback-classic:1.3.5=ktlint
 ch.qos.logback:logback-core:1.3.5=ktlint
-com.github.Manevolent:ts3j:db57d60c989e399626aa16d921390f5033e6cdeb=compileClasspath,dependencySources,implementationDependenciesMetadata,runtimeClasspath,testCompileClasspath,testDependencySources,testImplementationDependenciesMetadata,testRuntimeClasspath
+com.github.monet4070:ts3j:ts3mobile-1=compileClasspath,dependencySources,implementationDependenciesMetadata,runtimeClasspath,testCompileClasspath,testDependencySources,testImplementationDependenciesMetadata,testRuntimeClasspath
 com.pinterest.ktlint:ktlint-cli-reporter-baseline:1.0.1=ktlint,ktlintBaselineReporter
 com.pinterest.ktlint:ktlint-cli-reporter-checkstyle:1.0.1=ktlint
 com.pinterest.ktlint:ktlint-cli-reporter-core:1.0.1=ktlint,ktlintBaselineReporter

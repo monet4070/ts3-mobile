@@ -5,33 +5,31 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioDeviceInfo
-import android.media.AudioFormat
 import android.media.AudioRecord
-import android.media.MediaRecorder
-import android.media.audiofx.AudioEffect
+import android.media.AudioRouting
 import android.os.Process
-import io.github.ts3mobile.protocol.EncodedVoiceSource
 import io.github.ts3mobile.protocol.sanitizedFailureTypes
-import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.math.max
 
 class OpusMicrophoneCapture(
     context: Context,
-    private val onFailure: (Throwable) -> Unit = {},
-) : EncodedVoiceSource, AutoCloseable {
+    private val onFailure: (Throwable) -> Unit,
+    private val onStateChanged: (MicrophoneCaptureState) -> Unit,
+) : MicrophoneCapture {
+    constructor(context: Context, onFailure: (Throwable) -> Unit = {}) : this(context, onFailure, {})
+
     private val applicationContext = context.applicationContext
-    private val encodedFrames = ArrayBlockingQueue<ByteArray>(ENCODED_QUEUE_CAPACITY)
     private val lifecycleLock = Any()
-    private val encodedFrameCount = AtomicLong(0L)
-    private val providedFrameCount = AtomicLong(0L)
+    private var options = MicrophoneProcessingOptions()
+    private val captureGeneration = AtomicLong(0)
+    override val generation: Long get() = captureGeneration.get()
 
     @Volatile
     private var control: CaptureControl? = null
 
     @Volatile
-    private var audioRecord: AudioRecord? = null
+    private var resources: CaptureResources? = null
 
     @Volatile
     private var preferredDevice: AudioDeviceInfo? = null
@@ -39,239 +37,247 @@ class OpusMicrophoneCapture(
     @Volatile
     private var worker: Thread? = null
 
-    val isCapturing: Boolean
+    override val isCapturing: Boolean
         get() = control?.running?.get() == true
 
-    fun setPreferredDevice(device: AudioDeviceInfo?) {
-        preferredDevice = device
-        audioRecord?.let { record ->
-            runCatching { record.setPreferredDevice(device) }
-                .onFailure { error ->
-                    System.err.println(
-                        "TS3_AUDIO: failed to route microphone: ${error.sanitizedFailureTypes()}",
-                    )
+    override fun configure(
+        settings: MicrophoneSettings,
+        volumeGate: Boolean,
+    ) {
+        synchronized(lifecycleLock) {
+            val updated = MicrophoneProcessingOptions(settings, volumeGate)
+            if (updated == options) return
+            options = updated
+            control?.frames?.reset()
+            control?.let(::publishState)
+        }
+    }
+
+    override fun setPreferredDevice(device: AudioDeviceInfo?) {
+        synchronized(lifecycleLock) {
+            if (preferredDevice?.id == device?.id) return
+            preferredDevice = device
+            invalidateRouting()
+            resources?.record?.let { record ->
+                runCatching {
+                    check(record.setPreferredDevice(device)) { "Microphone device preference was rejected" }
                 }
+                    .onFailure { error ->
+                        System.err.println(
+                            "TS3_AUDIO: failed to route microphone: ${error.sanitizedFailureTypes()}",
+                        )
+                    }
+            }
+        }
+    }
+
+    override fun invalidateRouting() {
+        synchronized(lifecycleLock) {
+            control?.let { current ->
+                current.frames.reset()
+                current.routeRevision.incrementAndGet()
+                current.echoState = EchoCancellationState.PENDING
+                publishState(current)
+            }
         }
     }
 
     @SuppressLint("MissingPermission")
-    fun start() {
+    override fun start() {
         synchronized(lifecycleLock) {
             if (control?.running?.get() == true) return
+            check(isReleased) { "Previous capture resources have not stopped" }
             check(
                 applicationContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
                     PackageManager.PERMISSION_GRANTED,
             ) { "Microphone permission is not granted" }
 
-            val minimumBytes =
-                AudioRecord.getMinBufferSize(
-                    SAMPLE_RATE,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                )
-            check(minimumBytes > 0) { "Unable to determine microphone buffer size: $minimumBytes" }
-
-            val encoder = NativeOpusEncoder()
-            val denoiser =
-                try {
-                    NativeRnNoiseProcessor()
-                } catch (error: Throwable) {
-                    encoder.close()
-                    throw error
+            val captureResources = CaptureResources.create(preferredDevice, options.settings)
+            captureGeneration.incrementAndGet()
+            val newControl = CaptureControl()
+            newControl.routingListener =
+                AudioRouting.OnRoutingChangedListener { routing ->
+                    synchronized(lifecycleLock) {
+                        if (control !== newControl || !newControl.running.get()) return@synchronized
+                        val deviceId = routing.routedDevice?.id
+                        if (newControl.routedDeviceId != deviceId) {
+                            newControl.routedDeviceId = deviceId
+                            invalidateRouting()
+                        }
+                    }
                 }
-            val record =
-                try {
-                    AudioRecord.Builder()
-                        .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
-                        .setAudioFormat(
-                            AudioFormat.Builder()
-                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                                .setSampleRate(SAMPLE_RATE)
-                                .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
-                                .build(),
-                        )
-                        .setBufferSizeInBytes(max(minimumBytes, CAPTURE_BUFFER_BYTES))
-                        .build()
-                } catch (error: Throwable) {
-                    denoiser.close()
-                    encoder.close()
-                    throw error
-                }
-            if (record.state != AudioRecord.STATE_INITIALIZED) {
-                record.release()
-                denoiser.close()
-                encoder.close()
-                error("Unable to initialize microphone")
-            }
-            preferredDevice?.let { device ->
-                if (!record.setPreferredDevice(device)) {
-                    System.err.println("TS3_AUDIO: microphone device preference was rejected")
-                }
-            }
-            val audioEffects = MicrophoneAudioEffects.create(record.audioSessionId)
-
+            control = newControl
+            resources = captureResources
             try {
-                record.startRecording()
-                check(record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                    "Unable to start microphone"
+                captureResources.startRecording()
+                captureResources.listen(newControl.routingListener)
+            } catch (error: RuntimeException) {
+                newControl.running.set(false)
+                captureResources.close()
+                if (captureResources.released) {
+                    control = null
+                    resources = null
                 }
-            } catch (error: Throwable) {
-                MicrophoneAudioEffects.release(audioEffects)
-                record.release()
-                denoiser.close()
-                encoder.close()
                 throw error
             }
-
-            encodedFrames.clear()
-            encodedFrameCount.set(0L)
-            providedFrameCount.set(0L)
-            val newControl = CaptureControl()
-            control = newControl
-            audioRecord = record
+            newControl.echoState = captureResources.effects.echoState
+            publishState(newControl)
             worker =
                 Thread(
-                    { captureLoop(record, encoder, denoiser, audioEffects, newControl) },
+                    { captureLoop(captureResources, newControl) },
                     "ts3-opus-capture",
                 ).apply { start() }
         }
     }
 
-    fun stop() {
-        val activeControl: CaptureControl
-        val record: AudioRecord?
-        val activeWorker: Thread?
-        synchronized(lifecycleLock) {
-            activeControl = control ?: run {
-                encodedFrames.clear()
-                return
-            }
-            activeControl.running.set(false)
-            record = audioRecord
-            activeWorker = worker
-            encodedFrames.clear()
-        }
+    override val isReleased: Boolean get() = resources?.released != false && worker?.isAlive != true
 
-        runCatching { record?.stop() }
-        activeWorker?.interrupt()
-        if (activeWorker !== Thread.currentThread()) {
-            runCatching { activeWorker?.join(STOP_JOIN_TIMEOUT_MS) }
+    override fun requestStop() {
+        control?.let { current ->
+            current.running.set(false)
+            current.frames.stop()
         }
-        synchronized(lifecycleLock) {
-            if (control === activeControl) {
-                control = null
-                worker = null
-            }
-        }
+        worker?.interrupt()
     }
 
-    override val isTransmitting: Boolean get() = isCapturing
-
-    override fun isReady(): Boolean = encodedFrames.isNotEmpty()
-
-    override fun pollEncodedFrame(): ByteArray? =
-        encodedFrames.poll()?.also { frame ->
-            val provided = providedFrameCount.incrementAndGet()
-            if (provided == 1L) {
-                System.err.println("TS3_AUDIO: provided first microphone Opus frame (${frame.size} bytes)")
+    override fun stop() {
+        requestStop()
+        val activeResources = resources
+        activeResources?.stopRecording()
+        val activeWorker = worker
+        if (activeWorker?.isAlive != true && activeResources?.released == false) {
+            activeResources.close()
+            control?.let(::publishState)
+        }
+        if (activeWorker !== Thread.currentThread()) {
+            try {
+                activeWorker?.join(STOP_JOIN_TIMEOUT_MS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
             }
         }
+        check(isReleased) { "Capture resources have not stopped; restart is blocked" }
+    }
+
+    override val isTransmitting: Boolean get() = control?.frames?.isTransmitting() == true
+
+    override fun isReady(): Boolean = control?.frames?.isReady() == true
+
+    override fun pollEncodedFrame(): ByteArray? {
+        val current = control ?: return null
+        val frame = current.frames.poll()
+        if (frame != null) current.provided.incrementAndGet()
+        publishState(current)
+        return frame
+    }
 
     override fun close() = stop()
 
     private fun captureLoop(
-        record: AudioRecord,
-        encoder: NativeOpusEncoder,
-        denoiser: NativeRnNoiseProcessor,
-        audioEffects: List<AudioEffect>,
+        captureResources: CaptureResources,
         captureControl: CaptureControl,
     ) {
+        val record = captureResources.record
+        val encoder = captureResources.encoder
+        val denoiser = captureResources.denoiser
+        val audioEffects = captureResources.effects
         val stats = CaptureSessionStats()
-        val denoiserPcm = ShortArray(RNNOISE_FRAME_SAMPLES)
-        val opusPcm = ShortArray(OPUS_FRAME_SAMPLES)
-        var denoiserOffset = 0
-        var opusOffset = 0
+        val inputPcm = ShortArray(RNNOISE_FRAME_SAMPLES)
+        val assembler = CaptureInputAssembler()
+        val pipeline =
+            MicrophoneCapturePipeline(denoiser::processInPlace, encoder::encode, stats) { settings ->
+                denoiser.reset()
+                encoder.reset()
+                audioEffects.configure(settings.echoCancellation)
+                captureControl.echoState = audioEffects.echoState
+            }
         try {
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
             while (captureControl.running.get()) {
+                val (current, revision) =
+                    synchronized(lifecycleLock) {
+                        options to captureControl.frames.revision()
+                    }
+                val routeRevision = captureControl.routeRevision.get()
+                assembler.prepare(revision)
                 val read =
                     record.read(
-                        denoiserPcm,
-                        denoiserOffset,
-                        denoiserPcm.size - denoiserOffset,
+                        inputPcm,
+                        0,
+                        assembler.remaining,
                         AudioRecord.READ_BLOCKING,
                     )
                 if (!captureControl.running.get()) break
                 if (read < 0) error("AudioRecord read failed: $read")
                 if (read == 0) continue
-                denoiserOffset += read
-                if (denoiserOffset < denoiserPcm.size) continue
-
-                stats.noteRawFrame(denoiserPcm)
-                val denoiseStarted = System.nanoTime()
-                val vadProbability = denoiser.processInPlace(denoiserPcm)
-                val denoiseNanos = System.nanoTime() - denoiseStarted
-                stats.noteDenoisedFrame(denoiserPcm, denoiseNanos, vadProbability)
-
-                denoiserPcm.copyInto(opusPcm, destinationOffset = opusOffset)
-                opusOffset += denoiserPcm.size
-                denoiserOffset = 0
-                if (opusOffset < opusPcm.size) continue
-
-                val encoded = encoder.encode(opusPcm)
-                if (!encodedFrames.offer(encoded)) {
-                    encodedFrames.poll()
-                    encodedFrames.offer(encoded)
-                }
-                val count = encodedFrameCount.incrementAndGet()
-                if (count == 1L) {
-                    System.err.println(
-                        "TS3_AUDIO: encoded first microphone frame " +
-                            "(${encoded.size} bytes, nonZero=${opusPcm.any { it.toInt() != 0 }})",
-                    )
-                }
-                opusOffset = 0
+                if (revision != captureControl.frames.revision()) continue
+                val denoiserPcm = assembler.append(inputPcm, read) ?: continue
+                val encoded = pipeline.process(denoiserPcm, current, revision, routeRevision)
+                if (encoded == null) continue
+                captureControl.frames.publish(revision, encoded, pipeline.isSpeaking)
+                captureControl.encoded.addAndGet(encoded.size.toLong())
+                publishState(captureControl)
             }
         } catch (error: Throwable) {
             if (captureControl.running.get()) {
                 System.err.println(
                     "TS3_AUDIO: microphone capture stopped: ${error.sanitizedFailureTypes()}",
                 )
-                runCatching { onFailure(error) }
+                synchronized(lifecycleLock) {
+                    if (control === captureControl && captureControl.running.get()) onFailure(error)
+                }
             }
         } finally {
             captureControl.running.set(false)
-            encodedFrames.clear()
-            val encodedCount = encodedFrameCount.get()
+            captureControl.frames.stop()
+            val encodedCount = captureControl.encoded.get()
             if (encodedCount > 0L) {
                 System.err.println(
-                    stats.summaryLine(encodedCount, providedFrameCount.get()),
+                    stats.summaryLine(encodedCount, captureControl.provided.get()),
                 )
             }
-            runCatching { record.stop() }
-            runCatching { record.release() }
-            MicrophoneAudioEffects.release(audioEffects)
-            denoiser.close()
-            encoder.close()
+            captureResources.close()
+            publishState(captureControl)
             synchronized(lifecycleLock) {
-                if (control === captureControl) control = null
-                if (audioRecord === record) audioRecord = null
+                if (captureResources.released) {
+                    if (control === captureControl) control = null
+                    if (resources === captureResources) resources = null
+                }
                 if (worker === Thread.currentThread()) worker = null
             }
         }
     }
 
+    private fun publishState(current: CaptureControl) {
+        synchronized(lifecycleLock) {
+            if (control !== current) return
+            val snapshot =
+                MicrophoneCaptureState(
+                    capturing = resources?.released == false,
+                    transmitting = current.running.get() && current.frames.isTransmitting(),
+                    echoCancellation = if (current.running.get()) current.echoState else EchoCancellationState.PENDING,
+                )
+            if (snapshot == current.lastState) return
+            current.lastState = snapshot
+            onStateChanged(snapshot)
+        }
+    }
+
     private class CaptureControl {
         val running = AtomicBoolean(true)
+        val frames = CaptureVoiceBuffer()
+        val encoded = AtomicLong(0)
+        val provided = AtomicLong(0)
+        val routeRevision = AtomicLong()
+
+        @Volatile var echoState = EchoCancellationState.PENDING
+        var lastState: MicrophoneCaptureState? = null
+        lateinit var routingListener: AudioRouting.OnRoutingChangedListener
+        var routedDeviceId: Int? = null
     }
 
     private companion object {
-        const val SAMPLE_RATE = 48_000
         const val RNNOISE_FRAME_SAMPLES = 480
-        const val OPUS_FRAME_SAMPLES = 960
-        const val FRAME_BYTES = OPUS_FRAME_SAMPLES * 2
-        const val CAPTURE_BUFFER_BYTES = FRAME_BYTES * 2
-        const val ENCODED_QUEUE_CAPACITY = 3
         const val STOP_JOIN_TIMEOUT_MS = 1_500L
     }
 }

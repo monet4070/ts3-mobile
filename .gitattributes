@@ -3,3 +3,5 @@ gradlew text eol=lf
 *.sh text eol=lf
 *.bat text eol=crlf
 *.jar binary
+# Unified-diff blank context lines require a single space.
+audio-opus/src/test/cpp/opus-compat/legacy-build.patch whitespace=-blank-at-eol

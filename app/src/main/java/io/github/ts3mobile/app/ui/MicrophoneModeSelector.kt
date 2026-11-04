@@ -2,6 +2,7 @@ package io.github.ts3mobile.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,56 +38,62 @@ internal fun MicrophoneModeSelector(
     mode: MicrophoneMode,
     onMicrophoneModeChanged: (MicrophoneMode) -> Unit,
 ) {
-    if (LocalDensity.current.fontScale <= 1.3f) {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            MicrophoneMode.entries.forEachIndexed { index, option ->
-                SegmentedButton(
-                    colors =
-                        SegmentedButtonDefaults.colors(
-                            activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            inactiveContainerColor = MaterialTheme.colorScheme.surface,
-                            inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            activeBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                            inactiveBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                        ),
-                    selected = mode == option,
-                    onClick = { onMicrophoneModeChanged(option) },
-                    shape =
-                        SegmentedButtonDefaults.itemShape(
-                            index = index,
-                            count = MicrophoneMode.entries.size,
-                            baseShape = RoundedCornerShape(8.dp),
-                        ),
-                ) {
-                    Text(
-                        microphoneModeLabel(option),
-                    )
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (LocalDensity.current.fontScale <= 1.15f && maxWidth >= 352.dp) {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                MicrophoneMode.entries.forEachIndexed { index, option ->
+                    SegmentedButton(
+                        colors =
+                            SegmentedButtonDefaults.colors(
+                                activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                inactiveContainerColor = MaterialTheme.colorScheme.surface,
+                                inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                activeBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                                inactiveBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            ),
+                        selected = mode == option,
+                        icon = {},
+                        onClick = { onMicrophoneModeChanged(option) },
+                        shape =
+                            SegmentedButtonDefaults.itemShape(
+                                index = index,
+                                count = MicrophoneMode.entries.size,
+                                baseShape = RoundedCornerShape(8.dp),
+                            ),
+                    ) {
+                        Text(
+                            microphoneModeLabel(option),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
                 }
             }
-        }
-    } else {
-        var expanded by remember { mutableStateOf(false) }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(stringResource(R.string.microphone_label), style = MaterialTheme.typography.labelLarge)
-            Box {
-                OutlinedButton(onClick = { expanded = true }, shape = MaterialTheme.shapes.small) {
-                    AppIcon(UiIcon.Mic, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(microphoneModeLabel(mode))
-                    Spacer(Modifier.width(8.dp))
-                    AppIcon(UiIcon.ChevronDown, null, Modifier.size(16.dp))
-                }
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    MicrophoneMode.entries.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(microphoneModeLabel(option)) },
-                            leadingIcon = { if (mode == option) AppIcon(UiIcon.Check, null) },
-                            onClick = {
-                                expanded = false
-                                onMicrophoneModeChanged(option)
-                            },
-                        )
+        } else {
+            var expanded by remember { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.microphone_label), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                Box {
+                    OutlinedButton(onClick = { expanded = true }, shape = MaterialTheme.shapes.small) {
+                        AppIcon(UiIcon.Mic, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(microphoneModeLabel(mode), maxLines = 1, softWrap = false)
+                        Spacer(Modifier.width(8.dp))
+                        AppIcon(UiIcon.ChevronDown, null, Modifier.size(16.dp))
+                    }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        MicrophoneMode.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(microphoneModeLabel(option)) },
+                                leadingIcon = { if (mode == option) AppIcon(UiIcon.Check, null) },
+                                onClick = {
+                                    expanded = false
+                                    onMicrophoneModeChanged(option)
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -101,5 +108,6 @@ private fun microphoneModeLabel(mode: MicrophoneMode): String =
             MicrophoneMode.OFF -> R.string.microphone_mode_off
             MicrophoneMode.PUSH_TO_TALK -> R.string.microphone_mode_push_to_talk
             MicrophoneMode.CONTINUOUS -> R.string.microphone_mode_continuous
+            MicrophoneMode.VOLUME_GATE -> R.string.microphone_mode_gate
         },
     )

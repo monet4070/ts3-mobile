@@ -3,6 +3,11 @@
 **Status:** Accepted  
 **Date:** 2026-08-15
 
+> **Scope update, 2026-10-23:** [ADR-0012](0012-feature-roadmap-with-deferred-device-acceptance.md)
+> changes the sequencing restriction below: feature work can advance while
+> physical acceptance is deferred. One active server remains the scope boundary.
+> The original rationale and release evidence requirements are retained.
+
 ## Context
 
 The core risks are protocol compatibility, duplex audio latency, Android
@@ -27,3 +32,7 @@ plan.
 
 M9 diagnostics, M10 long-running audio/reconnect tests, and M11 signed beta
 release checks pass on the supported Android device matrix.
+
+2026-10-23: ADR-0017 adds server bookmarks, own presence and channel discovery within
+the single-active-server boundary. Selecting another bookmark requires explicit
+disconnect first. The user excludes the other newly proposed feature candidates.
