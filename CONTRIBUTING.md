@@ -4,7 +4,7 @@ Thanks for helping improve TS3 Mobile. This is a community-maintained client;
 changes should preserve connection stability, bounded audio latency, and user
 control over microphone transmission.
 
-The first stable release is being prepared as 1.0.0. User documentation starts
+The first stable release is 1.0.0 (2026-11-04). User documentation starts
 at the [README](README.md); release roles, artifact/signature requirements and
 open acceptance items are in the [release pack](docs/release/README.md).
 Do not mark a release or a device-matrix row passed merely because docs are ready.

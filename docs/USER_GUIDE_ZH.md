@@ -2,7 +2,7 @@
 
 [English](USER_GUIDE.md) · [安装与升级](INSTALLATION.md) · [常见问题](TROUBLESHOOTING_ZH.md)
 
-本指南对应 1.0.0 目标功能集。发布状态以 [README](../README_ZH.md) 和 GitHub Release 为准。
+本指南对应 1.0.0 稳定版（2026-11-04）。下载与验证范围见 [README](../README_ZH.md) 和 GitHub Release。
 
 ## 连接服务器
 

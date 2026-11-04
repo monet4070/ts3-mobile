@@ -51,7 +51,9 @@ verification. Do not relabel an old binary as a rebuild from a new commit.
 
 The 302-line English README was assessed before editing: only its release-status
 paragraph changes; detailed operation and release evidence already have dedicated
-guides. No further decomposition is needed for this publication. Production code,
+guides. The oversized architecture document also receives only a release-scope
+paragraph correction; release procedures stay in their dedicated documents.
+No further decomposition is needed for this publication. Production code,
 tests, Gradle configuration, permissions and storage formats are unchanged.
 
 ## 中文

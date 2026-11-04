@@ -305,13 +305,13 @@ complements JVM tests and device connection acceptance; see
 [the issue #3 report](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
 
 The public app API is intentionally small and internal to the Android app. The
-protocol facade pins a ts3j revision. The current single-server feature set is
-being prepared for 1.0.0, including endpoint history, channel/private text, poke,
+protocol facade pins a ts3j revision. Stable 1.0.0 (versionCode 13) includes the
+single-server feature set: endpoint history, channel/private text, poke,
 volume gate, named bookmarks, presence and channel discovery. File transfer and
 multi-server tabs remain outside this implementation. The
-[release pack](docs/release/README.md) separates documentation readiness from
-version/signing, exact-artifact and device acceptance; the app metadata remains
-0.11.1-m10 until the release cut. See [ADR-0019](docs/decisions/0019-first-stable-release-documentation.md).
+[release pack](docs/release/README.md) records signing, exact-artifact and device
+evidence. [ADR-0021](docs/decisions/0021-stable-release-acceptance.md) records the
+publication decision and remaining physical-device checks.
 
 ## Channel and private text
 

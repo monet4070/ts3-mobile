@@ -2,8 +2,8 @@
 
 [简体中文](USER_GUIDE_ZH.md) · [Install and upgrade](INSTALLATION.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
-This guide describes the 1.0.0 target feature set. Check the [README](../README.md)
-and GitHub Release for publication status.
+This guide describes stable 1.0.0 (2026-11-04). Check the [README](../README.md)
+and GitHub Release for downloads and tested coverage.
 
 ## Connect and join
 
