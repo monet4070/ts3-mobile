@@ -1,7 +1,8 @@
 # 安装与升级 / Installation and upgrades
 
-适用于 GitHub 分发的 APK。1.0.0 仍处于发布准备阶段，实际包名、版本、签名与校验值
-必须以对应 Release 的最终资产为准。[发布资料](release/README.md)不等于已经上线。
+适用于 GitHub 分发的 APK。当前稳定版为
+[1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)（2026-11-04，versionCode 13）。
+实际包名、版本、签名与校验值以对应 Release 的资产为准；验证范围见[发布资料](release/README.md)。
 
 ## 下载与校验
 
@@ -29,9 +30,14 @@ Windows PowerShell：
 Get-FileHash .\ts3-mobile-1.0.0-release.apk -Algorithm SHA256
 ```
 
-文件名示例用于目标 1.0.0，发布前不会提供虚构的校验值。文件摘要与签名证书指纹是不同东西：
-摘要标识某个 APK 的字节内容，证书指纹标识签名证书。1.0.0 资产约定还包含 `BUILDINFO.json`，
-记录实际版本、源码提交与证书 SHA-256；当前旧 Release 不一定提供这个文件。
+文件摘要标识某个 APK 的字节内容，证书指纹标识签名证书。1.0.0 同时提供 `BUILDINFO.json`，
+记录实际版本、构建源码提交、发布提交与证书 SHA-256；较早 Release 不一定提供这个文件。
+
+1.0.0 APK SHA-256：
+
+```text
+bfa68b26eecbd30dad267574df7b30f84e761426d154396adb764babf674475a
+```
 
 ## 系统要求与首次安装
 
@@ -47,7 +53,8 @@ Android 覆盖安装需要相同的应用 ID、兼容签名和允许升级的版
 
 | 现有安装 | 处理方式 |
 | --- | --- |
-| GitHub 0.11.x / 同一正式应用 ID | 先核对旧包与最终 1.0.0 签名；兼容时可覆盖，仍需发布方提供升级实测 |
+| GitHub 0.11.1-m10 / versionCode 12 | 与 1.0.0 证书相同；API 35 模拟器保留 UID、合成私有文件/偏好及 Keystore 密文的升级通过，真机原有数据复验尚未记录 |
+| 其他 GitHub 0.11.x / 同一正式应用 ID | 先核对旧包证书与版本号，不从单个旧版的结果推导全部兼容 |
 | TS3 Mobile UI / F1a 等旁装调试应用 | 应用 ID、身份与存储独立，正式包并非该应用的升级，数据不会自动迁移 |
 | 很早的 v0.1 或第三方重签包 | 签名兼容性未知；不要直接卸载，先核对来源与证书 |
 | 比将要安装的版本更新的应用 | Android 通常拒绝降级，尤其 versionCode 更低时；优先安装后续修复版本 |
@@ -56,8 +63,14 @@ Android 覆盖安装需要相同的应用 ID、兼容签名和允许升级的版
 当前应用没有身份导入导出、收藏迁移或应用内备份恢复工具；Android 备份/设备迁移也被限制。
 旧身份关联的服务器权限可能无法由新身份继承。
 
-换签名时维护者必须单独公布迁移方案。文档不会将开发签名改名为“正式签名”，
-也不会把已经换包名的测试安装当成保留数据的升级证据。
+1.0.0 沿用旧公开证书，SHA-256 为：
+
+```text
+e239102412f17ddd1909bd323b3825831b153fec4602ec00abb359da7d8be592
+```
+
+该历史证书主题为 Android Debug；沿用它以保持升级身份，不将其宣传为新建立的生产证书。
+换签名时维护者必须单独公布迁移方案；换包名的测试安装不是保留数据的升级证据。
 
 ## 更新、回退与问题报告
 
@@ -74,15 +87,20 @@ are not installers. Compare the digest using the platform commands above, then
 allow installation from the trusted browser/file manager you used. Android 8.0+
 is required. See [compatibility](COMPATIBILITY.md) for tested coverage.
 
-The proposed 1.0.0 asset name is `ts3-mobile-1.0.0-release.apk`. Its checksum and
-`BUILDINFO.json` must come from the final signed artifact; none is invented in
-these preparation docs. An APK digest identifies bytes; the signing-certificate
-fingerprint identifies the certificate. They are not interchangeable.
+Stable 1.0.0 (2026-11-04, versionCode 13) provides `ts3-mobile-1.0.0-release.apk`,
+`SHA256SUMS.txt` and `BUILDINFO.json`. The latter records the build source commit,
+release commit, toolchain and certificate. The actual APK SHA-256 and certificate
+SHA-256 appear above. An APK digest identifies bytes; a certificate fingerprint
+identifies the certificate. They are not interchangeable.
 
 An in-place update needs the same application ID (`io.github.ts3mobile.app`), a
-compatible signing lineage and an acceptable versionCode. Compatibility from
-0.11.x must be checked against the actual old/new certificates and tested by the
-publisher. Separate TS3 Mobile UI/F1a test packages have independent identities
+compatible signing lineage and an acceptable versionCode. The public 0.11.1-m10
+(code 12) and 1.0.0 certificates match. An API 35 emulator upgrade preserved the UID,
+synthetic private files/preferences and Keystore ciphertext; real-device data
+retention has not been recorded for the final APK. Other old versions still need
+their own certificate/version checks. The inherited certificate subject is Android
+Debug; it is retained for update continuity, not presented as a new production
+certificate. Separate TS3 Mobile UI/F1a test packages have independent identities
 and storage; they do not migrate into the release. Old v0.1/re-signed packages
 have unknown compatibility. Android normally rejects lower versionCodes.
 

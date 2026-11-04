@@ -1,5 +1,9 @@
 # 1.0.0 发布准备记录（2026-11-04）
 
+> 历史记录：以下冻结在未签名交接阶段。原密钥随后已提供，签名与模拟器升级通过；
+> 当前发布授权和验收范围见 [ADR-0021](../../decisions/0021-stable-release-acceptance.md)
+> 与[发布清单](CHECKLIST.md)，不是仍待寻找密钥的状态。
+
 目标：`v1.0.0`，正式应用 ID `io.github.ts3mobile.app`，versionName `1.0.0`，
 versionCode `13`。当前阶段为**未签名候选包交接**，尚未创建正式 tag 或公开 Release。
 

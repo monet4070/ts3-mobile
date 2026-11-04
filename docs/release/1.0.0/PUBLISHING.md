@@ -1,14 +1,15 @@
 # 1.0.0 打包、签名与 GitHub 上线
 
-本手册供维护者操作，不会由文档任务自动执行。先完成 [CHECKLIST.md](CHECKLIST.md)，
-再公开首个稳定版。示例以 macOS/Linux、JDK 17、Android SDK 35、PowerShell 7、
+本手册供维护者操作。1.0.0 的发布授权、签名与验收范围已记录在
+[ADR-0021](../../decisions/0021-stable-release-acceptance.md)及 [CHECKLIST.md](CHECKLIST.md)。
+后续发布仍须逐步核对。示例以 macOS/Linux、JDK 17、Android SDK 35、PowerShell 7、
 Python 3 和 GitHub CLI 为前提；Windows 可使用对应 `.bat`/`.exe` 与 PowerShell 命令。
 所有示例从仓库根目录执行，`ANDROID_HOME` 与 `JAVA_HOME` 已正确配置。
 
 ## 1. 冻结完整源码
 
-当前工作区包含未提交的功能与 UI 修改，不能直接给旧 HEAD 打 tag。审查、运行检查、
-通过仓库既有 PR 流程纳入全部目标代码；不要把发布文档单独打成应用版本。
+审查并冻结完整功能与 UI 修改，运行检查，通过仓库既有 PR 流程纳入全部目标代码；
+不要给遗漏目标代码的旧 HEAD 打 tag，也不要把单独的发布文档当作应用版本。
 任何行为/依赖/版本变动都会使相关旧候选证据失效。
 
 确认 `app/build.gradle.kts` 中正式应用 ID 不变，versionName 为 `1.0.0`。
@@ -35,8 +36,9 @@ Opus 兼容和真机检查。目标设备上有活动会话时先正常断开；
 
 ## 3. 对齐与签名
 
-本轮维护者已确认密钥在另一台电脑，可按[异机交接说明](SIGNING_HANDOFF.md)签名已准备的
-未签名候选包；交接摘要与最终签名摘要分别保存。
+本轮维护者已提供原密钥，签名与旧公开证书比对、模拟器升级均通过。
+[异机交接说明](SIGNING_HANDOFF.md)保留为先前未签名阶段的操作参考；
+交接摘要与最终签名摘要分别保存。
 
 候选输出默认为 `app/build/outputs/apk/release/app-release-unsigned.apk`。
 使用经过确认的发布密钥；不要临时生成新密钥来绕过升级冲突，也不要将密码写入命令、
@@ -150,7 +152,11 @@ PY
 
 ## 6. GitHub 草稿与公开
 
-到这里应已有经过审查、已推送的源码提交，tag 必须指向它。不要移动已公开 tag。
+到这里应已有通过 PR 合入的完整源码，tag 指向最终发布提交。不要移动已公开 tag。
+若构建后仅追加文档和合并提交，必须核对记录的全部源码/配置输入不变；
+`sourceCommit`/`sourceTree` 保留实际构建版本，另记录 `releaseCommit`、`releaseTag`
+和文档差异及输入核对结果。不得把构建源码字段改成未实际重建的新提交。
+若任一构建输入变化，则重新构建并重新绑定全部受影响的产物证据。
 按项目规则在需要时使用签名 tag，并核对 `git rev-parse HEAD` 后再执行：
 
 ```sh

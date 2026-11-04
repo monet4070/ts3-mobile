@@ -19,4 +19,8 @@
 - [测试记录](testing/)与[历史开发计划](plans/)保留各自日期，不自动代表最新 APK 的验收。
 - [历史 M11 发布计划](release/CONTINUATION_PLAN.md)保留作背景，当前稳定版入口为 1.0.0 资料。
 
-当前发布状态以项目 README、发布清单及 GitHub Release 为准；准备好的文案不表示已经发布。
+当前稳定版为 [1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)（2026-11-04）；
+签名、验证范围和发布决定见上方发布资料。
+
+The current stable release is [1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)
+(2026-11-04). The release pack records signing, tested coverage and the release decision.

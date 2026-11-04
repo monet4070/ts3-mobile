@@ -1,8 +1,6 @@
 # TS3 Mobile 1.0.0 · First stable release
 
-> Preparation copy: not published. Use after final acceptance; remove this note
-> at publication and verify the APK, checksums, build information and actual
-> signing/upgrade statement in the same release.
+Released on **2026-11-04** · versionCode **13** · Android **8.0+**.
 
 TS3 Mobile 1.0.0 is the project's first stable release: connect to TeamSpeak 3
 on Android, use voice and text, and return to your usual servers through bookmarks.
@@ -40,6 +38,11 @@ and compare its SHA-256 with `SHA256SUMS.txt`. `BUILDINFO.json` identifies the
 source commit, version, certificate fingerprint and toolchain. Source archives
 are not installers.
 
+The certificate matches the public 0.11.1-m10 APK (code 12). An API 35 / 16 KiB
+emulator update retained the application UID, synthetic private files/preferences
+and Android Keystore ciphertext. The inherited certificate subject is Android
+Debug; it is retained for update continuity. See the upgrade guide for its fingerprint.
+
 Updating needs the same package and a compatible signature. Keep the old app
 if Android reports a conflict: **do not immediately uninstall or clear storage**.
 That removes identity, bookmarks and encrypted form memory; there is no built-in
@@ -56,6 +59,14 @@ Check the actual artifact metadata and
 - Volume gate captures even during silence; Off stops it. Away does not stop voice.
 - Bluetooth, notifications and background survival depend on the device/system.
   Disconnect in-app or through the notification instead of relying on task swiping.
+- Validation: 551 JVM, 129 app Android and 32 default audio Android tests passed,
+  plus 48 Opus compatibility combinations and signed-APK identity/codec/launch probes.
+  The maintainer completed hands-on feature checks on a Xiaomi 14 / Android 16
+  using the November 3 QA package. That predates the new Bluetooth protection;
+  final-APK physical Bluetooth/data-upgrade checks and a second device remain open.
+  Android/HAL may reroute buffered audio before callbacks, so zero transient
+  speaker output cannot be guaranteed. These limits are retained in the
+  [release decision](https://github.com/monet4070/ts3-mobile/blob/v1.0.0/docs/decisions/0021-stable-release-acceptance.md).
 
 See [compatibility](https://github.com/monet4070/ts3-mobile/blob/v1.0.0/docs/COMPATIBILITY.md)
 for device coverage and acceptance evidence,

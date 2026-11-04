@@ -12,10 +12,11 @@ TS3 Mobile is an open-source, unofficial client with a warm cream/terracotta int
 English and Simplified Chinese. Connect directly to your TeamSpeak server; there is no project account
 to register.
 
-> **Version status:** this README describes the feature set being prepared for
-> **1.0.0, the first stable release**. The latest public APK is still **0.11.1-m10**
-> and does not include all the new features below. The final signed 1.0.0 APK has
-> not been published. See the [release pack](docs/release/README.md) and [changelog](CHANGELOG.md).
+> **Latest stable: [1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)**,
+> released on **2026-11-04** (versionCode 13). Download the signed APK and checksums
+> from the release. Its certificate matches the public 0.11.1-m10 APK; keep your
+> existing installation when updating. See [installation](docs/INSTALLATION.md),
+> [tested coverage](docs/COMPATIBILITY.md) and the [changelog](CHANGELOG.md).
 
 ## Contents
 

@@ -1,15 +1,18 @@
 # Changelog
 
-The first stable release is being prepared as **1.0.0**. It has not been
-published; the latest public release remains 0.11.1-m10. Earlier versions used
-milestone naming. After 1.0.0, patch versions are intended for compatible fixes
+**1.0.0**, released on **2026-11-04**, is the first stable release. Earlier versions
+used milestone naming. After 1.0.0, patch versions are intended for compatible fixes
 and minor versions for compatible features; Android versionCode increases for
 each distributed update.
 
-## Unreleased — 1.0.0 preparation
+## 1.0.0 — 2026-11-04
 
-Proposed tag: `v1.0.0`. No release date, final APK hash or signing claim is assigned
-until the [release checklist](docs/release/1.0.0/CHECKLIST.md) is complete.
+Tag: [`v1.0.0`](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0),
+versionCode 13. The signed APK keeps the public 0.11.1-m10 certificate; an API 35
+emulator upgrade retained the UID and synthetic private files, preferences and
+Keystore ciphertext. Physical-device coverage and remaining checks are disclosed
+in [compatibility](docs/COMPATIBILITY.md) and the
+[release decision](docs/decisions/0021-stable-release-acceptance.md).
 [中文 Release 文案](docs/release/1.0.0/RELEASE_NOTES_ZH.md) ·
 [English release copy](docs/release/1.0.0/RELEASE_NOTES.md).
 
@@ -58,9 +61,17 @@ until the [release checklist](docs/release/1.0.0/CHECKLIST.md) is complete.
 - Remove channel-detail entry points; expansion, joining and search remain.
 - Default packages exclude the optional APM experiment. Identity export,
   Whisper, file transfer, administration and multi-server tabs remain absent.
-- Current validation and open live/device/signing acceptance are recorded in
-  [compatibility](docs/COMPATIBILITY.md); development test counts are not a final
-  signed-APK acceptance statement.
+- Tested coverage and remaining physical-device checks are recorded in
+  [compatibility](docs/COMPATIBILITY.md); automated results do not establish
+  acoustic behavior on every phone or headset.
+
+### 中文摘要
+
+首个稳定版 1.0.0（versionCode 13）于 2026-11-04 发布，带来频道/私聊、独立草稿与未读、
+服务器加密收藏、戳一下及后台提醒、暂离与状态同步、界面优化和 Opus 1.6.1 音频改进。
+蓝牙通话耳机自动选择，断开或意外回退时收听静音，重连后需手动恢复。
+沿用公开 0.11.1-m10 证书，模拟器保留数据升级通过；最终包蓝牙真机复核和第二设备覆盖仍待补齐。
+完整[中文发布说明](docs/release/1.0.0/RELEASE_NOTES_ZH.md)与英文说明同步维护。
 
 Detailed pre-1.0 implementation notes are preserved in the
 [development archive](docs/release/DEVELOPMENT_NOTES_PRE_1_0.md).

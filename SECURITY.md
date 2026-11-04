@@ -2,10 +2,9 @@
 
 ## Supported versions
 
-The first stable release is being prepared as 1.0.0; it is not published yet.
-At present, fixes target the latest revision on `main`; old milestone APKs are
-not maintained separately. Once 1.0.0 is published, fixes will target the latest
-stable patch and the current development branch. There is no long-term support
+The first stable release is 1.0.0, published on 2026-11-04. Fixes target the latest
+stable patch and the current development branch on `main`; old milestone APKs are
+not maintained separately. There is no long-term support
 promise for superseded patches or third-party re-signed builds.
 
 ## Reporting a vulnerability
@@ -31,8 +30,8 @@ the issue is caused by TS3 Mobile's integration.
 
 ## 中文说明
 
-1.0.0 首个稳定版仍在准备，尚未发布。目前安全修复面向 `main` 最新源码，不单独维护旧里程碑 APK。
-稳定版发布后面向最新稳定补丁和开发分支，不承诺长期维护被替代的补丁或第三方重签包。
+1.0.0 首个稳定版于 2026-11-04 发布。安全修复面向最新稳定补丁和 `main` 开发分支，
+不单独维护旧里程碑 APK，不承诺长期维护被替代的补丁或第三方重签包。
 
 请通过上方 GitHub 私密安全报告提交版本、Android 版本、复现方法、影响与可安全分享的概念验证。
 不要在公开 Issue、PR 或聊天日志中披露漏洞与真实密码、服务器、身份、用户信息。

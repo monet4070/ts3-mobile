@@ -1,7 +1,6 @@
 # TS3 Mobile 1.0.0 · 首个稳定版
 
-> 发布准备稿：尚未上线。以下正文供最终验收完成后发布；正式发布时移除此段，
-> 并核对同一 Release 的 APK、校验表、构建信息与实际签名说明。
+发布日期：**2026-11-04** · versionCode **13** · Android **8.0+**。
 
 TS3 Mobile 1.0.0 是项目的首个稳定版本：在 Android 上连接 TeamSpeak 3，
 进行语音、频道聊天和私聊，并通过收藏快速回到常用服务器。
@@ -33,6 +32,10 @@ TS3 Mobile 1.0.0 是项目的首个稳定版本：在 Android 上连接 TeamSpea
 请下载本页 Assets 中的 `ts3-mobile-1.0.0-release.apk`，与 `SHA256SUMS.txt` 比对 SHA-256；
 `BUILDINFO.json` 记录源码提交、版本、签名证书指纹和构建工具。Source code 压缩包不是安装包。
 
+证书与公开 0.11.1-m10（code 12）一致。API 35 / 16 KiB 模拟器覆盖升级保留了应用 UID、
+合成私有文件/偏好与 Android Keystore 密文。历史证书主题为 Android Debug，沿用以保持
+升级身份；指纹见安装升级指南。
+
 升级需要相同包名与兼容签名。遇到签名冲突请先保留旧应用，**不要直接卸载或清空存储**：
 身份、收藏与加密表单会被删除，目前没有内置身份导出恢复。
 TS3 Mobile UI 等旁装调试包拥有独立数据，不会自动迁移到正式应用。
@@ -46,6 +49,12 @@ TS3 Mobile UI 等旁装调试包拥有独立数据，不会自动迁移到正式
 - 音量门控在安静时仍采集，选“关闭”才停止。暂离不等于关闭麦克风。
 - 锁屏、蓝牙、通知和后台行为受设备与系统策略影响。结束会话用应用/通知的断开操作，
   不要依靠划掉最近任务。
+- 验证包括 551 项 JVM、129 项 App Android、32 项默认音频 Android 测试，48 组 Opus
+  兼容组合，以及确切签名 APK 的身份/编解码/启动探针，均通过。维护者已在小米 14 /
+  Android 16 完成 11 月 3 日 QA 包的功能实测；该包早于新增蓝牙保护。最终包蓝牙及
+  保留真实数据升级的真机复核、第二设备覆盖仍待补齐。Android/HAL 可能在回调前将已缓冲
+  音频切至回退设备，不能保证零瞬时外放；发布依据与缺口见
+  [发布决定](https://github.com/monet4070/ts3-mobile/blob/v1.0.0/docs/decisions/0021-stable-release-acceptance.md)。
 
 设备覆盖、已知边界和验收证据见
 [兼容性说明](https://github.com/monet4070/ts3-mobile/blob/v1.0.0/docs/COMPATIBILITY.md)。

@@ -5,8 +5,9 @@
 
 ## 报告问题
 
-先确认你使用的是哪个 Release，以及它是否包含所需功能；源码文档中的 1.0.0 目标功能
-不会出现在旧 0.11.1-m10 APK 中。安装、签名与升级问题先阅读[安装说明](docs/INSTALLATION.md)。
+先确认你使用的是哪个 Release，以及它是否包含所需功能。当前稳定版为
+[1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)，旧 0.11.1-m10 不包含全部新功能。
+安装、签名与升级问题先阅读[安装说明](docs/INSTALLATION.md)。
 
 在 [GitHub Issues](https://github.com/monet4070/ts3-mobile/issues) 搜索已有问题，
 未找到后使用 Bug report。功能建议使用 Feature request。
@@ -26,8 +27,9 @@
 
 ## English
 
-Check the release version first: the 1.0.0 target features in source docs are not
-in the older 0.11.1-m10 APK. Read [installation](docs/INSTALLATION.md) for upgrade
+Check the release version first: the current stable release is
+[1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0); older 0.11.1-m10
+does not include all its features. Read [installation](docs/INSTALLATION.md) for upgrade
 and certificate problems, then search [existing issues](https://github.com/monet4070/ts3-mobile/issues).
 Use Bug report for defects and Feature request for proposals.
 
