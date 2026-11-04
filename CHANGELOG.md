@@ -1,98 +1,69 @@
 # Changelog
 
-This project follows milestone-style pre-release versioning while core protocol
-and audio behavior is still being validated.
+The first stable release is being prepared as **1.0.0**. It has not been
+published; the latest public release remains 0.11.1-m10. Earlier versions used
+milestone naming. After 1.0.0, patch versions are intended for compatible fixes
+and minor versions for compatible features; Android versionCode increases for
+each distributed update.
 
-## Unreleased
+## Unreleased — 1.0.0 preparation
 
-- Make disconnect-budget tests deterministic with an injected internal monotonic
-  clock, covering time spent before socket submission and an exhausted deadline.
-  Require fresh JVM test execution for acceptance evidence; correct earlier cached
-  summaries. Hide playback recovery guidance after disconnect while retaining
-  diagnostics, and separate microphone feedback from capture orchestration.
+Proposed tag: `v1.0.0`. No release date, final APK hash or signing claim is assigned
+until the [release checklist](docs/release/1.0.0/CHECKLIST.md) is complete.
+[中文 Release 文案](docs/release/1.0.0/RELEASE_NOTES_ZH.md) ·
+[English release copy](docs/release/1.0.0/RELEASE_NOTES.md).
 
-- Complete audio follow-up boundaries: report playback failure in UI/notifications,
-  make playback stop independent of the output lock, preserve failed retirement
-  ownership, clear failure streaks across healthy short speech and release limiting
-  through long idle periods. Retain the microphone foreground type through teardown,
-  avoid restarting RNNoise for volume changes, filter unrelated route events and
-  invalidate cached APM builds when toolchains change.
+### Added
 
-- Repair audio review findings: bound playback output recovery and focus retries,
-  invalidate microphone sending before background teardown, clear capture history
-  on input/output route changes, preserve limiter release through empty ticks,
-  evict oldest outstanding media and recover safely from FEC errors. Add explicit
-  PCM capacity, serialized native lifetimes and runtime Release codec-version checks.
+- Channel and private chat with independent drafts, unread positions, copy,
+  identity-aware targets and explicit send results; no automatic retry.
+- Named encrypted server bookmarks, optional default channel/password storage,
+  per-entry revision guards and explicit disconnect before switching.
+- Channel-member poke shortcut, optional reason, private history, in-app receive
+  notices and generic background notifications without sender/reason content.
+- Away/message and server-visible mute synchronization, local channel/user
+  search, and a project repository menu entry.
+- Microphone input gain, RMS volume gate, RNNoise and device AEC controls.
+- Bilingual user guides, install/upgrade instructions, troubleshooting, support,
+  compatibility matrix and first stable release/signing documentation.
 
-- Implement A4b receive scheduling: expire global input older than 60 ms, share
-  per-speaker 240 ms media leases across queues/PCM, preserve fresh packets on
-  affected-stream resets and adapt startup buffering within 40–120 ms. Add real
-  packet metadata and conditional FEC with synthetic recovery evidence. Unconfirmed
-  TS3 frame duration uses bounded PLC; production sender parameters stay unchanged.
+### Changed
 
-- Upgrade libopus from the 1.3.1 Prefab package to SHA-256-pinned official 1.6.1
-  sources, retaining encoder parameters and one codec per APK. Build four ABIs
-  with codec optimization in Debug/Release and 16 KiB native LOAD alignment.
-  Add old/new cross-codec, stereo downmix, DTX, duration and malformed-packet
-  fixtures plus a real minified APK codec smoke check. Neural features stay off.
+- Warm elevated surfaces in both palettes; clearer connection/session hierarchy,
+  compact navigation, fine poke/away icons and large-text/keyboard layouts.
+- Bookmark cards separate the primary Connect action from management menus;
+  Add remains outside scrolling, and the editor groups optional settings.
+- Poking preserves the current page and conversation with brief result feedback.
+- Build official pinned Opus 1.6.1 for four ABIs; improve receive buffering,
+  bounded queues, mixing/limiting, gain transitions and audio resource lifetimes.
+- Keep chat through ordinary reconnect, clear it on manual/new/terminal sessions
+  and reject stale session/target callbacks.
 
-- Add the A3 opt-in APM development prototype: pinned standalone native builds for
-  four ABIs, accepted-sample render references, monotonic delay estimates and bounded
-  DSP consumption/fallback. Add synthetic echo, double-talk, noise and lifecycle
-  checks. Default packages exclude the APM library; live capture integration and
-  physical-route acceptance remain pending.
+### Fixed
 
-- Start audio-quality phases A0/A1: freeze baseline fingerprints, extract Android
-  playback output and a deterministic timeline, preserve short-gap continuity and
-  drain accepted tails before releasing focus. Bound partial/zero writes and PLC
-  duration; count FIFO overflow instead of truncating newly decoded blocks.
-  Forced mute, focus loss, route changes and stop discard old output immediately.
-  Physical-route and acoustic acceptance remain pending.
-- Implement audio phase A2: float manual/participant gain with 20 ms ramps and
-  immediate mute, fixed-unity mixing and a -1 dBFS peak limiter. Keep gate levels
-  before limiting and discard old onset/partial audio on settings revisions.
-  Limiting adds no PCM delay; parameters remain pending physical-device acceptance.
+- Automatically select available Bluetooth communication headsets. Mute listening
+  on device removal, Bluetooth fallback or failed route restoration; reconnecting
+  selects the headset without clearing the safety mute. Resume listening manually.
+- Accept incoming pokes that omit the optional reason; add background alerts
+  and cleanup/deduplication across visibility and session boundaries.
+- Restore chat availability after channel restoration; prevent old channel work
+  from replacing a new connection's restore settings.
+- Refresh permission-derived microphone mute and avoid duplicate roster keys
+  when several clients use the same identity.
+- Bound audio recovery/focus retries, preserve microphone teardown ownership,
+  invalidate old route/capture data and improve playback failure feedback.
 
-- Fix channel-restore completion leaving chat disabled, and bind manual/restore
-  channel commands and their results to the originating session so old work cannot
-  replace a new connection's default channel or password.
-- Refresh server-visible microphone mute after Android permission changes without
-  starting idle push-to-talk capture; clear resolved permission errors.
-- Keep user-list rows distinct when several clients share a TeamSpeak identity,
-  avoiding duplicate-key crashes while retaining ambiguous-private-target guards.
+### Removed and limits
 
-- Add named encrypted bookmarks with revision checks, optional saved passwords,
-  default channel ID, fill/quick connect and explicit disconnect before switching.
-- Add away/message and server-visible input/output mute synchronization with
-  pending/confirmed/uncertain outcomes, reconnect application and stale-result guards.
-- Add bounded on-demand plain-text channel information and local channel/user search,
-  including identity-checked user-channel resolution and password-protected joins.
-- Restrict the current requested feature scope to bookmarks, presence and discovery;
-  identity transfer, friends, moderation, quality dashboards and file transfer are excluded.
+- Remove channel-detail entry points; expansion, joining and search remain.
+- Default packages exclude the optional APM experiment. Identity export,
+  Whisper, file transfer, administration and multi-server tabs remain absent.
+- Current validation and open live/device/signing acceptance are recorded in
+  [compatibility](docs/COMPATIBILITY.md); development test counts are not a final
+  signed-APK acceptance statement.
 
-- Add microphone input volume (0–200%), RNNoise and device AEC controls with actual
-  effect status, plus an RMS volume gate with adjustable dBFS threshold, bounded
-  onset/tail, separate listening/sending states and silent-capture foreground type.
-  Parameters stay in service memory; acoustic/device-route acceptance remains open.
-
-- Add TeamSpeak poke through user actions with an optional bounded reason,
-  identity/attempt checks, explicit send outcomes, private history and an in-app
-  receive dialog. Poke and text share the pending-send and retention budgets;
-  no automatic retry, sound, vibration or new permission. Live poke remains unverified.
-- Add development current-channel text chat with bounded service memory, unread
-  positions, long-press copy and explicit server-accepted/rejected/unknown states.
-- Add private text through user actions and a conversation picker, independent
-  drafts/unread/scroll positions, identity-aware targets and confirmed close.
-  Up to 20 conversations share the existing message budget; offline or ambiguous
-  targets pause sending, and missing-UID conversations end with their attempt.
-- Preserve chat and drafts through ordinary reconnect, reject old attempt callbacks,
-  and clear text on new manual sessions, terminal failure and exit; never auto-resend.
-- Preserve text whitespace through the pinned encoder; bound command waiting without
-  blocking disconnect or moving commands to replacement sockets.
-- Add bilingual keyboard-aware chat UI and compact voice controls, plus offline
-  protocol, state/controller and Compose regressions. Channel text passed real-server
-  roundtrip on the Android 16 Debug package; private and Release text roundtrip
-  remain unverified. The published 0.11.1-m10 package is unchanged.
+Detailed pre-1.0 implementation notes are preserved in the
+[development archive](docs/release/DEVELOPMENT_NOTES_PRE_1_0.md).
 
 ## 0.11.1-m10 — 2026-10-18
 

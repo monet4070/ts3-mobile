@@ -1,5 +1,9 @@
 package io.github.ts3mobile.protocol
 
+import com.github.manevolent.ts3j.command.SingleCommand
+import com.github.manevolent.ts3j.event.ClientPokeEvent
+import com.github.manevolent.ts3j.event.TS3Event
+import com.github.manevolent.ts3j.protocol.ProtocolRole
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -24,12 +28,26 @@ class PokeMessageTest {
         assertFalse(event.toString().contains("中文"))
     }
 
-    @Test fun emptyReasonIsValidButMissingBodyAndInvalidIdentityRemainExplicit() {
+    @Test fun emptyAndOmittedReasonsAreValidWhileInvalidIdentityRemainsExplicit() {
         assertEquals(TextEventIssue.NONE, mapOf("msg" to "").toPokeEvent().issue)
         val absent = mapOf("invokerid" to "0", "invokeruid" to "u".repeat(257)).toPokeEvent()
-        assertEquals(TextEventIssue.MISSING_BODY, absent.issue)
+        assertEquals(TextEventIssue.NONE, absent.issue)
         assertNull(absent.invokerId)
         assertNull(absent.invokerUid)
+    }
+
+    @Test fun realNotifyCommandWithoutReasonReachesThePokeMapper() {
+        val command =
+            SingleCommand.parse(
+                ProtocolRole.SERVER,
+                "notifyclientpoke invokerid=8 invokeruid=fixture-uid invokername=Fixture",
+            )
+        val event = TS3Event.createEvent(command) as ClientPokeEvent
+        val mapped = event.map.toPokeEvent()
+        assertEquals(8, mapped.invokerId)
+        assertEquals("fixture-uid", mapped.invokerUid)
+        assertEquals("", mapped.body)
+        assertEquals(TextEventIssue.NONE, mapped.issue)
     }
 
     @Test fun enormousReasonIsBoundedOnACodePointBoundary() {

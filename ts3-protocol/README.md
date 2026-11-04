@@ -66,7 +66,10 @@ it does not establish server release, and ACKs do not establish it either.
 
 ## Fixed ts3j blocking points
 
-The pinned artifact is `com.github.Manevolent:ts3j:db57d60c989e399626aa16d921390f5033e6cdeb`.
+The maintained artifact is `com.github.monet4070:ts3j:ts3mobile-1`, built from the
+unchanged upstream revision `db57d60c989e399626aa16d921390f5033e6cdeb` in
+[monet4070/ts3j](https://github.com/monet4070/ts3j). The tag is immutable; dependency
+updates require a new tag and reviewed lockfile changes (ADR-0004).
 The findings below come from the cached jar (`javap -p -c` on
 `LocalTeamspeakClientSocket`, `AbstractTeamspeakClientSocket`, `PacketResponse`,
 `PacketBodyType`) and the matching upstream source.

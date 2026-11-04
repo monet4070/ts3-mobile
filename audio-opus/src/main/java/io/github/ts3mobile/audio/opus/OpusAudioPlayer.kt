@@ -18,17 +18,23 @@ class OpusAudioPlayer internal constructor(
     private val onRouteChanged: () -> Unit = {},
     private val onStatusChanged: (PlaybackStatus) -> Unit = {},
     private val outputFactory: (() -> PlaybackOutput)? = null,
+    private val onUnsafeRoute: () -> Unit = {},
 ) : AutoCloseable {
     constructor(context: Context) : this(context, null)
     constructor(context: Context, onRouteChanged: () -> Unit) : this(context, null, onRouteChanged)
     constructor(context: Context, onRouteChanged: () -> Unit, onStatusChanged: (PlaybackStatus) -> Unit) :
         this(context, null, onRouteChanged, onStatusChanged)
+    constructor(context: Context, onRouteChanged: () -> Unit, onStatusChanged: (PlaybackStatus) -> Unit, onUnsafeRoute: () -> Unit) :
+        this(context, null, onRouteChanged, onStatusChanged, onUnsafeRoute = onUnsafeRoute)
 
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val inputQueue = VoiceReceiveQueue()
     private val discontinuityClients = ConcurrentHashMap.newKeySet<Int>()
     private val participantGains = ConcurrentHashMap<Int, Float>()
     private val userMuted = AtomicBoolean(false)
+    private val routeGuard = BluetoothPlaybackGuard()
+
+    @Volatile private var routeSwitching = false
     private val lifecycleLock = Any()
     private val admissionRevision = AtomicLong()
 
@@ -64,12 +70,12 @@ class OpusAudioPlayer internal constructor(
     fun submit(frame: VoiceFrame) {
         val expectedControl = control ?: return
         val revision = admissionRevision.get()
-        if (!expectedControl.running.get() || userMuted.get()) return
+        if (!expectedControl.running.get() || userMuted.get() || routeSwitching) return
         val queued = inputQueue.prepare(QueuedFrame(frame, System.nanoTime())) ?: return
         synchronized(lifecycleLock) {
             val active = control ?: return
             if (active !== expectedControl || admissionRevision.get() != revision) return
-            if (!active.running.get() || userMuted.get() || status == PlaybackStatus.FAILED) return
+            if (!active.running.get() || userMuted.get() || routeSwitching || status == PlaybackStatus.FAILED) return
             if ((participantGains[frame.clientId] ?: 1f) <= 0f) return
             inputQueue.offer(queued, System.nanoTime())
         }
@@ -78,8 +84,10 @@ class OpusAudioPlayer internal constructor(
     fun setMuted(muted: Boolean) {
         synchronized(lifecycleLock) {
             userMuted.set(muted)
+            if (!muted) routeGuard.acknowledgeSafetyMute()
             admissionRevision.incrementAndGet()
             control?.let { active ->
+                active.session.output?.muteImmediately()
                 active.invalidate()
             }
         }
@@ -110,13 +118,28 @@ class OpusAudioPlayer internal constructor(
     fun setPreferredDevice(
         device: AudioDeviceInfo?,
         routeId: Int,
+    ) = updateRouting(AudioRoutingState(selectedRouteId = routeId), device)
+
+    fun updateRouting(
+        routing: AudioRoutingState,
+        device: AudioDeviceInfo?,
     ) {
         synchronized(lifecycleLock) {
-            if (preferredDevice?.id == device?.id && selectedRouteId == routeId) return
+            val requireBluetooth =
+                routing.selectedRoute.kind == AudioRouteKind.BLUETOOTH ||
+                    device?.let { AudioRouteDevices.routeKindForDeviceType(it.type) } == AudioRouteKind.BLUETOOTH
+            val guardChanged = routeGuard.select(routing.selectedRouteId, requireBluetooth)
+            if (preferredDevice?.id == device?.id && selectedRouteId == routing.selectedRouteId &&
+                !guardChanged && routeSwitching == routing.switching
+            ) {
+                return
+            }
             preferredDevice = device
-            selectedRouteId = routeId
+            selectedRouteId = routing.selectedRouteId
+            routeSwitching = routing.switching
             admissionRevision.incrementAndGet()
             control?.let { active ->
+                active.session.output?.muteImmediately()
                 active.invalidate()
             }
         }
@@ -162,6 +185,18 @@ class OpusAudioPlayer internal constructor(
         if (changed) onRouteChanged()
     }
 
+    private fun onUnsafeOutputRoute(output: AndroidPlaybackOutput) {
+        synchronized(lifecycleLock) {
+            val active = control ?: return
+            if (active.session.output !== output || !active.running.get() || userMuted.get()) return
+            userMuted.set(true)
+            output.muteImmediately()
+            admissionRevision.incrementAndGet()
+            active.invalidate()
+        }
+        onUnsafeRoute()
+    }
+
     private fun playbackLoop(active: PlaybackControl) {
         val pacer = PlaybackPacer()
         var failed = false
@@ -176,7 +211,7 @@ class OpusAudioPlayer internal constructor(
                     appliedRevision = revision
                 }
                 active.writingRevision = revision
-                if (active.running.get() && !userMuted.get()) active.session.tick(System.nanoTime())
+                if (active.running.get() && !userMuted.get() && !routeSwitching) active.session.tick(System.nanoTime())
                 pacer.completed(System.nanoTime())
             }
         } catch (_: InterruptedException) {
@@ -227,12 +262,15 @@ class OpusAudioPlayer internal constructor(
             PlaybackSession(
                 inputQueue,
                 PlaybackStreams(inputQueue, discontinuityClients, participantGains),
-                { outputFactory?.invoke() ?: AndroidPlaybackOutput(preferredDevice, ::onOutputRouteChanged) },
+                {
+                    outputFactory?.invoke()
+                        ?: AndroidPlaybackOutput(preferredDevice, ::onOutputRouteChanged, routeGuard, ::onUnsafeOutputRoute)
+                },
                 { audioManager.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED },
                 { audioManager.abandonAudioFocusRequest(focusRequest) },
                 reference,
                 { publishStatus(it) },
-                { running.get() && !userMuted.get() && revision.get() == writingRevision },
+                { running.get() && !userMuted.get() && !routeSwitching && revision.get() == writingRevision },
             )
     }
 

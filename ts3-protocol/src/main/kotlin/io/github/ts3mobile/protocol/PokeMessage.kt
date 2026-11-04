@@ -21,8 +21,7 @@ internal fun Map<String, String>.toPokeEvent(): Ts3PokeEvent {
         get("invokername")?.boundedText(256),
         body,
         when {
-            raw == null -> TextEventIssue.MISSING_BODY
-            body.length != raw.length -> TextEventIssue.TRUNCATED
+            raw != null && body.length != raw.length -> TextEventIssue.TRUNCATED
             else -> TextEventIssue.NONE
         },
     )

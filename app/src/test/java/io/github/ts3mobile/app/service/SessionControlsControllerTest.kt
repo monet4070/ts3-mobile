@@ -1,7 +1,5 @@
 package io.github.ts3mobile.app.service
 
-import io.github.ts3mobile.protocol.ChannelDetails
-import io.github.ts3mobile.protocol.ChannelInfoResult
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ControlOutcome
@@ -75,33 +73,6 @@ class SessionControlsControllerTest {
             controller.close()
         }
 
-    @Test fun rejectsLateInfoAfterCloseOrReplacementConnection() =
-        runTest {
-            val state = state()
-            val controller = SessionControlsController(backgroundScope, state)
-            val first = FakeSession()
-            val response = CompletableDeferred<Unit>()
-            first.infoGate = response
-            controller.attach(first)
-            runCurrent()
-            controller.showChannelInfo(1)
-            runCurrent()
-            assertTrue(state.value.channelInfo!!.loading)
-            controller.dismissChannelInfo()
-            response.complete(Unit)
-            runCurrent()
-            assertNull(state.value.channelInfo)
-            val next = CompletableDeferred<Unit>()
-            first.infoGate = next
-            controller.showChannelInfo(1)
-            runCurrent()
-            controller.attach(FakeSession())
-            next.complete(Unit)
-            runCurrent()
-            assertNull(state.value.channelInfo)
-            controller.close()
-        }
-
     @Test fun unknownPresenceIsVisibleAndOnlyExplicitRetryResubmits() =
         runTest {
             val state = state()
@@ -164,7 +135,6 @@ class SessionControlsControllerTest {
     private class FakeSession : Ts3SessionClient {
         val presences = mutableListOf<OwnPresence>()
         var result = ControlOutcome(ControlStatus.ACCEPTED)
-        var infoGate: CompletableDeferred<Unit>? = null
         var presenceGate: CompletableDeferred<Unit>? = null
 
         override suspend fun updatePresence(
@@ -175,15 +145,6 @@ class SessionControlsControllerTest {
             presences += presence
             presenceGate?.let { withContext(NonCancellable) { it.await() } }
             return result
-        }
-
-        override suspend fun channelInfo(
-            channelId: Int,
-            timeoutMs: Long,
-            canSubmit: () -> Boolean,
-        ): ChannelInfoResult {
-            infoGate?.await()
-            return ChannelInfoResult(result, ChannelDetails(channelId, "Fixture", "topic", "description", 10, false))
         }
 
         override fun connect(

@@ -92,7 +92,14 @@ classifies framework callbacks into gain, interruption and ignore signals;
 interruptions clear queued voice and mute output without changing the user's
 microphone mode. `AudioDeviceRouter` owns communication-device selection, while
 playback and capture receive legacy preferred-device hints only on Android
-versions before the communication-device API.
+versions before the communication-device API. `AudioRoutePlatform` isolates Android calls from
+the JVM-tested router: startup/new Bluetooth routes are selected automatically; device removal,
+route loss, switch refusal and timeout latch a safety mute before fallback. `BluetoothRouteMonitor`
+observes communication-device changes and legacy SCO/noisy broadcasts. `BluetoothPlaybackGuard`
+checks actual `AudioTrack` routes across output lifetimes; waiting routes discard stale voice and
+unexpected fallback silences output. Service state publishes the safety mute through the existing
+listening control. Only a manual unmute clears it; reconnecting a headset cannot resume playback.
+See [ADR 0020](docs/decisions/0020-bluetooth-playback-protection.md) for boundaries and verification.
 
 `ChannelRestorePolicy` keeps the last channel target, including its password,
 outside the session callback implementation. A reconnect snapshot cannot replace
@@ -115,6 +122,42 @@ imported history store's endpoints and forwards selection/removal callbacks.
 The background dialog and deferred microphone state use the remote application
 ports. Service state and callbacks remain the
 single source of connection and audio behavior. See ADR 0010.
+
+The November layout refinement keeps bookmarks beside the connection form
+heading and groups the overflow menu by session actions and audio/tools.
+`SessionAudioActions` owns route selection, search/presence shortcuts and
+playback mute; shortcuts release PTT before opening their existing dialogs.
+Session tabs use one row with a separate, localized unread badge and scroll
+the selected tab into view when space is limited. Microphone mode selection
+uses the component's measured width, switching to a menu for narrow layouts
+or larger text. See [device and regression evidence](docs/testing/UI_LAYOUT_2026-11-02.md).
+
+The follow-up completes Material 3's elevated surface and inverse-color roles,
+which are independent of the base `surface` color. Menus and dialogs therefore
+inherit warm colors without per-popup overrides. `ChannelParticipantRow` now
+owns the compact roster row and its icon-only poke shortcut; `ConnectedContent`
+shares captured-recipient creation across channel and Users entry points. The
+existing dialog and application layer still validate session/identity and own
+sending. Connection and app-bar headings omit promotional subtitles and the
+duplicate introduction icon. See [feedback refinement checks](docs/testing/UI_REFINEMENT_2026-11-02.md).
+
+Poke member actions now render an original outline SVG through the matching
+Android vector. Submission preserves both the selected tab and conversation;
+`PokeFeedbackEffect` reports completed outcomes through a brief snackbar.
+`PokeMessage` accepts omitted optional reasons, while sender/session validation
+remains at the existing boundaries. `PokeAlertObserver` observes chat state and
+app visibility, deduplicating generic background notifications via
+`PokeNotifications`. Foreground notices remain in-app; notification content and
+intents contain no participant/server/message details. Channel-detail UI and
+app plumbing are removed; the protocol's optional read-only port remains for
+compatibility. See [verification](docs/testing/POKE_UX_2026-11-02.md).
+
+`AwayStatusButton` renders the original coffee/clock vector and confirmed-away
+emphasis, exposing pending/unconfirmed states through accessibility semantics.
+It opens the existing presence editor without changing synchronization rules.
+The overflow support action delegates through `MainActivity` to `ProjectLinks`,
+which owns the verified public repository URL and Android HTTPS intent/error
+handling. No session data enters that intent. See [checks](docs/testing/AWAY_SUPPORT_2026-11-02.md).
 
 ## Task removal and bounded exit
 
@@ -262,11 +305,13 @@ complements JVM tests and device connection acceptance; see
 [the issue #3 report](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
 
 The public app API is intentionally small and internal to the Android app. The
-protocol facade pins a ts3j revision. The current release target is a pre-release
-single-server client with successful endpoint history. ADR-0012 through ADR-0015 add
-channel/private text and poke in the development workspace. ADR-0016/0017 add
-volume gate, named bookmarks, presence and channel discovery; file transfer and
-multi-server tabs remain outside this implementation.
+protocol facade pins a ts3j revision. The current single-server feature set is
+being prepared for 1.0.0, including endpoint history, channel/private text, poke,
+volume gate, named bookmarks, presence and channel discovery. File transfer and
+multi-server tabs remain outside this implementation. The
+[release pack](docs/release/README.md) separates documentation readiness from
+version/signing, exact-artifact and device acceptance; the app metadata remains
+0.11.1-m10 until the release cut. See [ADR-0019](docs/decisions/0019-first-stable-release-documentation.md).
 
 ## Channel and private text
 
@@ -488,6 +533,12 @@ new file. Form selection replaces endpoint-dependent fields; default-channel
 parameters stay in memory unless explicitly saved in a bookmark. Initial connect
 seeds the existing ChannelRestoreTracker; plain connections reset that target.
 
+BookmarkDialogs coordinates the list, editor and delete confirmation without
+owning persistence. BookmarkListDialog keeps Add outside its scrollable cards;
+BookmarkCard separates Connect from its secondary-action menu. BookmarkEditor
+groups basic connection fields and expandable optional settings, retaining their
+values when collapsed. Storage, callback and password opt-in contracts are unchanged.
+
 SessionControlsController binds the actual Ts3SessionClient per attempt and
 coalesces desired OwnPresence independently of frame/capture activity. AEC/gate
 listening and idle PTT do not toggle protocol mute. Explicit OFF, missing permission
@@ -495,10 +546,11 @@ or microphone errors publish input mute; playback mute publishes output mute.
 Permission results and foreground entry explicitly refresh the permission signal,
 including idle PTT where capture state may not emit a change. Granting permission
 clears permission errors without starting capture or clearing unrelated audio failures.
-A binding lock and request revisions reject stale completion, closed details and
-replacement sessions. ChannelDetails is fetched on demand with bounded text and
-visible outcomes. Search is pure current-snapshot filtering with up to 50 channels
-and 50 participants; resolving a user's channel requires the current UID mapping.
+A binding lock and request revisions reject stale completion and replacement
+sessions. Channel-details UI and service plumbing have been removed; the public
+read-only protocol port remains for compatibility. Search is pure current-snapshot
+filtering with up to 50 channels and 50 participants; resolving a user's channel
+requires the current UID mapping.
 
 BoundedSessionCommands is extracted from the existing text runner so presence,
 channelinfo, text and poke share one claim/deadline/interrupt/FIFO implementation.

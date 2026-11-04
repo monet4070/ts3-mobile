@@ -38,9 +38,18 @@ internal fun PokeSendDialog(
     val tooLong = reason.toByteArray(Charsets.UTF_8).size > MAX_POKE_INPUT_BYTES
     val targetCurrent = recipient.isCurrent(chat, participants)
     val available = targetCurrent && !chat.sending
+    val duplicateName = participants.count { it.nickname == recipient.nickname } > 1
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.poke_send_title, recipient.nickname, recipient.target.clientId)) },
+        title = {
+            Text(
+                if (duplicateName) {
+                    stringResource(R.string.poke_send_duplicate_title, recipient.nickname, recipient.target.clientId)
+                } else {
+                    stringResource(R.string.poke_send_title, recipient.nickname)
+                },
+            )
+        },
         text = {
             Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
@@ -50,7 +59,12 @@ internal fun PokeSendDialog(
                     modifier = Modifier.testTag("poke_reason"),
                     maxLines = 3,
                     isError = tooLong,
-                    supportingText = { Text(stringResource(R.string.poke_limit, MAX_POKE_INPUT_BYTES)) },
+                    supportingText =
+                        if (tooLong) {
+                            { Text(stringResource(R.string.poke_limit, MAX_POKE_INPUT_BYTES)) }
+                        } else {
+                            null
+                        },
                 )
                 val hint =
                     when {

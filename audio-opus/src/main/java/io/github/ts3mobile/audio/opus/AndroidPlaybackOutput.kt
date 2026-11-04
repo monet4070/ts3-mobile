@@ -12,9 +12,15 @@ import kotlin.math.max
 internal class AndroidPlaybackOutput(
     preferredDevice: AudioDeviceInfo?,
     onRoutingChanged: (AndroidPlaybackOutput) -> Unit,
+    private val routeGuard: BluetoothPlaybackGuard,
+    private val onUnsafeRoute: (AndroidPlaybackOutput) -> Unit,
 ) : PlaybackOutput {
     private val track: AudioTrack
     private val routingListener: AudioRouting.OnRoutingChangedListener
+    private val outputLock = Any()
+    private val routeRevision = routeGuard.revision()
+    private var silenced = false
+    private var closed = false
 
     @Volatile
     private var routedDeviceId: Int? = null
@@ -47,8 +53,10 @@ internal class AndroidPlaybackOutput(
         }
         try {
             setPreferredDevice(preferredDevice)
+            track.setVolume(0f)
             routingListener =
                 AudioRouting.OnRoutingChangedListener { routing ->
+                    checkRoute()
                     val deviceId = routing.routedDevice?.id
                     if (deviceId != null) {
                         val previous = routedDeviceId
@@ -69,17 +77,51 @@ internal class AndroidPlaybackOutput(
 
     override fun start() = track.play()
 
+    override val routeReady: Boolean get() = checkRoute()
+
+    override fun muteImmediately() =
+        synchronized(outputLock) {
+            if (closed) return
+            silenced = true
+            track.setVolume(0f)
+            Unit
+        }
+
     override fun write(
         samples: ShortArray,
         offset: Int,
         count: Int,
-    ): Int = track.write(samples, offset, count, AudioTrack.WRITE_NON_BLOCKING)
-
-    override fun discard() {
-        track.pause()
-        track.flush()
-        routedDeviceId = null
+    ): Int {
+        if (!checkRoute()) return 0
+        return synchronized(outputLock) {
+            if (silenced || closed || routeGuard.revision() != routeRevision) {
+                0
+            } else {
+                track.write(samples, offset, count, AudioTrack.WRITE_NON_BLOCKING)
+            }
+        }
     }
+
+    private fun checkRoute(): Boolean {
+        val decision =
+            synchronized(outputLock) {
+                if (closed || silenced) return false
+                val kind = track.routedDevice?.let { AudioRouteDevices.routeKindForDeviceType(it.type) }
+                routeGuard.evaluate(kind, routeRevision).also { track.setVolume(if (it == PlaybackRouteDecision.ALLOW) 1f else 0f) }
+            }
+        if (decision == PlaybackRouteDecision.MUTE) onUnsafeRoute(this)
+        return decision == PlaybackRouteDecision.ALLOW
+    }
+
+    override fun discard() =
+        synchronized(outputLock) {
+            if (closed) return
+            silenced = true
+            track.setVolume(0f)
+            track.pause()
+            track.flush()
+            routedDeviceId = null
+        }
 
     fun setPreferredDevice(device: AudioDeviceInfo?) {
         if (!track.setPreferredDevice(device)) {
@@ -87,13 +129,18 @@ internal class AndroidPlaybackOutput(
         }
     }
 
-    override fun close() {
-        try {
-            track.removeOnRoutingChangedListener(routingListener)
-        } finally {
-            track.release()
+    override fun close() =
+        synchronized(outputLock) {
+            if (closed) return
+            silenced = true
+            try {
+                track.setVolume(0f)
+                track.removeOnRoutingChangedListener(routingListener)
+            } finally {
+                track.release()
+                closed = true
+            }
         }
-    }
 
     private companion object {
         const val SAMPLE_RATE = 48_000

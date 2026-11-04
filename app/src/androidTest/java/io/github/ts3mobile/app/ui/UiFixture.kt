@@ -21,12 +21,10 @@ import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.chat.ChatStore
 import io.github.ts3mobile.app.discovery.resolveParticipantChannel
 import io.github.ts3mobile.app.history.ServerHistoryEntry
-import io.github.ts3mobile.app.service.ChannelInfoState
 import io.github.ts3mobile.app.service.ParticipantAudioSettings
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import io.github.ts3mobile.app.withSelectedHistoryEntry
-import io.github.ts3mobile.protocol.ChannelDetails
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ControlOutcome
@@ -45,7 +43,6 @@ internal class UiFixture(connected: Boolean = false) {
     val bookmarks = mutableStateOf(BookmarkState(loading = false))
     val bookmarkConnections = mutableListOf<ServerBookmark>()
     val awayRequests = mutableListOf<Pair<Boolean, String>>()
-    val channelInfoRequests = mutableListOf<Int>()
     val chatStore = ChatStore()
     val chat = mutableStateOf(ChatState())
     val sentBodies = mutableListOf<String>()
@@ -96,6 +93,7 @@ internal class UiFixture(connected: Boolean = false) {
     var connects = 0
     var disconnects = 0
     var copies = 0
+    var repositoryOpens = 0
     val joins = mutableListOf<Pair<Int, String>>()
     val transmission = mutableListOf<Boolean>()
 
@@ -104,6 +102,9 @@ internal class UiFixture(connected: Boolean = false) {
         dark: Boolean = false,
         locale: String = "en",
         fontScale: Float = 1f,
+        saveBookmark: (
+            ServerBookmark,
+        ) -> Unit = { bookmarks.value = BookmarkState(BookmarkCodec.save(bookmarks.value.entries, it), loading = false) },
     ) {
         val keyboard = LocalSoftwareKeyboardController.current
         val base = LocalContext.current
@@ -225,7 +226,7 @@ internal class UiFixture(connected: Boolean = false) {
                         pending != null
                     },
                     bookmarks = bookmarks.value,
-                    onBookmarkSave = { bookmarks.value = BookmarkState(BookmarkCodec.save(bookmarks.value.entries, it), loading = false) },
+                    onBookmarkSave = saveBookmark,
                     onBookmarkRemove = {
                         bookmarks.value =
                             BookmarkState(
@@ -255,28 +256,8 @@ internal class UiFixture(connected: Boolean = false) {
                             )
                     },
                     onPresenceRetry = {},
-                    onChannelInfo = { id ->
-                        channelInfoRequests += id
-                        val channel = state.value.snapshot.channels.single { it.id == id }
-                        state.value =
-                            state.value.copy(
-                                channelInfo =
-                                    ChannelInfoState(
-                                        id, false,
-                                        ChannelDetails(
-                                            id,
-                                            channel.name,
-                                            "Fixture topic",
-                                            "[b]Plain description[/b]",
-                                            12,
-                                            false,
-                                        ),
-                                        ControlOutcome(ControlStatus.ACCEPTED),
-                                    ),
-                            )
-                    },
-                    onChannelInfoDismiss = { state.value = state.value.copy(channelInfo = null) },
                     onResolveUserChannel = { id, uid -> resolveParticipantChannel(state.value.snapshot, id, uid) },
+                    onOpenRepository = { repositoryOpens++ },
                     onMicrophoneSettingsChanged = { state.value = state.value.copy(microphoneSettings = it) },
                     onPokeDismiss = {
                         chatStore.dismissPoke(it)

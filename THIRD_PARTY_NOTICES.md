@@ -6,8 +6,15 @@ component remains subject to its own license.
 ## ts3j
 
 - Project: [Manevolent/ts3j](https://github.com/Manevolent/ts3j)
+- Maintainer fork: [monet4070/ts3j](https://github.com/monet4070/ts3j)
+- Release artifact: `com.github.monet4070:ts3j:ts3mobile-1` (JitPack)
 - Pinned revision: `db57d60c989e399626aa16d921390f5033e6cdeb`
 - License: Apache License 2.0
+
+The `ts3mobile-1` tag points to that unchanged upstream commit. Keep this tag
+immutable, track upstream deliberately, and make any behavior or security patch
+a new reviewed revision/tag with updated locks and release validation. The
+maintainer fork does not change the protocol implementation for 1.0.0.
 
 The Apache License 2.0 text is included in this repository as [LICENSE](LICENSE).
 
@@ -51,6 +58,13 @@ The Apache License 2.0 text is included in this repository as [LICENSE](LICENSE)
   `app/src/main/res/drawable/ic_lucide_*`, using 1.75-unit rounded strokes.
 - Visual theme reference: [TailSync](https://github.com/monet4070/TailSync),
   warm Canvas palette; no TailSync artwork is bundled.
+
+## First-party artwork and documentation
+
+The project's original poke, away and add icons are first-party artwork under
+the repository's Apache License 2.0, distinct from the Lucide assets above.
+Documentation screenshots use synthetic UI fixtures; no private server or
+participant content is included. See [image provenance](docs/images/README.md).
 
 ## Android and Kotlin libraries
 

@@ -87,7 +87,7 @@ class PrivateChatPanelTest {
         fixture.receivePrivate("Jamie inbound", 3)
         val sam = fixture.chat.value.conversations.single { it.key == ChatConversationKey.User("fixture-2") }
         rule.setContent { fixture.Render() }
-        rule.onNodeWithText("Chat (2)").performClick()
+        rule.onNodeWithText("Chat").performClick()
         rule.onNodeWithText("channel draft").assertIsDisplayed()
         select(sam.id)
         rule.onNodeWithText("Sam inbound").assertIsDisplayed()
@@ -107,7 +107,7 @@ class PrivateChatPanelTest {
         fixture.chatStore.updateDraft("original draft")
         fixture.refreshChat()
         rule.setContent { fixture.Render() }
-        rule.onNodeWithText("Chat (1)").performClick()
+        rule.onNodeWithText("Chat").performClick()
         rule.onNodeWithTag("chat_send").assertIsEnabled()
         rule.runOnIdle {
             fixture.chatStore.bind(
@@ -182,7 +182,7 @@ class PrivateChatPanelTest {
         fixture.refreshChat()
         val restoration = StateRestorationTester(rule)
         restoration.setContent { fixture.Render() }
-        rule.onNodeWithText("Chat (1)").performClick()
+        rule.onNodeWithText("Chat").performClick()
         restoration.emulateSavedInstanceStateRestore()
         rule.onNodeWithText("private memory").assertIsDisplayed()
         rule.onNodeWithText("private draft memory").assertIsDisplayed()

@@ -17,6 +17,7 @@ enum class AudioRoutingErrorKind {
     SWITCH_FAILED,
     SWITCH_DENIED,
     DEVICE_DISCONNECTED,
+    BLUETOOTH_ROUTE_LOST,
 }
 
 /**
@@ -44,6 +45,8 @@ data class AudioRoutingState(
     val routes: List<AudioRouteOption> = listOf(SystemRoute),
     val selectedRouteId: Int = SYSTEM_AUDIO_ROUTE_ID,
     val error: AudioRoutingError? = null,
+    val safetyMuted: Boolean = false,
+    val switching: Boolean = false,
 ) {
     val selectedRoute: AudioRouteOption
         get() = routes.firstOrNull { it.id == selectedRouteId } ?: SystemRoute

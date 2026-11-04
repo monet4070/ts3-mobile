@@ -55,7 +55,7 @@ class PokeControllerTest {
             controller.bind(binding, client, false, listOf(peer.copy(uniqueIdentifier = "replacement"))) { true }
             runCurrent()
             assertTrue(client.pokes.isEmpty())
-            assertTrue(controller.state.value.messages.last().outcome is TextSendOutcome.NotSent)
+            assertTrue(controller.state.value.conversations.last().messages.last().outcome is TextSendOutcome.NotSent)
         }
 
     @Test fun unknownResultNeverRetriesAndManualClearRejectsOldNoticeAndCompletion() =
@@ -68,10 +68,10 @@ class PokeControllerTest {
             runCurrent()
             advanceTimeBy(101)
             runCurrent()
-            assertEquals(TextSendOutcome.Unknown, controller.state.value.messages.last().outcome)
+            assertEquals(TextSendOutcome.Unknown, controller.state.value.conversations.last().messages.last().outcome)
             client.response.complete(TextSendOutcome.Accepted)
             runCurrent()
-            assertEquals(TextSendOutcome.Unknown, controller.state.value.messages.last().outcome)
+            assertEquals(TextSendOutcome.Unknown, controller.state.value.conversations.last().messages.last().outcome)
             assertEquals(1, client.pokes.size)
             controller.clear()
             controller.receivePoke(1, 1, Ts3PokeEvent(8, "fixture-uid", "Fixture", "old"))

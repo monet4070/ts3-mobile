@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability / 安全漏洞
+    url: https://github.com/monet4070/ts3-mobile/security/advisories/new
+    about: Report sensitive security issues privately. 安全问题请使用私密报告。
+  - name: Documentation and troubleshooting / 使用说明
+    url: https://github.com/monet4070/ts3-mobile/blob/main/SUPPORT.md
+    about: Installation, upgrades, common problems and support guidance.

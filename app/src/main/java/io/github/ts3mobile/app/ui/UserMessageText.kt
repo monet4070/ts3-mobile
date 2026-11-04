@@ -85,6 +85,7 @@ private fun AudioRoutingError.resolve(context: Context): String =
 
         AudioRoutingErrorKind.SWITCH_DENIED -> context.getString(R.string.audio_route_switch_denied)
         AudioRoutingErrorKind.DEVICE_DISCONNECTED -> context.getString(R.string.audio_route_disconnected)
+        AudioRoutingErrorKind.BLUETOOTH_ROUTE_LOST -> context.getString(R.string.audio_route_bluetooth_lost)
     }
 
 private fun AudioRouteKind.labelId(): Int =

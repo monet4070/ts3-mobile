@@ -59,7 +59,8 @@
     <string name="audio_route_unavailable">That audio device is no longer available</string>
     <string name="audio_route_switch_failed">Could not switch audio device: %1$s</string>
     <string name="audio_route_switch_denied">The system refused the switch to that audio device</string>
-    <string name="audio_route_disconnected">The selected audio device disconnected; switched back to automatic</string>
+    <string name="audio_route_disconnected">Audio device disconnected. Listening is muted to prevent speaker playback. Check the route, then unmute manually.</string>
+    <string name="audio_route_bluetooth_lost">Bluetooth audio was interrupted. Listening is muted to prevent speaker playback. Check the route, then unmute manually.</string>
     <string name="action_select_audio_device">Select audio device, currently %1$s</string>
 
     <!-- Connection form -->
@@ -155,10 +156,7 @@
     <string name="diagnostics_none" translatable="false">NONE</string>
 
     <!-- TailSync default presentation -->
-    <string name="app_tagline">VOICE, CONNECTED</string>
-    <string name="connect_subtitle">Your people. Your server. One connection away.</string>
     <string name="section_server_details">SERVER DETAILS</string>
-    <string name="connect_privacy_note">Direct to your server. Your identity stays on this device.</string>
     <string name="channel_gesture_hint">Tap to expand · Double-tap to join</string>
     <string name="microphone_label">Microphone</string>
 
@@ -212,6 +210,10 @@
     <string name="chat_empty">Messages stay in memory for this session. Long-press to copy.</string>
     <string name="chat_recovering_lists">Session recovering · channel and user controls paused</string>
     <string name="chat_stop_microphone">Stop microphone</string>
+    <plurals name="chat_unread_messages">
+        <item quantity="one">%1$d unread message</item>
+        <item quantity="other">%1$d unread messages</item>
+    </plurals>
     <plurals name="chat_new_messages">
         <item quantity="one">%1$d new message · jump to latest</item>
         <item quantity="other">%1$d new messages · jump to latest</item>
@@ -225,16 +227,23 @@
     <string name="chat_conversation_limit">Conversation limit reached (20). Close a private chat to make room.</string>
     <string name="chat_private_client_title">Private · %1$s (#%2$d)</string>
     <string name="poke_action">Poke</string>
-    <string name="poke_send_title">Poke %1$s (#%2$d)</string>
+    <string name="poke_participant">Poke %1$s</string>
+    <string name="poke_send_title">Poke %1$s</string>
+    <string name="poke_send_duplicate_title">Poke %1$s (#%2$d)</string>
     <string name="poke_reason">Message (optional)</string>
     <string name="poke_limit">Up to %1$d UTF-8 bytes; message optional</string>
-    <string name="poke_unavailable">User offline or identity changed. Reopen their user menu.</string>
+    <string name="poke_unavailable">User offline or identity changed. Select the member again.</string>
     <string name="poke_not_sent">Poke was not sent. Check the connection and try again.</string>
     <string name="poke_received_title">%1$s poked you</string>
     <string name="poke_empty_reason">No message attached.</string>
     <string name="poke_outgoing">Poke</string>
     <string name="poke_incoming">Poked you</string>
     <string name="poke_unsupported">Poke is not supported by this connection</string>
+    <string name="poke_sent">Poke sent</string>
+    <string name="poke_result_unknown">Poke result unconfirmed</string>
+    <string name="poke_rejected">Poke was refused</string>
+    <string name="poke_notification_channel">Poke alerts</string>
+    <string name="poke_notification_received">Someone poked you</string>
     <string name="microphone_settings">Microphone settings</string>
     <string name="microphone_settings_lifetime">Changes apply immediately and stay until the voice service stops. Opening settings does not start recording.</string>
     <string name="microphone_input_volume">Microphone input volume</string>
@@ -255,14 +264,20 @@
     <string name="microphone_state_listening">Listening · below gate threshold</string>
     <string name="notification_microphone_listening">Volume gate is listening · microphone active</string>
     <string name="bookmarks_title">Server bookmarks</string>
-    <string name="bookmark_add">Add from current form</string>
+    <string name="bookmark_add">Add bookmark</string>
+    <string name="bookmark_count">Saved: %1$d</string>
+    <string name="bookmark_options">Options for %1$s</string>
+    <string name="bookmark_connect_to">Connect to %1$s</string>
+    <string name="bookmark_limit">Bookmark limit: %1$d</string>
+    <string name="bookmark_connection_section">Connection</string>
+    <string name="bookmark_more_settings">More settings</string>
     <string name="bookmark_name">Bookmark name</string>
     <string name="bookmark_default_channel">Default channel ID (optional)</string>
-    <string name="bookmark_remember_passwords">Remember server and channel passwords</string>
+    <string name="bookmark_remember_passwords">Save passwords</string>
     <string name="bookmark_channel_password">Default channel password</string>
-    <string name="bookmark_password_hint">Passwords are saved only when selected, in encrypted bookmark storage. Separate connection form memory is unchanged.</string>
+    <string name="bookmark_password_hint">Passwords are encrypted on this device.</string>
     <string name="bookmark_fill">Fill form</string>
-    <string name="bookmark_connect">Quick connect</string>
+    <string name="bookmark_connect">Connect</string>
     <string name="bookmark_edit">Edit</string>
     <string name="bookmark_delete">Delete</string>
     <string name="bookmark_save">Save</string>
@@ -271,8 +286,8 @@
     <string name="bookmark_delete_hint">Delete “%1$s” and its saved passwords? History, form memory and identity are kept.</string>
     <string name="bookmark_disconnect_first">Disconnect from the current server before connecting to another bookmark.</string>
     <string name="bookmark_loading">Loading bookmarks…</string>
-    <string name="bookmark_empty">No bookmarks yet. Fill the connection form or select a recent server, then add a bookmark.</string>
-    <string name="bookmark_failed">Could not read or save bookmarks. Changes may be stale, the list may be full, or encrypted storage may be unavailable. Your saved file was kept.</string>
+    <string name="bookmark_empty">No saved servers yet</string>
+    <string name="bookmark_failed">Bookmark operation failed. Saved bookmarks were kept. Please try again.</string>
     <string name="bookmark_reload">Reload bookmarks</string>
     <string name="presence_title">Away and status</string>
     <string name="presence_away">Away</string>
@@ -282,6 +297,10 @@
     <string name="presence_synced">Server accepted the current status.</string>
     <string name="presence_unconfirmed">Current status is not confirmed by the server.</string>
     <string name="presence_apply">Apply status</string>
+    <string name="presence_state_available">Available</string>
+    <string name="presence_state_away">Away</string>
+    <string name="support_star">Give the project a Star</string>
+    <string name="repository_open_failed">Could not open the repository link</string>
     <string name="action_retry_control">Retry</string>
     <string name="participant_away_name">%1$s · Away</string>
     <string name="discovery_title">Find channels and users</string>
@@ -291,18 +310,6 @@
     <string name="discovery_join_user">Join this user’s channel</string>
     <string name="discovery_empty">No matching channels or users</string>
     <string name="discovery_limit">Searches the current server snapshot; shows up to 50 channels and 50 users.</string>
-    <string name="channel_info">Channel information</string>
-    <string name="channel_info_for">Information for %1$s</string>
     <string name="channel_unknown">Channel unavailable</string>
-    <string name="channel_id_value">Channel ID: %1$d</string>
-    <string name="channel_population">Current users: %1$d</string>
-    <string name="channel_topic_label">Topic</string>
-    <string name="channel_description_label">Description</string>
-    <string name="channel_limit_label">User limit</string>
-    <string name="channel_unlimited">Unlimited</string>
-    <string name="channel_info_unknown">Not provided</string>
-    <string name="channel_info_unavailable">This channel is no longer available.</string>
-    <string name="channel_info_loading">Loading channel details…</string>
-    <string name="channel_info_failed">Channel details could not be confirmed. The server may deny access or the request may have timed out.</string>
     <string name="bookmark_open">Choose a saved server</string>
 </resources>

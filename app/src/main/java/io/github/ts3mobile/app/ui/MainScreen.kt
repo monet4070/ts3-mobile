@@ -10,12 +10,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -85,10 +88,11 @@ fun MainScreen(
     onBookmarkReload: () -> Unit = {},
     onAwayChanged: (Boolean, String) -> Unit = { _, _ -> },
     onPresenceRetry: () -> Unit = {},
-    onChannelInfo: (Int) -> Unit = {},
-    onChannelInfoDismiss: () -> Unit = {},
     onResolveUserChannel: (Int, String) -> Int? = { _, _ -> null },
+    onOpenRepository: () -> Unit = {},
 ) {
+    val snackbar = remember { SnackbarHostState() }
+    PokeFeedbackEffect(chatState, snackbar)
     chatState.pokeNotice?.let { PokeNoticeDialog(it, onPokeDismiss) { onPushToTalkChanged(false) } }
     var showPresence by rememberSaveable { mutableStateOf(false) }
     var showSearch by rememberSaveable { mutableStateOf(false) }
@@ -112,18 +116,10 @@ fun MainScreen(
     }
     if (showPresence) PresenceDialog(serviceState, onAwayChanged, onPresenceRetry) { showPresence = false }
     if (showSearch) {
-        SessionSearchDialog(serviceState, onChannelInfo, joinFound, { participant ->
+        SessionSearchDialog(serviceState, joinFound, { participant ->
             val channelId = onResolveUserChannel(participant.id, participant.uniqueIdentifier)
             serviceState.snapshot.channels.firstOrNull { it.id == channelId }?.let(joinFound)
         }) { showSearch = false }
-    }
-    if (serviceState.channelInfo != null && serviceState.status.phase == ConnectionPhase.CONNECTED) {
-        ChannelInfoDialog(
-            serviceState,
-            onChannelInfo,
-            joinFound,
-            onChannelInfoDismiss,
-        )
     }
     var showBookmarks by rememberSaveable { mutableStateOf(false) }
     if (showBookmarks) {
@@ -168,6 +164,7 @@ fun MainScreen(
     var chatSelected by androidx.compose.runtime.remember { mutableStateOf(false) }
     val chatKeyboard = chatSelected && WindowInsets.ime.getBottom(LocalDensity.current) > 0
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             if (!chatKeyboard) {
                 MainScreenAppBar(
@@ -177,19 +174,22 @@ fun MainScreen(
                     listOf(
                         MainMenuAction(
                             R.string.presence_title,
+                            UiIcon.Away,
                             serviceState.status.phase == ConnectionPhase.CONNECTED,
                         ) { showPresence = true },
                         MainMenuAction(
                             R.string.discovery_title,
+                            UiIcon.Search,
                             serviceState.status.phase == ConnectionPhase.CONNECTED,
                         ) { showSearch = true },
-                        MainMenuAction(R.string.bookmarks_title) { showBookmarks = true },
-                        MainMenuAction(R.string.microphone_settings) { showMicrophoneSettings = true },
-                        MainMenuAction(R.string.background_runtime_title) {
+                        MainMenuAction(R.string.bookmarks_title, UiIcon.Bookmark) { showBookmarks = true },
+                        MainMenuAction(R.string.microphone_settings, UiIcon.Mic, startsGroup = true) { showMicrophoneSettings = true },
+                        MainMenuAction(R.string.background_runtime_title, UiIcon.Battery) {
                             onRefreshBackgroundRuntime()
                             showBackgroundRuntime = true
                         },
-                        MainMenuAction(R.string.tab_diagnostics) { showDiagnostics = true },
+                        MainMenuAction(R.string.tab_diagnostics, UiIcon.Activity) { showDiagnostics = true },
+                        MainMenuAction(R.string.support_star, UiIcon.Star, startsGroup = true, action = onOpenRepository),
                     ),
                 )
             }
@@ -240,7 +240,8 @@ fun MainScreen(
                     onChatConversationClosed = onChatConversationClosed,
                     onChatSelected = { chatSelected = it },
                     onPoke = onPoke,
-                    onChannelInfo = onChannelInfo,
+                    onOpenSearch = { showSearch = true },
+                    onOpenPresence = { showPresence = true },
                 )
             } else {
                 ConnectionForm(

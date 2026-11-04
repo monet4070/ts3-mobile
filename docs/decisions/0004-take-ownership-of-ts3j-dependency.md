@@ -1,8 +1,8 @@
 # 0004: Take ownership of the ts3j dependency before a stable release
 
-**Status:** Partially implemented (Step 1 pending; Steps 2–4 done)
+**Status:** Implemented (Steps 1–4 complete; release acceptance recorded separately)
 **Date:** 2026-08-26
-**Last updated:** 2026-10-17
+**Last updated:** 2026-11-04
 
 > **Implementation note (2026-08-26).** Steps 2, 3 and 4 are complete and validated:
 > all three Gradle modules have `dependencyLocking` in `LockMode.STRICT` with committed
@@ -14,6 +14,24 @@
 > `:ts3-protocol:compileKotlin` with a version-constraint conflict. Step 1 (forking ts3j)
 > remains open and requires maintainer action on a repository we control; it is the only
 > remaining blocker for this ADR.
+
+## 2026-11-04 implementation
+
+The maintainer-controlled [monet4070/ts3j](https://github.com/monet4070/ts3j)
+fork now owns immutable tag `ts3mobile-1`, verified at the existing source commit
+`db57d60c989e399626aa16d921390f5033e6cdeb` (tree
+`215ef0a871fd95929ef521f79319515b55e5288e`). JitPack publishes
+`com.github.monet4070:ts3j:ts3mobile-1`; the version catalog and all three module
+lockfiles now consume it. No transitive version changes are included.
+
+The downloaded fork JAR contains the same 215 class files, byte for byte, as the
+previous upstream-pinned JAR; public ABI comparison also matches. The fork's source
+additionally compiled from 179 Java files with Java 8 targets and the existing four
+locked dependencies. See [release preparation](../release/1.0.0/PREPARATION_2026-11-04.md)
+for source/consumer checks. The earlier pending statements below are dated history;
+they do not describe the current Step 1 status. Forking does not remove JitPack's
+service-availability dependency. New protocol/security changes require a new tag,
+reviewed locks, notices and validation, as recorded in THIRD_PARTY_NOTICES.
 
 ## Context
 

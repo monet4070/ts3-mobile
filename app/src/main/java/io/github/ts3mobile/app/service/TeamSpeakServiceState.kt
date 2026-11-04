@@ -18,7 +18,6 @@ data class TeamSpeakServiceState(
     val participantAudioSettings: Map<String, ParticipantAudioSettings> = emptyMap(),
     val microphoneMode: MicrophoneMode = MicrophoneMode.PUSH_TO_TALK,
     val presence: PresenceSyncState = PresenceSyncState(),
-    val channelInfo: ChannelInfoState? = null,
     val isTransmitting: Boolean = false,
     val isCapturing: Boolean = false,
     val microphoneSettings: MicrophoneSettings = MicrophoneSettings(),

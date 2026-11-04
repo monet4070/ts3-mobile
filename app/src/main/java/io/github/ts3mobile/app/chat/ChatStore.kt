@@ -166,7 +166,6 @@ class ChatStore(
             return null
         }
         if (!ensureConversation(key, recipient.nickname)) return null
-        mutable.value = mutable.value.copy(selected = key)
         return appendOutgoing(binding, key, recipient.target, reason, ChatMessageType.POKE)
     }
 

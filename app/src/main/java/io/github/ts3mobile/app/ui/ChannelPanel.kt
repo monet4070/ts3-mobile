@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,7 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,7 +41,7 @@ import io.github.ts3mobile.protocol.Ts3Participant
 internal fun ChannelList(
     state: TeamSpeakServiceState,
     onJoinChannel: (Int, String) -> Unit,
-    onChannelInfo: (Int) -> Unit = {},
+    onPoke: (Ts3Participant) -> Unit = {},
 ) {
     var passwordChannel by remember { mutableStateOf<Ts3Channel?>(null) }
     var expandedChannelIds by rememberSaveable { mutableStateOf(intArrayOf()) }
@@ -84,6 +84,7 @@ internal fun ChannelList(
                     modifier =
                         Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                             .background(
                                 if (isCurrent) {
                                     MaterialTheme.colorScheme.primaryContainer
@@ -121,8 +122,8 @@ internal fun ChannelList(
                             .padding(
                                 start = (8 + row.depth * 20).coerceAtMost(88).dp,
                                 end = 16.dp,
-                                top = 13.dp,
-                                bottom = 13.dp,
+                                top = 6.dp,
+                                bottom = 6.dp,
                             ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -169,9 +170,6 @@ internal fun ChannelList(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    IconButton(onClick = {
-                        onChannelInfo(row.channel.id)
-                    }) { AppIcon(UiIcon.Info, stringResource(R.string.channel_info_for, row.channel.name)) }
                     if (isCurrent) {
                         Spacer(Modifier.width(10.dp))
                         AppIcon(
@@ -194,6 +192,7 @@ internal fun ChannelList(
                             participant = participant,
                             isOwnClient = participant.id == state.snapshot.ownClientId,
                             depth = row.depth,
+                            onPoke = { onPoke(participant) },
                         )
                     }
                 }

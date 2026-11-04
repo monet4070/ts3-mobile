@@ -17,6 +17,33 @@ import java.util.concurrent.atomic.AtomicBoolean
 @RunWith(AndroidJUnit4::class)
 class OpusAudioPlayerFocusTest {
     @Test
+    fun bluetoothSelectionBlocksActualSpeakerUntilAnExplicitRouteChangeAndFreshVoice() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val audioManager = context.getSystemService(AudioManager::class.java)
+        val baseline = activeVoicePlaybackCount(audioManager)
+        val speaker = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).first { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+        val bluetooth = AudioRouteOption(Int.MAX_VALUE, AudioRouteKind.BLUETOOTH)
+        val encoded = NativeOpusEncoder().use { it.encode(ShortArray(OPUS_FRAME_SAMPLES)) }
+        OpusAudioPlayer(context).use { player ->
+            player.updateRouting(AudioRoutingState(routes = listOf(bluetooth), selectedRouteId = bluetooth.id), null)
+            player.start()
+            submitBurst(player, encoded)
+            assertTrue(waitUntil { activeVoicePlaybackCount(audioManager) > baseline })
+            Thread.sleep(EMPTY_OUTPUT_OBSERVATION_MS)
+            assertEquals(PlaybackStatus.BUFFERING, player.status)
+            player.updateRouting(
+                AudioRoutingState(routes = listOf(AudioRouteOption(speaker.id, AudioRouteKind.SPEAKER)), selectedRouteId = speaker.id),
+                null,
+            )
+            assertTrue(waitUntil { activeVoicePlaybackCount(audioManager) <= baseline })
+            Thread.sleep(EMPTY_OUTPUT_OBSERVATION_MS)
+            assertEquals(baseline, activeVoicePlaybackCount(audioManager))
+            submitBurst(player, encoded)
+            assertTrue(waitUntil { player.status == PlaybackStatus.PLAYING })
+        }
+    }
+
+    @Test
     fun mutingDiscardsQueuedSpeechAndUnmutingRequiresFreshFrames() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val audioManager = context.getSystemService(AudioManager::class.java)

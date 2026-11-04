@@ -46,6 +46,15 @@ internal class PlaybackSession(
             return
         }
         try {
+            if (output?.routeReady == false) {
+                streams.reset()
+                input.clear()
+                if (started) {
+                    check(retireOutput()) { "Previous audio output could not be released" }
+                    status = PlaybackStatus.BUFFERING
+                }
+                return
+            }
             idleSince?.let { previous ->
                 val samples = ((now - previous).coerceAtLeast(0).coerceAtMost(1_000_000_000L) * 48_000 / 1_000_000_000L).toInt()
                 streams.advanceSilence(samples)
@@ -68,9 +77,14 @@ internal class PlaybackSession(
                 focusDenials = 0
                 val currentOutput = output ?: createOutput().also { output = it }
                 if (!canWrite()) return
+                currentOutput.start()
+                if (!currentOutput.routeReady || !canWrite()) {
+                    streams.reset()
+                    input.clear()
+                    return
+                }
                 val currentTimeline = PlaybackTimeline(currentOutput, reference, stats, canWrite).also { timeline = it }
                 currentTimeline.start(now)
-                currentOutput.start()
                 started = true
                 idleSince = null
                 status = PlaybackStatus.PLAYING

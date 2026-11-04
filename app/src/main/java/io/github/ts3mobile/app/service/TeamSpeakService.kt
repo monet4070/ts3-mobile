@@ -62,6 +62,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     private lateinit var sessionDiagnostics: SessionDiagnostics
     private lateinit var backgroundRuntime: BackgroundRuntimeController
     private lateinit var notifications: SessionNotifications
+    private lateinit var pokeAlerts: PokeAlertObserver
     private lateinit var networkMonitor: DefaultNetworkMonitor
 
     /** Re-checks request ownership on the main thread before teardown side effects. */
@@ -88,7 +89,10 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 { sessionDiagnostics.record(DiagnosticEventKind.PLAYBACK_FAILED) },
                 ::updateNotification,
             )
-        audioPlayer = OpusAudioPlayer(applicationContext, { microphoneController.invalidateRouting() }, playbackStatus::update)
+        audioPlayer =
+            OpusAudioPlayer(applicationContext, { microphoneController.invalidateRouting() }, playbackStatus::update) {
+                audioRouter.onBluetoothRouteLost()
+            }
         microphoneController =
             MicrophoneController(
                 context = applicationContext,
@@ -133,6 +137,8 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
             )
         backgroundRuntime.start()
         notifications.createChannel()
+        val pokeNotifications = PokeNotifications(applicationContext)
+        pokeAlerts = PokeAlertObserver(serviceScope, chatController.state, pokeNotifications::show, pokeNotifications::clear)
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -183,6 +189,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         sessionDiagnostics.close()
         networkMonitor.close()
         sessionControls.close()
+        pokeAlerts.close()
         microphoneController.closeAfterRelease {
             mainHandler.post {
                 audioRouter.close()
@@ -396,7 +403,11 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     }
 
     private fun onAudioRoutingChanged(routing: AudioRoutingState) {
-        audioPlayer.setPreferredDevice(audioRouter.preferredOutputDevice(), routing.selectedRouteId)
+        if (routing.safetyMuted) {
+            audioPlayer.setMuted(true)
+            mutableState.update { it.copy(playbackMuted = true) }
+        }
+        audioPlayer.updateRouting(routing, audioRouter.preferredOutputDevice())
         val input = audioRouter.preferredInputDevice()
         captureRoutes.update(routing.selectedRouteId, input?.id)?.let { change ->
             if (change.inputChanged) microphoneController.setPreferredDevice(input) else microphoneController.invalidateRouting()
@@ -450,6 +461,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
             get() = this@TeamSpeakService.state
 
         fun setAppVisible(visible: Boolean) {
+            pokeAlerts.setAppVisible(visible)
             if (visible) refreshMicrophonePermission()
             microphoneController.setAppVisible(visible)
             if (visible) backgroundRuntime.refresh()
@@ -465,8 +477,10 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         fun refreshBackgroundRuntime() = backgroundRuntime.refresh()
 
         fun setPlaybackMuted(muted: Boolean) {
-            audioPlayer.setMuted(muted)
-            mutableState.update { it.copy(playbackMuted = muted) }
+            if (!muted) audioRouter.acknowledgeSafetyMute()
+            val effectiveMute = muted || audioRouter.state.safetyMuted
+            audioPlayer.setMuted(effectiveMute)
+            mutableState.update { it.copy(playbackMuted = effectiveMute) }
         }
 
         fun setParticipantMuted(
@@ -507,10 +521,6 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         ) = sessionControls.setAway(away, message)
 
         fun retryPresence() = sessionControls.retryPresence()
-
-        fun showChannelInfo(channelId: Int) = sessionControls.showChannelInfo(channelId)
-
-        fun dismissChannelInfo() = sessionControls.dismissChannelInfo()
 
         fun setMicrophoneSettings(settings: MicrophoneSettings) = microphoneController.setSettings(settings)
 

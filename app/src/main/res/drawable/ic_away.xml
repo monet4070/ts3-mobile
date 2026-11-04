@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original TS3 Mobile icon; source: assets/icons/away.svg. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M3,10 h12 v6 a4,4 0,0 1,-4 4 H7 a4,4 0,0 1,-4 -4 Z M15,11 h2 a3,3 0,0 1,0 6 h-2 M2,23 h16 M6,6 V3 M10,7 V5 M22,5 a4,4 0,1 0,-8 0 a4,4 0,1 0,8 0 M18,3 v2 l1.5,1"
+        android:fillColor="@android:color/transparent" android:strokeColor="#FF000000"
+        android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

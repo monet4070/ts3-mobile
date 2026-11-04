@@ -1,8 +1,13 @@
 # Contributing
 
-Thanks for helping improve TS3 Mobile. This is an experimental client, so
+Thanks for helping improve TS3 Mobile. This is a community-maintained client;
 changes should preserve connection stability, bounded audio latency, and user
 control over microphone transmission.
+
+The first stable release is being prepared as 1.0.0. User documentation starts
+at the [README](README.md); release roles, artifact/signature requirements and
+open acceptance items are in the [release pack](docs/release/README.md).
+Do not mark a release or a device-matrix row passed merely because docs are ready.
 
 ## Before opening a change
 
@@ -65,6 +70,12 @@ Before publishing a branch, run the privacy-safe repository scan:
 ```powershell
 .\tools\check-repository-privacy.ps1
 ```
+
+Documentation-only changes should validate local links/anchors, issue-template
+YAML, examples, whitespace and the privacy scan. Attribute reused application
+test evidence to its dated record; do not present it as a new run. GitHub CI skips
+the paths listed in its documentation-only filters. Publishing uses the exact
+reviewed source commit and final signed APK, as described in the release pack.
 
 Use `.\gradlew.bat ktlintFormat` only for a focused formatting change, then
 review the complete diff before committing it.

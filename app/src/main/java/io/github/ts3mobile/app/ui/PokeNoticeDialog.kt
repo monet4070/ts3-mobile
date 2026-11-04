@@ -27,7 +27,7 @@ internal fun PokeNoticeDialog(
         title = { Text(stringResource(R.string.poke_received_title, notice.sender ?: stringResource(R.string.chat_unknown_sender))) },
         text = {
             Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-                Text(notice.body.ifEmpty { stringResource(R.string.poke_empty_reason) })
+                if (notice.body.isNotEmpty()) Text(notice.body)
                 if (notice.truncated) Text(stringResource(R.string.chat_truncated))
             }
         },

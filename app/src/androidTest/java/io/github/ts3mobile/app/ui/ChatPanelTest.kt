@@ -96,7 +96,7 @@ class ChatPanelTest {
         val fixture = UiFixture(connected = true)
         fixture.receiveText("before recovery")
         rule.setContent { fixture.Render() }
-        rule.onNodeWithText("Chat (1)").performClick()
+        rule.onNodeWithText("Chat").performClick()
         rule.runOnIdle {
             fixture.state.value = fixture.state.value.copy(status = ConnectionStatus(ConnectionPhase.RECONNECTING))
             fixture.chatStore.pause(1, 1)
@@ -118,7 +118,7 @@ class ChatPanelTest {
         val fixture = UiFixture(connected = true)
         repeat(30) { fixture.receiveText("Fixture message $it\nSecond line") }
         rule.setContent { fixture.Render() }
-        rule.onNodeWithText("Chat (30)").performClick()
+        rule.onNodeWithText("Chat").performClick()
         rule.onNodeWithTag("chat_messages").performScrollToIndex(0)
         rule.waitForIdle()
         rule.runOnIdle { fixture.receiveText("latest unread") }
@@ -177,7 +177,7 @@ class ChatPanelTest {
         fixture.refreshChat()
         val restoration = StateRestorationTester(rule)
         restoration.setContent { fixture.Render() }
-        rule.onNodeWithText("Chat (1)").performClick()
+        rule.onNodeWithText("Chat").performClick()
         restoration.emulateSavedInstanceStateRestore()
         rule.onNodeWithTag("chat_draft").assertIsDisplayed()
         rule.onNodeWithText("service-memory-draft").assertIsDisplayed()
@@ -226,7 +226,7 @@ class ChatPanelTest {
         val fixture = UiFixture(connected = true)
         fixture.receiveText("Hello from the current channel")
         rule.setContent { fixture.Render(dark = true) }
-        rule.onNodeWithText("Chat (1)").performClick()
+        rule.onNodeWithText("Chat").performClick()
         rule.onNodeWithText("Disconnect").assertIsDisplayed()
         savePreview("chat-en-dark")
         rule.onNodeWithText("Hello from the current channel").assertIsDisplayed()

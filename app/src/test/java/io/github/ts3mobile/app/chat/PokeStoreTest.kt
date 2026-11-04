@@ -38,7 +38,9 @@ class PokeStoreTest {
         val claim = store.claimPoke(binding, recipient, "")!!
         assertEquals(ChatMessageType.POKE, claim.message.type)
         assertEquals("", claim.message.body)
-        assertEquals("private draft", store.state.value.draft)
+        assertEquals(ChatConversationKey.Channel, store.state.value.selected)
+        assertEquals("channel draft", store.state.value.draft)
+        assertEquals("private draft", store.state.value.conversations.single { it.key == claim.conversation }.draft)
         assertNull(store.claimPoke(binding, recipient, "second"))
         assertNull(store.claimSend(binding))
         assertFalse(store.close(claim.conversation))

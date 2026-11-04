@@ -162,9 +162,8 @@ class MainActivity : ComponentActivity() {
                     onBookmarkReload = viewModel::reloadBookmarks,
                     onAwayChanged = { away, message -> serviceBinder?.setAway(away, message) },
                     onPresenceRetry = { serviceBinder?.retryPresence() },
-                    onChannelInfo = { serviceBinder?.showChannelInfo(it) },
-                    onChannelInfoDismiss = { serviceBinder?.dismissChannelInfo() },
                     onResolveUserChannel = { id, uid -> serviceBinder?.resolveUserChannel(id, uid) },
+                    onOpenRepository = { openProjectRepository(this) },
                 )
             }
         }

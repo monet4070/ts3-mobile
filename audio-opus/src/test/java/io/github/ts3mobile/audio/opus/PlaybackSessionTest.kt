@@ -8,6 +8,39 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackSessionTest {
+    @Test fun pendingBluetoothRouteDropsOldSpeechWithoutExhaustingOutputRecovery() {
+        Fixture().use { fixture ->
+            fixture.routeReady = false
+            fixture.feed(0)
+            fixture.session.tick(60 * MS)
+            val output = fixture.outputs.single()
+            for (millis in 80L..4000L step 20) fixture.feed(millis * MS)
+            assertEquals(0, output.writeCalls)
+            assertEquals(1, fixture.creations)
+            assertEquals(0L, fixture.queue.budget.stats.outputFailures.get())
+            output.routeReady = true
+            fixture.session.tick(4100 * MS)
+            assertEquals(0, output.writeCalls)
+            fixture.feed(4200 * MS)
+            fixture.session.tick(4260 * MS)
+            assertTrue(output.accepted.isNotEmpty())
+        }
+    }
+
+    @Test fun losingAnActiveRouteRetiresBufferedOutputBeforeAnyFurtherWrite() {
+        Fixture().use { fixture ->
+            fixture.feed(0)
+            fixture.session.tick(60 * MS)
+            val output = fixture.outputs.single()
+            val writes = output.writeCalls
+            output.routeReady = false
+            fixture.feed(80 * MS)
+            assertEquals(writes, output.writeCalls)
+            assertTrue(output.closed)
+            assertEquals(PlaybackStatus.BUFFERING, fixture.session.status)
+        }
+    }
+
     @Test fun healthyShortTalkspurtsClearHistoricalFailuresAcrossOutputLifetimes() {
         Fixture().use { fixture ->
             repeat(3) { round ->
@@ -199,6 +232,7 @@ class PlaybackSessionTest {
         var factoryFails = false
         var blockWrites = false
         var mayWrite = true
+        var routeReady = true
         private var sequence = 0
         val session =
             PlaybackSession(
@@ -212,6 +246,7 @@ class PlaybackSessionTest {
                     assertTrue(outputs.all { it.closed })
                     check(!factoryFails) { "Synthetic output creation failure" }
                     FakePlaybackOutput().also {
+                        it.routeReady = routeReady
                         if (blockWrites) it.maxWriteSamples = 0
                         outputs += it
                     }

@@ -43,6 +43,14 @@ internal enum class UiIcon(
     Battery(R.drawable.ic_lucide_battery),
     Trash(R.drawable.ic_lucide_trash_2),
     History(R.drawable.ic_lucide_history),
+    Chat(R.drawable.ic_lucide_message_circle),
+    Search(R.drawable.ic_lucide_search),
+    Bookmark(R.drawable.ic_lucide_bookmark),
+    More(R.drawable.ic_lucide_ellipsis),
+    Add(R.drawable.ic_add),
+    Poke(R.drawable.ic_poke),
+    Away(R.drawable.ic_away),
+    Star(R.drawable.ic_star),
 }
 
 @Composable

@@ -40,7 +40,7 @@ commit. Do not record device names that contain a person's name.
 | Earpiece duplex | 15 minutes | Correct route, stable volume and no speaker leakage |
 | Two simultaneous remote speakers | 10 minutes | Both remain intelligible; mixer does not clip persistently |
 | Network interruption | 10 cycles | Reconnect succeeds or reports a terminal reason; no stale callbacks |
-| Route hot-plug | 10 changes | Wired/Bluetooth removal falls back to system route without a crash |
+| Route hot-plug | 10 changes | Wired/Bluetooth removal mutes listening before fallback; Bluetooth reconnection selects the headset without unmuting (ADR 0020) |
 | Bluetooth duplex | 15 minutes | Capture and playback use the intended communication route |
 | Audio focus interruption | 5 cycles | Playback mutes/recovers and microphone state remains user-controlled |
 | Screen off/background | 30 minutes | Foreground service stays alive and notification disconnect works |

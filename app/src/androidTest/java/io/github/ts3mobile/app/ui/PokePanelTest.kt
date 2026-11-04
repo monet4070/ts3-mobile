@@ -53,7 +53,8 @@ class PokePanelTest {
         rule.onNodeWithTag("poke_confirm").assertIsEnabled()
         rule.onNodeWithTag("poke_reason").performClick().performTextInput(" 中文😀 | \\ ")
         rule.onNodeWithTag("poke_confirm").performClick()
-        rule.onNodeWithText("Server accepted").assertIsDisplayed()
+        rule.onNodeWithText("Poke sent").assertIsDisplayed()
+        rule.onNodeWithContentDescription("More actions for Sam").assertIsDisplayed()
         rule.runOnIdle {
             assertEquals(listOf(TextTarget.Private(2, "fixture-2") to " 中文😀 | \\ "), fixture.sentPokes)
             assertTrue(fixture.sentBodies.isEmpty())
@@ -72,7 +73,7 @@ class PokePanelTest {
         rule.onNodeWithContentDescription("More actions for Sam").performClick()
         rule.onNodeWithText("Poke").performClick()
         rule.onNodeWithTag("poke_confirm").assertIsEnabled().performClick()
-        rule.onNodeWithText("No message attached.").assertIsDisplayed()
+        rule.onNodeWithText("Poke sent").assertIsDisplayed()
         rule.runOnIdle { assertEquals(listOf(TextTarget.Private(2, "fixture-2") to ""), fixture.sentPokes) }
     }
 
@@ -91,7 +92,7 @@ class PokePanelTest {
             fixture.refreshChat()
         }
         rule.onNodeWithTag("poke_confirm").assertIsNotEnabled()
-        rule.onNodeWithText("User offline or identity changed. Reopen their user menu.").assertIsDisplayed()
+        rule.onNodeWithText("User offline or identity changed. Select the member again.").assertIsDisplayed()
         rule.onNodeWithText("keep unsent reason").assertIsDisplayed()
         rule.runOnIdle { assertTrue(fixture.sentPokes.isEmpty()) }
     }
@@ -107,7 +108,7 @@ class PokePanelTest {
         rule.runOnIdle { assertEquals(false, fixture.transmission.last()) }
         rule.onNodeWithText("Close").performClick()
         rule.runOnIdle { assertEquals(1, fixture.chat.value.totalUnread) }
-        rule.onNodeWithText("Chat (1)").performClick()
+        rule.onNodeWithText("Chat").performClick()
         val id = fixture.chat.value.conversations.single { it.key == ChatConversationKey.User("fixture-2") }.id
         rule.onNodeWithTag("chat_conversation_picker").performClick()
         rule.onNodeWithTag("chat_conversation_$id").performClick()
@@ -139,7 +140,7 @@ class PokePanelTest {
         rule.onNodeWithText("戳一下").performClick()
         rule.onNodeWithTag("poke_reason").performClick().performTextInput("提醒一下")
         val layouts = mutableListOf<TextLayoutResult>()
-        rule.onNodeWithText("戳一下 Sam（#2）").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        rule.onNodeWithText("戳一下 Sam").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         assertEquals(1.8f, layouts.single().layoutInput.density.fontScale, 0.01f)
         rule.onNodeWithTag("poke_confirm").assertIsDisplayed()
         rule.onNodeWithText("取消").assertIsDisplayed()

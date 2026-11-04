@@ -25,11 +25,19 @@ internal fun ParticipantChatAction(
             AppIcon(UiIcon.ChevronDown, stringResource(R.string.chat_user_actions, nickname))
         }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.chat_open_private)) }, onClick = {
+            DropdownMenuItem(text = {
+                Text(
+                    stringResource(R.string.chat_open_private),
+                )
+            }, leadingIcon = { AppIcon(UiIcon.Chat, null) }, onClick = {
                 expanded = false
                 onOpen()
             })
-            DropdownMenuItem(text = { Text(stringResource(R.string.poke_action)) }, onClick = {
+            DropdownMenuItem(text = {
+                Text(
+                    stringResource(R.string.poke_action),
+                )
+            }, leadingIcon = { AppIcon(UiIcon.Poke, null) }, onClick = {
                 expanded = false
                 onPoke()
             })

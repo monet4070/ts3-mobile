@@ -42,7 +42,7 @@ class SelectedFeaturesTest {
         fixture.form.value = fixture.form.value.copy(host = "voice.example.com", nickname = "Fixture")
         rule.setContent { fixture.Render() }
         openMenu("Server bookmarks")
-        rule.onNodeWithText("Add from current form").performClick()
+        rule.onNodeWithText("Add bookmark").performClick()
         rule.onNodeWithText("Bookmark name").performTextInput("My fixture")
         rule.onNodeWithText("Save").performClick()
         rule.onNodeWithText("My fixture").performScrollTo().assertIsDisplayed()
@@ -50,7 +50,7 @@ class SelectedFeaturesTest {
             assertEquals(0, fixture.bookmarkConnections.size)
             assertEquals(0, fixture.connects)
         }
-        rule.onNodeWithText("Quick connect").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Connect to My fixture").performScrollTo().performClick()
         rule.runOnIdle { assertEquals("My fixture", fixture.bookmarkConnections.single().name) }
     }
 
@@ -74,13 +74,16 @@ class SelectedFeaturesTest {
         fixture.form.value = fixture.form.value.copy(host = "other.example.com", password = "independent-form-secret")
         rule.setContent { fixture.Render() }
         openMenu("Server bookmarks")
+        rule.onNodeWithContentDescription("Options for Saved fixture").performClick()
         rule.onNodeWithText("Edit").performScrollTo().performClick()
         rule.onNode(isToggleable()).performScrollTo().performClick()
         rule.onNodeWithText("Save").performClick()
         rule.runOnIdle { assertEquals("", fixture.bookmarks.value.entries.single().password) }
+        rule.onNodeWithContentDescription("Options for Saved fixture").performClick()
         rule.onNodeWithText("Delete").performScrollTo().performClick()
         rule.onNodeWithText("Cancel").performClick()
         rule.runOnIdle { assertEquals(1, fixture.bookmarks.value.entries.size) }
+        rule.onNodeWithContentDescription("Options for Saved fixture").performClick()
         rule.onNodeWithText("Delete").performScrollTo().performClick()
         rule.onNodeWithText("Delete").performClick()
         rule.runOnIdle {
@@ -94,7 +97,7 @@ class SelectedFeaturesTest {
         fixture.bookmarks.value = BookmarkState(listOf(ServerBookmark("fixture", 1, "Saved fixture", "voice.example.com")), loading = false)
         rule.setContent { fixture.Render() }
         openMenu("Server bookmarks")
-        rule.onNodeWithText("Quick connect").performScrollTo().assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Connect to Saved fixture").performScrollTo().assertIsNotEnabled()
         rule.onNodeWithText("Disconnect from the current server before connecting to another bookmark.").assertIsDisplayed()
         rule.runOnIdle { assertTrue(fixture.bookmarkConnections.isEmpty()) }
     }
@@ -113,14 +116,13 @@ class SelectedFeaturesTest {
         }
     }
 
-    @Test fun channelInfoShowsTopicDescriptionLimitsAndLiteralMarkup() {
+    @Test fun channelDetailsAreAbsentFromTheRosterAndSearch() {
         val fixture = UiFixture(connected = true)
         rule.setContent { fixture.Render() }
-        rule.onNodeWithContentDescription("Information for Lobby").performClick()
-        rule.onNodeWithText("Fixture topic").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("[b]Plain description[/b]").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("12").performScrollTo().assertIsDisplayed()
-        rule.runOnIdle { assertEquals(listOf(1), fixture.channelInfoRequests) }
+        rule.onNodeWithContentDescription("Information for Lobby").assertDoesNotExist()
+        openMenu("Find channels and users")
+        rule.onNodeWithText("Channel information").assertDoesNotExist()
+        rule.onNodeWithText("Close").assertIsDisplayed()
     }
 
     @Test fun userSearchJoinsTheirChannelAndProtectedSearchResultUsesPasswordDialog() {
@@ -148,16 +150,15 @@ class SelectedFeaturesTest {
         rule.onNodeWithText("频道、主题或昵称").performTextInput("Design")
         rule.onNodeWithText("频道、主题或昵称").performImeAction()
         saveDialog("search-zh-large")
-        rule.onNodeWithText("频道信息").performClick()
-        rule.onNodeWithText("描述").performScrollTo().assertIsDisplayed()
-        saveDialog("channel-info-zh-large")
+        rule.onNodeWithText("频道信息").assertDoesNotExist()
         rule.onNodeWithText("关闭").assertIsDisplayed().performClick()
         rule.onNodeWithContentDescription("更多选项").performClick()
         rule.onNodeWithText("服务器收藏").performScrollTo().performClick()
-        rule.onNodeWithText("从当前表单新增").performClick()
+        rule.onNodeWithText("新增收藏").performClick()
         rule.onNodeWithText("收藏名称").performTextInput("大字体收藏")
+        rule.onNodeWithText("更多设置").performScrollTo().performClick()
         rule.onNodeWithText("默认频道 ID（可选）").performScrollTo().performTextInput("3")
-        rule.onNodeWithText("编辑收藏").assertIsDisplayed()
+        rule.onNodeWithText("新增收藏").assertIsDisplayed()
         rule.onNodeWithText("保存").assertIsDisplayed()
         rule.onNodeWithText("取消").assertIsDisplayed()
         saveDialog("bookmark-editor-zh-large")

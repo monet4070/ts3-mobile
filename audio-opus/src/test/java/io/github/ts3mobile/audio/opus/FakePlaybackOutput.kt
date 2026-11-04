@@ -2,6 +2,7 @@ package io.github.ts3mobile.audio.opus
 
 internal class FakePlaybackOutput : PlaybackOutput {
     override var playbackHead = 0L
+    override var routeReady = true
     var timestamp: AudioSampleClock? = null
 
     override fun sampleClock(): AudioSampleClock? = timestamp
