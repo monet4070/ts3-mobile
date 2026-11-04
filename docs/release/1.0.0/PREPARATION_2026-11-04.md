@@ -71,10 +71,9 @@ Opus 新旧版本兼容的 48 组组合另已重新执行通过。32 位 NDK lib
 
 ## 签名交接目录
 
-已检查的未签名候选 APK SHA-256：
-`24913c76ddf9f318e92ddf7a80a663b496407ef6a9084b2d943f56eeafd5b8bc`。
-冻结源码提交以交接包 `UNSIGNED_BUILDINFO.json` 的真实 `sourceCommit` 为唯一来源，
-避免在提交自身的文档中写入循环引用的 SHA。
+最终交接 APK 的 SHA-256 与冻结源码提交，以交接包 `UNSIGNED_BUILDINFO.json`
+及 `SHA256SUMS-UNSIGNED.txt` 为唯一来源。冻结后重新构建的 APK 必须重新绑定探针，
+不因源码输入相同就复用另一 APK 的摘要；文档不预填最终工件哈希，也不自引用提交 SHA。
 
 交接目录为 `build/releases/1.0.0/handoff/`，包含：
 
