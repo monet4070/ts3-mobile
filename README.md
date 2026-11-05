@@ -13,7 +13,8 @@ English and Simplified Chinese. Connect directly to your TeamSpeak server; there
 to register.
 
 > **Latest stable: [1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)**,
-> released on **2026-11-04** (versionCode 13). Download the signed APK and checksums
+> reissued on **2026-11-05** (versionCode 14) with audio-continuity fixes; replaces the
+> withdrawn November 4 build. Download the signed APK and checksums
 > from the release. Its certificate matches the public 0.11.1-m10 APK; keep your
 > existing installation when updating. See [installation](docs/INSTALLATION.md),
 > [tested coverage](docs/COMPATIBILITY.md) and the [changelog](CHANGELOG.md).

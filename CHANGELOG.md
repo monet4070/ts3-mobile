@@ -5,6 +5,31 @@ used milestone naming. After 1.0.0, patch versions are intended for compatible f
 and minor versions for compatible features; Android versionCode increases for
 each distributed update.
 
+## 1.0.0 reissue — 2026-11-05
+
+The maintainer withdrew the original code 13 release after an audio regression and
+explicitly requested reuse of `v1.0.0`. The replacement keeps versionName `1.0.0`
+and the public signing certificate, increases versionCode to **14**, and retargets
+the tag to the reviewed fix. Download the APK and checksums again; old code 13
+files and cached source archives do not identify this build.
+
+- Keep absolute 10 ms playback deadlines across bounded scheduler stalls instead
+  of permanently slowing media consumption and repeatedly discarding buffered PCM.
+- Treat arrivals newer than the worker's time snapshot as fresh, not expired;
+  avoid invalidating a talker's buffered audio because of a negative computed age.
+- Add 11 independent regression tests, including complete playback-chain traces.
+  The fresh JVM suite contains 562 passing tests. Device recordings and the
+  maintainer's improved-listening confirmation apply to the debug fix, not an
+  unperformed release-APK acoustic acceptance.
+- Preserve codec settings, receive-budget limits, protocol, permissions and data
+  formats. Remaining physical Bluetooth, background/load and real-data upgrade
+  coverage is not promoted to a pass.
+
+See the [reissue record](docs/release/1.0.0/REISSUE_2026-11-05.md) and
+[audio investigation](docs/testing/AUDIO_PLAYBACK_REGRESSION_2026-11-05_ZH.md).
+This is an explicitly authorized exception to the normal immutable-tag policy,
+not a convention for future releases.
+
 ## 1.0.0 — 2026-11-04
 
 Tag: [`v1.0.0`](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0),

@@ -2,7 +2,8 @@
 
 ## Supported versions
 
-The first stable release is 1.0.0, published on 2026-11-04. Fixes target the latest
+The first stable release is 1.0.0, initially published on 2026-11-04 and reissued
+on 2026-11-05 as versionCode 14 after withdrawal of code 13. Fixes target the latest
 stable patch and the current development branch on `main`; old milestone APKs are
 not maintained separately. There is no long-term support
 promise for superseded patches or third-party re-signed builds.
@@ -30,7 +31,8 @@ the issue is caused by TS3 Mobile's integration.
 
 ## 中文说明
 
-1.0.0 首个稳定版于 2026-11-04 发布。安全修复面向最新稳定补丁和 `main` 开发分支，
+1.0.0 首个稳定版于 2026-11-04 首发，code 13 撤回后于 2026-11-05 以 code 14 重发。
+安全修复面向最新稳定补丁和 `main` 开发分支，
 不单独维护旧里程碑 APK，不承诺长期维护被替代的补丁或第三方重签包。
 
 请通过上方 GitHub 私密安全报告提交版本、Android 版本、复现方法、影响与可安全分享的概念验证。

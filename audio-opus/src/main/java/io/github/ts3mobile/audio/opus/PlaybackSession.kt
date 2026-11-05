@@ -178,6 +178,7 @@ internal class PlaybackSession(
 internal object PlaybackPolicy {
     const val TICK_NANOS = 10_000_000L
     const val MIN_WAIT_NANOS = 1_000_000L
+    const val MAX_CATCH_UP_NANOS = 50_000_000L
     const val INITIAL_BACKOFF_NANOS = 250_000_000L
     const val MAX_BACKOFF_EXPONENT = 4
     const val MAX_OUTPUT_FAILURES = 3
@@ -187,11 +188,19 @@ internal object PlaybackPolicy {
 }
 
 internal class PlaybackPacer {
-    private var nextTick = 0L
+    private var nextTick: Long? = null
 
-    fun waitNanos(now: Long): Long = (nextTick - now).coerceIn(PlaybackPolicy.MIN_WAIT_NANOS, PlaybackPolicy.TICK_NANOS)
+    fun waitNanos(now: Long): Long =
+        nextTick?.let { (it - now).coerceIn(PlaybackPolicy.MIN_WAIT_NANOS, PlaybackPolicy.TICK_NANOS) }
+            ?: PlaybackPolicy.MIN_WAIT_NANOS
 
     fun completed(now: Long) {
-        nextTick = maxOf(nextTick + PlaybackPolicy.TICK_NANOS, now + PlaybackPolicy.MIN_WAIT_NANOS)
+        val deadline = nextTick
+        nextTick =
+            if (deadline == null || now - deadline > PlaybackPolicy.MAX_CATCH_UP_NANOS) {
+                now + PlaybackPolicy.TICK_NANOS
+            } else {
+                deadline + PlaybackPolicy.TICK_NANOS
+            }
     }
 }
