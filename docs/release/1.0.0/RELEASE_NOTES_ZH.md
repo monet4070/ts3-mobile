@@ -48,8 +48,9 @@ TS3 Mobile 1.0.0 是项目的首个稳定版本：在 Android 上连接 TeamSpea
 请下载本页 Assets 中的 `ts3-mobile-1.0.0-release.apk`，与 `SHA256SUMS.txt` 比对 SHA-256；
 `BUILDINFO.json` 记录源码提交、版本、签名证书指纹和构建工具。Source code 压缩包不是安装包。
 
-证书与公开 0.11.1-m10（code 12）一致。API 35 / 16 KiB 模拟器覆盖升级保留了应用 UID、
-合成私有文件/偏好与 Android Keystore 密文。历史证书主题为 Android Debug，沿用以保持
+证书与公开 0.11.1-m10（code 12）一致。历史 code 12 → 13 和本次 code 13 → 14
+的 API 35 / 16 KiB 模拟器覆盖升级均保留了 UID、合成私有文件/偏好与 Android
+Keystore 密文；未单独执行本次直接 code 12 → 14 或真机真实数据升级。历史证书主题为 Android Debug，沿用以保持
 升级身份；指纹见安装升级指南。
 
 升级需要相同包名与兼容签名。遇到签名冲突请先保留旧应用，**不要直接卸载或清空存储**：

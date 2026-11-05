@@ -51,8 +51,8 @@ Android 覆盖安装需要相同的应用 ID、兼容签名和允许升级的版
 
 | 现有安装 | 处理方式 |
 | --- | --- |
-| 已撤回的 1.0.0 / versionCode 13 | 重新下载 code 14 APK；包名和公开证书不变，覆盖安装，不卸载或清数据 |
-| GitHub 0.11.1-m10 / versionCode 12 | 与 1.0.0 证书相同；API 35 模拟器保留 UID、合成私有文件/偏好及 Keystore 密文的升级通过，真机原有数据复验尚未记录 |
+| 已撤回的 1.0.0 / versionCode 13 | 重新下载 code 14 覆盖安装；本次 API 35 / 16 KiB 模拟器保留 UID、合成私有文件/偏好与 Keystore 密文通过；不卸载或清数据 |
+| GitHub 0.11.1-m10 / versionCode 12 | 证书相同；历史 code 12 → 13 模拟器保留数据升级通过，未单独执行本次直接 code 12 → 14 或真机原有数据复验 |
 | 其他 GitHub 0.11.x / 同一正式应用 ID | 先核对旧包证书与版本号，不从单个旧版的结果推导全部兼容 |
 | TS3 Mobile UI / F1a 等旁装调试应用 | 应用 ID、身份与存储独立，正式包并非该应用的升级，数据不会自动迁移 |
 | 很早的 v0.1 或第三方重签包 | 签名兼容性未知；不要直接卸载，先核对来源与证书 |
@@ -96,8 +96,9 @@ identifies the certificate. They are not interchangeable.
 
 An in-place update needs the same application ID (`io.github.ts3mobile.app`), a
 compatible signing lineage and an acceptable versionCode. The public 0.11.1-m10
-(code 12) and 1.0.0 certificates match. An API 35 emulator upgrade preserved the UID,
-synthetic private files/preferences and Keystore ciphertext; real-device data
+(code 12) and 1.0.0 certificates match. The historical code 12 → 13 and current
+code 13 → 14 API 35 emulator upgrades preserved the UID, synthetic private
+files/preferences and Keystore ciphertext. A direct code 12 → 14 check and real-device data
 retention has not been recorded for the final APK. Other old versions still need
 their own certificate/version checks. The inherited certificate subject is Android
 Debug; it is retained for update continuity, not presented as a new production

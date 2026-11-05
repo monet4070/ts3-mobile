@@ -59,9 +59,10 @@ and compare its SHA-256 with `SHA256SUMS.txt`. `BUILDINFO.json` identifies the
 source commit, version, certificate fingerprint and toolchain. Source archives
 are not installers.
 
-The certificate matches the public 0.11.1-m10 APK (code 12). An API 35 / 16 KiB
-emulator update retained the application UID, synthetic private files/preferences
-and Android Keystore ciphertext. The inherited certificate subject is Android
+The certificate matches the public 0.11.1-m10 APK (code 12). Historical code 12 → 13
+and current code 13 → 14 API 35 / 16 KiB emulator updates retained the UID,
+synthetic private files/preferences and Android Keystore ciphertext. A direct
+code 12 → 14 or physical real-data update was not separately tested. The inherited certificate subject is Android
 Debug; it is retained for update continuity. See the upgrade guide for its fingerprint.
 
 Updating needs the same package and a compatible signature. Keep the old app
