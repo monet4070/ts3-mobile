@@ -216,7 +216,7 @@ SHA-256 一致：
 对应本机证据为 `system-duplicated-after.wav`、`live-receive-stats-after.log`、
 `system-duplicated-after-clean.wav`、`audio-flinger-{before,after}-clean.txt`，均在
 上述忽略目录。录制进程和采样调试器均已退出，JDWP 端口转发已清理；应用保持
-运行，不操作连接和其他应用。实机听感仍需用户确认，未覆盖发送语音、蓝牙、
+运行，不操作连接和其他应用。用户随后反馈“现在好多了”，不等于完全消除；未覆盖发送语音、蓝牙、
 长时间后台与高负载场景。
 
 ### 第二轮修复的完整验证
