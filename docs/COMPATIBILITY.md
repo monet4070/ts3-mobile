@@ -1,6 +1,11 @@
 # 兼容性与验证范围 / Compatibility and validation
 
-更新日期：2026-11-04。对应稳定版 **1.0.0 / versionCode 13**。
+更新日期：2026-11-05。对应修复重发 **1.0.0 / versionCode 14**，替代撤回的 code 13。
+
+本次音频修复新增 11 项独立回归，全量 JVM 测试为 562 项。Android 16 调试包的
+两段约 30 秒播放录音启动后未见不少于 20 ms 全零段，维护者反馈“现在好多了”；
+仍有少量过期包与设备欠载计数，不承诺完全无断音。正式包的新门禁、探针和升级证据
+以[重发记录](release/1.0.0/REISSUE_2026-11-05.md)为准，下面的首次发布统计保留历史范围。
 构建及签名包证据、维护者实测确认与保留缺口按
 [发布决定 ADR-0021](decisions/0021-stable-release-acceptance.md)公开；未执行项目不记为通过。
 
@@ -20,7 +25,7 @@
 | 并发服务器 | 一个活动会话，切换前先断开 |
 | 语言 | 英文、简体中文，按系统/应用语言环境选择；无应用内语言切换按钮 |
 
-## 当前发布证据
+## 首次发布历史证据（code 13，不代替修复包验收）
 
 | 领域 | 已有证据 | 保留边界 |
 | --- | --- | --- |
@@ -31,7 +36,7 @@
 | 连接、频道、聊天/戳一下、状态、收藏及语音后台 | 维护者确认小米 14 上昨日 QA 包剩余实测完成；保留历史界面/通知/真实服务记录 | QA 为隔离应用 ID，早于今日蓝牙保护；未提供第二设备与细分通话时长，不补造结果 |
 | 蓝牙路由 | 自动选择、断开/回退静音、重连保持静音的 JVM/Android 回归通过 | 最终 APK 的实体 HFP/SCO/BLE 建立、双向通话和热插拔待复核 |
 
-正式签名 APK 的构建源码为 `eb7e87d82c5b9aadaa46ddd2258b7de7f475b109`。
+首次 code 13 正式签名 APK 的构建源码为 `eb7e87d82c5b9aadaa46ddd2258b7de7f475b109`。
 [该提交 CI](https://github.com/monet4070/ts3-mobile/actions/runs/41761559408)通过。
 发布 tag 可能包含后续文档和合并提交；`BUILDINFO.json` 分别记录实际构建与发布提交，
 并核对 434 个源码/配置输入未变，不将已有 APK 描述为一次新构建。
@@ -56,7 +61,13 @@
 
 ## English
 
-Stable **1.0.0 / code 13** supports installation from API 26. Android 8/9 and a
+Stable **1.0.0 / code 14**, reissued November 5 after withdrawal of code 13,
+supports installation from API 26. Its audio fix adds 11 independent regressions
+for a total of 562 passing JVM tests. Android 16 debug recordings and maintainer
+feedback confirm improvement, not a universal glitch-free guarantee. Replacement
+build acceptance is recorded separately in the [reissue record](release/1.0.0/REISSUE_2026-11-05.md).
+The automated and signed-APK results below are historical code 13 evidence.
+Android 8/9 and a
 second manufacturer/Android generation have not been physically accepted in this
 round. Xiaomi 14 / Android 16 hands-on confirmation applies to the November 3
 isolated QA APK, which predates the new Bluetooth protection. Detailed duration

@@ -1,5 +1,9 @@
 # 1.0.0 打包、签名与 GitHub 上线
 
+> 2026-11-05 修复重发使用 versionCode 14；code 13 及其工件仅属历史。
+> 维护者明确授权本次重用 `v1.0.0`；这是[单次例外](REISSUE_2026-11-05.md)，
+> 更新 tag 时必须核对预期旧对象并使用限定该引用的 lease，不进行无条件 force push。
+
 本手册供维护者操作。1.0.0 的发布授权、签名与验收范围已记录在
 [ADR-0021](../../decisions/0021-stable-release-acceptance.md)及 [CHECKLIST.md](CHECKLIST.md)。
 后续发布仍须逐步核对。示例以 macOS/Linux、JDK 17、Android SDK 35、PowerShell 7、
@@ -13,7 +17,7 @@ Python 3 和 GitHub CLI 为前提；Windows 可使用对应 `.bat`/`.exe` 与 Po
 任何行为/依赖/版本变动都会使相关旧候选证据失效。
 
 确认 `app/build.gradle.kts` 中正式应用 ID 不变，versionName 为 `1.0.0`。
-候选 versionCode 已设置为 `13`；已知公开旧包最高为 12，仍需核对本地私发包。
+重发 versionCode 已设置为 `14`；已撤回公开旧包为 13，仍需核对本地私发包。
 确认长期签名和升级策略；新证书并不会自动兼容旧安装。
 
 正式发布前同步 README、CHANGELOG 与 SECURITY 的状态和真实发布日期。
@@ -101,7 +105,7 @@ match = re.search(r"^package: name='([^']+)' versionCode='([^']+)' versionName='
 if not match:
     raise SystemExit('Could not parse APK package/version.')
 package, code, version = match.groups()
-if package != 'io.github.ts3mobile.app' or version != '1.0.0' or int(code) < 13:
+if package != 'io.github.ts3mobile.app' or version != '1.0.0' or int(code) != 14:
     raise SystemExit('Unexpected release identity or version.')
 if re.search(r'^application-debuggable', badging, re.M):
     raise SystemExit('Debuggable APK is not a release artifact.')
@@ -152,7 +156,8 @@ PY
 
 ## 6. GitHub 草稿与公开
 
-到这里应已有通过 PR 合入的完整源码，tag 指向最终发布提交。不要移动已公开 tag。
+到这里应已有通过 PR 合入的完整源码，tag 指向最终发布提交。通常不要移动已公开 tag；
+本次仅按页首明确授权的撤回重发例外处理，不将下面的新建标签示例直接用于覆盖旧标签。
 若构建后仅追加文档和合并提交，必须核对记录的全部源码/配置输入不变；
 `sourceCommit`/`sourceTree` 保留实际构建版本，另记录 `releaseCommit`、`releaseTag`
 和文档差异及输入核对结果。不得把构建源码字段改成未实际重建的新提交。

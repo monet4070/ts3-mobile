@@ -13,7 +13,7 @@ android {
         applicationId = "io.github.ts3mobile.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
+        versionCode = 14
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

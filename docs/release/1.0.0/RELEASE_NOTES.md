@@ -1,6 +1,27 @@
 # TS3 Mobile 1.0.0 · First stable release
 
-Released on **2026-11-04** · versionCode **13** · Android **8.0+**.
+Audio-fix reissue on **2026-11-05** · versionCode **14** · Android **8.0+**.
+
+## Audio-continuity reissue
+
+The November 4 code 13 release was withdrawn after an audio regression. At the
+maintainer's explicit request, this replacement keeps tag `v1.0.0` and versionName
+1.0.0, increases versionCode to 14 and retains the public signing certificate.
+**Download the replacement APK, checksums and build information again. Update in
+place without uninstalling; old code 13 files are not this fix.**
+
+- Preserve playback deadlines across short scheduling stalls, avoiding permanently
+  slower media consumption and repeated buffer invalidation.
+- Keep newly arrived voice packets when the playback worker's clock snapshot is
+  older than their arrival, rather than misclassifying them as expired and clearing PCM.
+- Add 11 independent regressions; the current JVM suite has 562 passing tests.
+  Android 16 recordings and the maintainer's listening feedback confirm improvement
+  with the debug fix, not glitch-free acoustic coverage of every release/device scenario.
+
+Codec settings, receive budgets, protocol, permissions and data formats are unchanged.
+The [reissue record](https://github.com/monet4070/ts3-mobile/blob/v1.0.0/docs/release/1.0.0/REISSUE_2026-11-05.md)
+and [investigation](https://github.com/monet4070/ts3-mobile/blob/v1.0.0/docs/testing/AUDIO_PLAYBACK_REGRESSION_2026-11-05_ZH.md)
+separate replacement-build evidence from historical first-release results.
 
 TS3 Mobile 1.0.0 is the project's first stable release: connect to TeamSpeak 3
 on Android, use voice and text, and return to your usual servers through bookmarks.
@@ -59,7 +80,7 @@ Check the actual artifact metadata and
 - Volume gate captures even during silence; Off stops it. Away does not stop voice.
 - Bluetooth, notifications and background survival depend on the device/system.
   Disconnect in-app or through the notification instead of relying on task swiping.
-- Validation: 551 JVM, 129 app Android and 32 default audio Android tests passed,
+- Historical first-release validation: 551 JVM, 129 app Android and 32 default audio Android tests passed,
   plus 48 Opus compatibility combinations and signed-APK identity/codec/launch probes.
   The maintainer completed hands-on feature checks on a Xiaomi 14 / Android 16
   using the November 3 QA package. That predates the new Bluetooth protection;

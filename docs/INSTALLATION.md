@@ -1,7 +1,7 @@
 # 安装与升级 / Installation and upgrades
 
 适用于 GitHub 分发的 APK。当前稳定版为
-[1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)（2026-11-04，versionCode 13）。
+[1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)（2026-11-05 修复重发，versionCode 14）。
 实际包名、版本、签名与校验值以对应 Release 的资产为准；验证范围见[发布资料](release/README.md)。
 
 ## 下载与校验
@@ -33,11 +33,9 @@ Get-FileHash .\ts3-mobile-1.0.0-release.apk -Algorithm SHA256
 文件摘要标识某个 APK 的字节内容，证书指纹标识签名证书。1.0.0 同时提供 `BUILDINFO.json`，
 记录实际版本、构建源码提交、发布提交与证书 SHA-256；较早 Release 不一定提供这个文件。
 
-1.0.0 APK SHA-256：
-
-```text
-bfa68b26eecbd30dad267574df7b30f84e761426d154396adb764babf674475a
-```
+本次 code 14 的 APK 摘要以重新下载的 `SHA256SUMS.txt` 和 `BUILDINFO.json` 为准。
+原 11 月 4 日 code 13 已撤回；不要使用其 APK、旧校验表或旧缓存源码验证修复包。
+版本名仍为 1.0.0，内部 versionCode 已提高，使用相同公开证书覆盖升级，不需要卸载。
 
 ## 系统要求与首次安装
 
@@ -53,6 +51,7 @@ Android 覆盖安装需要相同的应用 ID、兼容签名和允许升级的版
 
 | 现有安装 | 处理方式 |
 | --- | --- |
+| 已撤回的 1.0.0 / versionCode 13 | 重新下载 code 14 APK；包名和公开证书不变，覆盖安装，不卸载或清数据 |
 | GitHub 0.11.1-m10 / versionCode 12 | 与 1.0.0 证书相同；API 35 模拟器保留 UID、合成私有文件/偏好及 Keystore 密文的升级通过，真机原有数据复验尚未记录 |
 | 其他 GitHub 0.11.x / 同一正式应用 ID | 先核对旧包证书与版本号，不从单个旧版的结果推导全部兼容 |
 | TS3 Mobile UI / F1a 等旁装调试应用 | 应用 ID、身份与存储独立，正式包并非该应用的升级，数据不会自动迁移 |
@@ -87,10 +86,12 @@ are not installers. Compare the digest using the platform commands above, then
 allow installation from the trusted browser/file manager you used. Android 8.0+
 is required. See [compatibility](COMPATIBILITY.md) for tested coverage.
 
-Stable 1.0.0 (2026-11-04, versionCode 13) provides `ts3-mobile-1.0.0-release.apk`,
+Stable 1.0.0 (reissued 2026-11-05, versionCode 14) provides `ts3-mobile-1.0.0-release.apk`,
 `SHA256SUMS.txt` and `BUILDINFO.json`. The latter records the build source commit,
 release commit, toolchain and certificate. The actual APK SHA-256 and certificate
-SHA-256 appear above. An APK digest identifies bytes; a certificate fingerprint
+SHA-256 are recorded in the newly downloaded assets. Code 13 was withdrawn;
+download the replacement and checksums again, then update in place without uninstalling.
+An APK digest identifies bytes; a certificate fingerprint
 identifies the certificate. They are not interchangeable.
 
 An in-place update needs the same application ID (`io.github.ts3mobile.app`), a

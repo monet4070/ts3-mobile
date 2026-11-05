@@ -17,6 +17,8 @@
 - [开发约定](../CONTRIBUTING.md)、[架构](../ARCHITECTURE.md)、[设计决策](decisions/)
 - [更新日志](../CHANGELOG.md)、[第三方许可](../THIRD_PARTY_NOTICES.md)
 - [测试记录](testing/)与[历史开发计划](plans/)保留各自日期，不自动代表最新 APK 的验收。
+- [1.0.0 语音断续回归排查与修复](testing/AUDIO_PLAYBACK_REGRESSION_2026-11-05_ZH.md)记录离线复现和实机验证边界。
+- [1.0.0 / code 14 修复重发](release/1.0.0/REISSUE_2026-11-05.md)记录撤回后重用标签授权与新工件验收。
 - [历史 M11 发布计划](release/CONTINUATION_PLAN.md)保留作背景，当前稳定版入口为 1.0.0 资料。
 
 当前稳定版为 [1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)（2026-11-04）；

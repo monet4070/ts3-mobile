@@ -12,7 +12,8 @@ TS3 Mobile 是开源的非官方客户端，采用暖米白与陶土色界面、
 无需注册项目账号，直接连接你已有的 TeamSpeak 服务器。
 
 > **最新稳定版：[1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)**，
-> 发布于 **2026-11-04**（versionCode 13）。请从 Release 下载签名 APK 和校验表。
+> 于 **2026-11-05** 修复语音断续后重新发布（versionCode 14），替代已撤回的 11 月 4 日构建。
+> 请重新从 Release 下载签名 APK 和校验表。
 > 证书与公开 0.11.1-m10 一致，升级时保留旧应用。详见[安装升级](docs/INSTALLATION.md)、
 > [验证范围](docs/COMPATIBILITY.md)与[更新日志](CHANGELOG.md)。
 

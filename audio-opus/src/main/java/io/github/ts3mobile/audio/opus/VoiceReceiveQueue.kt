@@ -38,7 +38,7 @@ internal class VoiceReceiveQueue(
     ): Boolean {
         val queued = prepared.queued
         prune(now)
-        if (now - queued.arrivalNanos !in 0L..ReceivePolicy.INPUT_AGE_NANOS) {
+        if (isExpired(queued, now)) {
             budget.stats.stalePackets.incrementAndGet()
             budget.invalidate(queued.frame.clientId)
             return false
@@ -95,12 +95,12 @@ internal class VoiceReceiveQueue(
     }
 
     private fun prune(now: Long) {
-        val stale = frames.filter { now - it.arrivalNanos !in 0L..ReceivePolicy.INPUT_AGE_NANOS }
+        val stale = frames.filter { isExpired(it, now) }
         budget.stats.stalePackets.addAndGet(stale.size.toLong())
         val clients = stale.map { it.frame.clientId }.toSet()
         clients.forEach(budget::invalidate)
         if (clients.isNotEmpty()) {
-            val fresh = frames.filter { now - it.arrivalNanos in 0L..ReceivePolicy.INPUT_AGE_NANOS }
+            val fresh = frames.filterNot { isExpired(it, now) }
             frames.clear()
             for (queued in fresh) {
                 if (queued.frame.clientId in clients) {
@@ -118,4 +118,9 @@ internal class VoiceReceiveQueue(
         }
         frames.removeAll { it.lease?.valid != true }
     }
+
+    private fun isExpired(
+        queued: QueuedFrame,
+        now: Long,
+    ): Boolean = now - queued.arrivalNanos > ReceivePolicy.INPUT_AGE_NANOS
 }

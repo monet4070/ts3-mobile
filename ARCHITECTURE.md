@@ -399,6 +399,11 @@ explicit timeout counter. No new fixed lookahead is added.
 Writes are nonblocking, limited to eight attempts per tick, retain partial blocks
 and fail after 100 ms without completing a block. Explicit stop/mute/focus loss
 or route change serializes invalidation with writes and discards immediately.
+The worker advances an absolute 10 ms media deadline across scheduler delays up
+to 50 ms, with a minimum 1 ms wait during catch-up. Longer stalls rebase the
+deadline instead of creating an unbounded catch-up loop. Rebasing every short
+stall would slow PCM consumption and repeatedly exhaust the shared receive budget;
+see the [1.0.0 playback regression](docs/testing/AUDIO_PLAYBACK_REGRESSION_2026-11-05_ZH.md).
 Actual routed-device changes and preferred-device changes reset the output origin;
 initial route discovery does not count as a route change. Focus callbacks belong
 to their output generation. A timed-out worker prevents restart until retired.
@@ -487,7 +492,12 @@ See [A4a execution record](docs/testing/AUDIO_A4A_2026-10-24.md).
 `VoiceReceiveQueue` validates real Opus framing before admission and checks a
 60 ms monotonic residence bound on enqueue and dequeue. Its 256-packet guard
 remains a memory limit. `ReceiveMediaBudget` issues per-client leases that follow
-input, pending packets and decoded PCM; moving a packet cannot renew its budget.
+the original arrival time. A worker's time snapshot may precede a concurrent
+arrival: negative computed ages are fresh, not expired. Admission, pruning and
+readmission share one strictly-over-60-ms expiry predicate, so a newly arrived
+packet cannot invalidate already buffered PCM merely by arriving during a tick.
+The leases follow input, pending packets and decoded PCM; moving a packet cannot
+renew its budget.
 Samples release incrementally when read for the mix. Each client is limited to
 240 ms, 96 packets and 120 KiB; global encoded reservation is 512 KiB with at most
 64 tracked clients/decoders. Input payloads are copied after inspection.
