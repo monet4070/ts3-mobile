@@ -27,6 +27,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.service.MicrophoneMode
+import io.github.ts3mobile.app.service.PrivateMessageNotificationIntent
+import io.github.ts3mobile.app.service.PrivateMessageNotifications
 import io.github.ts3mobile.app.service.TeamSpeakService
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.settings.MicrophonePreferenceState
@@ -75,6 +77,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 serviceBinder = binder as? TeamSpeakService.SessionBinder
                 serviceBinder?.setAppVisible(activityVisible)
+                resolveChatNotification()
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -84,6 +87,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) viewModel.chatNotificationEntry.accept(PrivateMessageNotificationIntent.token(intent))
         enableEdgeToEdge()
         setContent {
             Ts3MobileTheme {
@@ -95,6 +99,7 @@ class MainActivity : ComponentActivity() {
                 val fallbackPreferences = remember { MutableStateFlow(MicrophonePreferenceState()) }
                 val microphonePreferences by (serviceBinder?.microphonePreferenceState ?: fallbackPreferences).collectAsStateWithLifecycle()
                 val form by viewModel.form.collectAsStateWithLifecycle()
+                val chatNotification by viewModel.chatNotificationEntry.destination.collectAsStateWithLifecycle()
                 val history by viewModel.history.collectAsStateWithLifecycle()
                 val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
                 val historyError by viewModel.historyError.collectAsStateWithLifecycle()
@@ -174,6 +179,10 @@ class MainActivity : ComponentActivity() {
                     onPresenceRetry = { serviceBinder?.retryPresence() },
                     onResolveUserChannel = { id, uid -> serviceBinder?.resolveUserChannel(id, uid) },
                     onOpenRepository = { openProjectRepository(this) },
+                    chatNotification = chatNotification,
+                    onChatNotificationConsumed = viewModel.chatNotificationEntry::consumed,
+                    onUserNavigation = viewModel.chatNotificationEntry::cancel,
+                    onNotificationSettings = ::openNotificationSettings,
                 )
             }
         }
@@ -187,6 +196,25 @@ class MainActivity : ComponentActivity() {
                 serviceConnection,
                 Context.BIND_AUTO_CREATE,
             )
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        viewModel.chatNotificationEntry.accept(PrivateMessageNotificationIntent.token(intent))
+        resolveChatNotification()
+    }
+
+    private fun resolveChatNotification() {
+        serviceBinder?.let { viewModel.chatNotificationEntry.resolve(it::consumeChatNotification) }
+    }
+
+    private fun openNotificationSettings() {
+        try {
+            startActivity(PrivateMessageNotifications.settingsIntent(this))
+        } catch (_: android.content.ActivityNotFoundException) {
+            openAppSettings()
+        }
     }
 
     override fun onPause() {

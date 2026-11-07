@@ -232,6 +232,10 @@
     <string name="poke_rejected">戳一下被拒绝</string>
     <string name="poke_notification_channel">戳一下提醒</string>
     <string name="poke_notification_received">有人戳了你</string>
+    <string name="private_message_notification_channel">私信提醒</string>
+    <string name="private_message_notification_received">你收到了新私信</string>
+    <string name="private_message_notification_settings">私信通知设置</string>
+    <string name="private_message_conversations">选择私信会话</string>
     <string name="microphone_settings">麦克风设置</string>
     <string name="microphone_settings_lifetime">修改立即生效，保存完成后会保留在本机。打开设置不会开始录音。</string>
     <string name="microphone_preferences_loading">正在载入已保存的调音参数…</string>

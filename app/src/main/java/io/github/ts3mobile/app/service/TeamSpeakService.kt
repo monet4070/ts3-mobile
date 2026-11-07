@@ -71,6 +71,8 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     private lateinit var backgroundRuntime: BackgroundRuntimeController
     private lateinit var notifications: SessionNotifications
     private lateinit var pokeAlerts: PokeAlertObserver
+    private val chatNotificationRegistry = ChatNotificationRegistry(SystemClock::elapsedRealtime)
+    private lateinit var privateMessageAlerts: PrivateMessageAlertObserver
     private lateinit var networkMonitor: DefaultNetworkMonitor
 
     /** Re-checks request ownership on the main thread before teardown side effects. */
@@ -153,6 +155,12 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         notifications.createChannel()
         val pokeNotifications = PokeNotifications(applicationContext)
         pokeAlerts = PokeAlertObserver(serviceScope, chatController.state, pokeNotifications::show, pokeNotifications::clear)
+        val privateMessageNotifications = PrivateMessageNotifications(applicationContext)
+        privateMessageAlerts =
+            PrivateMessageAlertObserver(
+                serviceScope, chatController.state, chatNotificationRegistry,
+                privateMessageNotifications::show, privateMessageNotifications::clear,
+            )
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -204,6 +212,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         networkMonitor.close()
         sessionControls.close()
         pokeAlerts.close()
+        privateMessageAlerts.close()
         microphonePreferences.close()
         microphoneController.closeAfterRelease {
             mainHandler.post {
@@ -483,10 +492,13 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
         fun setAppVisible(visible: Boolean) {
             pokeAlerts.setAppVisible(visible)
+            privateMessageAlerts.setAppVisible(visible)
             if (visible) refreshMicrophonePermission()
             microphoneController.setAppVisible(visible)
             if (visible) backgroundRuntime.refresh()
         }
+
+        fun consumeChatNotification(token: String) = chatNotificationRegistry.consume(token, chatController.state.value)
 
         fun refreshMicrophonePermission() {
             microphoneController.refreshPermission()

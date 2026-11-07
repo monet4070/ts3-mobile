@@ -7,6 +7,7 @@ import io.github.ts3mobile.app.bookmarks.BookmarkController
 import io.github.ts3mobile.app.bookmarks.BookmarkVault
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
 import io.github.ts3mobile.app.bookmarks.withSelectedBookmark
+import io.github.ts3mobile.app.chat.ChatNotificationEntry
 import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.app.history.ServerHistoryPrefill
 import io.github.ts3mobile.app.history.successServerHistoryStore
@@ -66,6 +67,8 @@ internal fun ConnectionFormState.withSelectedHistoryEntry(entry: ServerHistoryEn
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
+    internal val chatNotificationEntry = ChatNotificationEntry()
+
     // Pending permission flow survives activity recreation; form memory is encrypted separately.
     internal var pendingConnection: ServerConfig? = null
     internal var notificationPermissionResolved = false

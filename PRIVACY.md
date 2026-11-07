@@ -89,6 +89,15 @@ settings control visibility and sound. Returning to the app, dismissing the
 notice or ending the session clears the notification. No extra permission or
 third-party delivery service is added.
 
+Background ordinary private text uses a separate generic notification. No sender,
+body, UID, nickname or endpoint enters its content or Intent. The explicit,
+immutable PendingIntent URI contains only a random one-shot capability. Its
+service-memory mapping holds at most 16 entries for five minutes, validates the
+manual session/disconnect generation and conversation IDs, and is never persisted.
+Disconnect, service destruction or closing the captured conversation makes old
+clicks unusable. Returning clears the summary without clearing unread messages;
+only actually visible messages advance read state. No third-party push is used.
+
 ## Data not collected by this project
 
 The app contains no analytics, advertising, telemetry, project-operated crash

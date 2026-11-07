@@ -80,7 +80,7 @@ internal fun ChatConversationPicker(
 }
 
 @Composable
-private fun conversationTitle(
+internal fun conversationTitle(
     conversation: ChatConversation,
     state: ChatState,
 ): String =

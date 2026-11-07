@@ -75,6 +75,14 @@ Acceptance is not a read receipt; unknown messages are never automatically resen
 Text input is limited to 1,024 UTF-8 bytes. Up to 20 conversations share 500
 messages / 2 MiB; older records can be evicted.
 
+New ordinary private messages received while the app is in the background use the
+separate **Private message alerts** channel. The first two-second window creates
+a generic summary; updates to the existing notification stay silent.
+One conversation opens that chat; several open a conversation list without
+marking messages read. Stale clicks only open the app. Foreground tabs keep unread
+badges. Open **More options → Private message notifications** for system settings;
+Android permission, channel settings and Do Not Disturb control delivery and sound.
+
 Tap the hand icon beside a channel member, or Poke in user actions. The optional
 reason is limited to 100 UTF-8 bytes. Confirming keeps the current page and gives
 brief result feedback; opening the dialog does not send anything.
