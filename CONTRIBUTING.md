@@ -189,6 +189,30 @@ same checked-in synthetic corpus through production JNI. Regenerate assets only
 with an intentional reviewed `--write-fixtures` run. All four ABIs must build;
 runtime evidence must name the ABI actually tested. See [A4a evidence](docs/testing/AUDIO_A4A_2026-10-24.md).
 
+### In-place Debug and minified upgrade fixtures
+
+`tools/check-upgrade-compat.py` seeds a fresh disposable emulator through the
+installed baseline Debug app's actual identity, form and bookmark vaults, then
+uses `adb install -r` to update without clearing data. It checks APK identity,
+version and certificates before installation and refuses physical devices or
+an emulator that already contains the app/probe. It never uninstalls an app to
+make the check pass. Use a dedicated new AVD, not a personal session.
+
+```sh
+python3 tools/check-upgrade-compat.py --device emulator-5558 --sdk "$ANDROID_HOME" --baseline-apk /path/to/baseline-debug.apk --candidate-apk /path/to/candidate.apk
+python3 -m unittest discover -s tools/tests -p 'test_*.py'
+```
+
+The isolated Java/manifest under `app/src/upgradeSmokeTest` is compiled separately;
+it does not enter production or keep classes alive for R8. Debug candidates are
+verified through real vault reads. For minified candidates, the probe verifies
+unchanged encrypted files, original-key AES-GCM challenges and application UID;
+also inspect the actual app's form/bookmark UI and run the Release parsing probe.
+Use copies signed with the standard Android development test key, never a
+production key. A test-signed upgrade does not establish production signing or
+real-user-data acceptance. Results and aggregate hashes remain under ignored
+`build/upgrade-compat/`, without printing identity material or passwords.
+
 ## Pull requests
 
 Explain the user-visible behavior, technical approach, tests performed, and
