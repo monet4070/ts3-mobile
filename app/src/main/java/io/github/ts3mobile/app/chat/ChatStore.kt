@@ -12,6 +12,7 @@ import io.github.ts3mobile.protocol.Ts3TextEvent
 import io.github.ts3mobile.protocol.boundedText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.UUID
 
 /** Service memory only; directory and retention have separate, deterministic responsibilities. */
 class ChatStore(
@@ -38,7 +39,7 @@ class ChatStore(
         activeAttempt = null
         latestAttempt = Long.MIN_VALUE
         sequence = 0
-        mutable.value = ChatState(scope = scope)
+        mutable.value = ChatState(scope = scope, sessionToken = UUID.randomUUID().toString())
     }
 
     @Synchronized fun clear(scope: Long? = mutable.value.scope) {

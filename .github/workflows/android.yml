@@ -78,7 +78,7 @@ jobs:
           --no-build-cache
           --stacktrace
 
-      - name: Verify release probes and audio lifecycle regressions
+      - name: Verify release probes, audio lifecycle, and core UI regressions
         timeout-minutes: 12
         shell: bash
         run: |
@@ -136,4 +136,21 @@ jobs:
           python3 tools/check-release-codec.py --device emulator-5554 --sdk "$ANDROID_HOME"
           python3 -m unittest discover -s tools/tests -p 'test_audio_build_config.py'
           ./gradlew :audio-opus:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.audio.opus.OpusAudioPlayerFocusTest,io.github.ts3mobile.audio.opus.NativeAudioLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackLifecycleTest --max-workers=2
-          ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.app.service.MicrophoneControllerTest,io.github.ts3mobile.app.ui.PlaybackFailureTest --max-workers=2
+          ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.app.service.MicrophoneControllerTest,io.github.ts3mobile.app.ui.PlaybackFailureTest,io.github.ts3mobile.app.ui.ChatNavigationStateTest,io.github.ts3mobile.app.ui.ChatPanelTest,io.github.ts3mobile.app.ui.PrivateChatPanelTest,io.github.ts3mobile.app.ui.BookmarkEditorTest,io.github.ts3mobile.app.ui.BookmarkListTest --max-workers=2
+
+      - name: Preserve test and lint reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: android-reports-${{ github.sha }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ts3-protocol/build/test-results/test/*.xml
+            audio-opus/build/test-results/testDebugUnitTest/*.xml
+            app/build/test-results/testDebugUnitTest/*.xml
+            audio-opus/build/outputs/androidTest-results/connected/**/*.xml
+            app/build/outputs/androidTest-results/connected/**/*.xml
+            audio-opus/build/reports/lint-results-*.xml
+            app/build/reports/lint-results-*.xml
+            ${{ runner.temp }}/release-identity-emulator.log

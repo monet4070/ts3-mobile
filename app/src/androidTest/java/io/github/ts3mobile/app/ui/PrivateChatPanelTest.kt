@@ -5,6 +5,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import io.github.ts3mobile.app.chat.ChatConversationKey
 import io.github.ts3mobile.protocol.TextTarget
@@ -48,7 +50,9 @@ class PrivateChatPanelTest {
         rule.onNodeWithText("Send private message").performClick()
         rule.onNodeWithText("Private · Sam (#2)").assertIsDisplayed()
         rule.onNodeWithTag("chat_draft").performTextInput(" Private 中文😀 | \\ ")
-        rule.onNodeWithTag("chat_send").performClick()
+        // Exercise the accessible send action independently of IME window
+        // movement; keyboard geometry has its own layout regression below.
+        rule.onNodeWithTag("chat_send").assertIsEnabled().performSemanticsAction(SemanticsActions.OnClick) { it() }
         // Native IME/window animation can outlive Compose idling on a narrow screen.
         rule.waitUntil(timeoutMillis = 5_000) {
             runCatching { rule.onNodeWithText("Server accepted").assertIsDisplayed() }.isSuccess
@@ -219,6 +223,15 @@ class PrivateChatPanelTest {
         rule.setContent { fixture.Render(locale = "zh", fontScale = 1.8f) }
         rule.onNodeWithText("聊天").performClick()
         rule.onNodeWithTag("chat_draft").performTextInput("私聊大字体")
+        // IME/window resizing is asynchronous to Compose idling. Wait for the
+        // required controls together, rather than asserting during that transition.
+        rule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                rule.onNodeWithTag("chat_send").assertIsDisplayed()
+                rule.onNodeWithContentDescription("关闭私聊").assertIsDisplayed()
+                rule.onNodeWithContentDescription("停止麦克风").assertIsDisplayed()
+            }.isSuccess
+        }
         rule.onNodeWithTag("chat_send").assertIsDisplayed()
         rule.onNodeWithContentDescription("关闭私聊").assertIsDisplayed()
         rule.onNodeWithContentDescription("停止麦克风").assertIsDisplayed()
@@ -229,7 +242,9 @@ class PrivateChatPanelTest {
     }
 
     private fun select(id: Long) {
-        rule.onNodeWithTag("chat_conversation_picker").performClick()
-        rule.onNodeWithTag("chat_conversation_$id").performClick()
+        // The IME may still be moving the header after draft input. Exercise
+        // the real accessibility actions instead of tapping a moving coordinate.
+        rule.onNodeWithTag("chat_conversation_picker").performSemanticsAction(SemanticsActions.OnClick) { it() }
+        rule.onNodeWithTag("chat_conversation_$id").performSemanticsAction(SemanticsActions.OnClick) { it() }
     }
 }

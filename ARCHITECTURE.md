@@ -342,6 +342,12 @@ chat StateFlow. Activity collects this state without putting it in MainViewModel
 SavedState or persistent storage. Focused ChatPanel/ChatComposer/ChatMessageRow
 components own presentation; explicit SessionTab values preserve exhaustive
 navigation. Only tab choice, numeric conversation IDs and scroll metadata use saveable UI state.
+`ChatSessionState` owns the saveable providers outside the conditional main tabs.
+An opaque random `ChatState.sessionToken` namespaces each manual session across
+service instances; reconnect retains it. Conversation views restore a numeric
+message-sequence anchor and offset, so hidden retention eviction cannot silently
+restore an unrelated index. Hidden chat stays uncomposed and does not mark read.
+See [ADR-0022](docs/decisions/0022-session-scoped-chat-navigation.md).
 Closed conversation scroll buckets are removed, including after state recreation. See
 [ADR-0013](docs/decisions/0013-bounded-channel-text-chat.md) for deadline, privacy
 and decomposition boundaries and [ADR-0014](docs/decisions/0014-session-owned-private-conversations.md)

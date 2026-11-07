@@ -58,89 +58,92 @@ internal fun ConnectedContent(
     onOpenSearch: () -> Unit = {},
     onOpenPresence: () -> Unit = {},
 ) {
-    var selectedTab by rememberSaveable { mutableStateOf(SessionTab.CHANNELS) }
-    val keyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    val compactHeader = selectedTab == SessionTab.CHAT && LocalConfiguration.current.screenHeightDp < 700
-    val recovering = state.status.phase != ConnectionPhase.CONNECTED
-    var pokeRecipient by remember { mutableStateOf<PokeRecipient?>(null) }
-    val openPoke: (Ts3Participant) -> Unit = { participant ->
-        onPushToTalkChanged(false)
-        pokeRecipient =
-            PokeRecipient(
-                chat.binding,
-                TextTarget.Private(participant.id, participant.uniqueIdentifier),
-                participant.nickname.boundedText(256),
-            )
-    }
-    pokeRecipient?.let { recipient ->
-        PokeSendDialog(recipient, chat, state.snapshot.participants, onPoke, { pokeRecipient = null })
-    }
-    DisposableEffect(selectedTab) { onDispose { onPushToTalkChanged(false) } }
-    LaunchedEffect(selectedTab) { onChatSelected(selectedTab == SessionTab.CHAT) }
-    Column(Modifier.fillMaxSize().then(if (selectedTab == SessionTab.CHAT) Modifier.imePadding() else Modifier)) {
-        if (!keyboardOpen || selectedTab != SessionTab.CHAT) {
-            SessionHeader(state, onDisconnect, onPlaybackMutedChange, onAudioRouteSelected, compactHeader, {
-                onPushToTalkChanged(false)
-                onOpenSearch()
-            }, {
-                onPushToTalkChanged(false)
-                onOpenPresence()
-            })
+    ChatSessionState(chat) { conversations ->
+        var selectedTab by rememberSaveable { mutableStateOf(SessionTab.CHANNELS) }
+        val keyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        val compactHeader = selectedTab == SessionTab.CHAT && LocalConfiguration.current.screenHeightDp < 700
+        val recovering = state.status.phase != ConnectionPhase.CONNECTED
+        var pokeRecipient by remember { mutableStateOf<PokeRecipient?>(null) }
+        val openPoke: (Ts3Participant) -> Unit = { participant ->
+            onPushToTalkChanged(false)
+            pokeRecipient =
+                PokeRecipient(
+                    chat.binding,
+                    TextTarget.Private(participant.id, participant.uniqueIdentifier),
+                    participant.nickname.boundedText(256),
+                )
         }
-        if (!keyboardOpen || selectedTab != SessionTab.CHAT) {
-            NavigationTabs(selectedTab, {
-                onPushToTalkChanged(false)
-                selectedTab = it
-            }, chat.totalUnread)
+        pokeRecipient?.let { recipient ->
+            PokeSendDialog(recipient, chat, state.snapshot.participants, onPoke, { pokeRecipient = null })
         }
-        if (selectedTab == SessionTab.CHANNELS && !recovering) {
-            SectionLabel(stringResource(R.string.channel_gesture_hint), Modifier.padding(horizontal = 20.dp))
-        }
-        Panel(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Box(Modifier.weight(1f).fillMaxWidth().clip(MaterialTheme.shapes.medium)) {
-                when (selectedTab) {
-                    SessionTab.CHANNELS ->
-                        if (recovering) {
-                            Text(
-                                stringResource(R.string.chat_recovering_lists),
+        DisposableEffect(selectedTab) { onDispose { onPushToTalkChanged(false) } }
+        LaunchedEffect(selectedTab) { onChatSelected(selectedTab == SessionTab.CHAT) }
+        Column(Modifier.fillMaxSize().then(if (selectedTab == SessionTab.CHAT) Modifier.imePadding() else Modifier)) {
+            if (!keyboardOpen || selectedTab != SessionTab.CHAT) {
+                SessionHeader(state, onDisconnect, onPlaybackMutedChange, onAudioRouteSelected, compactHeader, {
+                    onPushToTalkChanged(false)
+                    onOpenSearch()
+                }, {
+                    onPushToTalkChanged(false)
+                    onOpenPresence()
+                })
+            }
+            if (!keyboardOpen || selectedTab != SessionTab.CHAT) {
+                NavigationTabs(selectedTab, {
+                    onPushToTalkChanged(false)
+                    selectedTab = it
+                }, chat.totalUnread)
+            }
+            if (selectedTab == SessionTab.CHANNELS && !recovering) {
+                SectionLabel(stringResource(R.string.channel_gesture_hint), Modifier.padding(horizontal = 20.dp))
+            }
+            Panel(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Box(Modifier.weight(1f).fillMaxWidth().clip(MaterialTheme.shapes.medium)) {
+                    when (selectedTab) {
+                        SessionTab.CHANNELS ->
+                            if (recovering) {
+                                Text(
+                                    stringResource(R.string.chat_recovering_lists),
+                                )
+                            } else {
+                                ChannelList(state, onJoinChannel, openPoke)
+                            }
+                        SessionTab.PARTICIPANTS ->
+                            if (recovering) {
+                                Text(stringResource(R.string.chat_recovering_lists))
+                            } else {
+                                ParticipantList(state, onParticipantMutedChange, onParticipantVolumeChange, {
+                                    onPushToTalkChanged(false)
+                                    onOpenPrivateChat(it)
+                                    selectedTab = SessionTab.CHAT
+                                }, openPoke)
+                            }
+                        SessionTab.CHAT ->
+                            ChatConversationContent(
+                                chat,
+                                conversations,
+                                onChatDraft,
+                                onChatSend,
+                                onChatVisible,
+                                { onPushToTalkChanged(false) },
+                                onChatConversationSelected,
+                                onChatConversationClosed,
                             )
-                        } else {
-                            ChannelList(state, onJoinChannel, openPoke)
-                        }
-                    SessionTab.PARTICIPANTS ->
-                        if (recovering) {
-                            Text(stringResource(R.string.chat_recovering_lists))
-                        } else {
-                            ParticipantList(state, onParticipantMutedChange, onParticipantVolumeChange, {
-                                onPushToTalkChanged(false)
-                                onOpenPrivateChat(it)
-                                selectedTab = SessionTab.CHAT
-                            }, openPoke)
-                        }
-                    SessionTab.CHAT ->
-                        ChatConversationContent(
-                            chat,
-                            onChatDraft,
-                            onChatSend,
-                            onChatVisible,
-                            { onPushToTalkChanged(false) },
-                            onChatConversationSelected,
-                            onChatConversationClosed,
-                        )
+                    }
                 }
             }
-        }
-        if (selectedTab == SessionTab.CHAT) {
-            CompactChatVoiceBar(state, onMicrophoneModeChanged, onPushToTalkChanged)
-        } else {
-            MicrophoneControl(
-                mode = state.microphoneMode,
-                isTransmitting = state.isTransmitting,
-                isCapturing = state.isCapturing,
-                captureDeferred = state.microphoneError == io.github.ts3mobile.app.service.UserMessage.MicrophoneResumeInApp,
-                onMicrophoneModeChanged = onMicrophoneModeChanged,
-                onPushToTalkChanged = onPushToTalkChanged,
-            )
+            if (selectedTab == SessionTab.CHAT) {
+                CompactChatVoiceBar(state, onMicrophoneModeChanged, onPushToTalkChanged)
+            } else {
+                MicrophoneControl(
+                    mode = state.microphoneMode,
+                    isTransmitting = state.isTransmitting,
+                    isCapturing = state.isCapturing,
+                    captureDeferred = state.microphoneError == io.github.ts3mobile.app.service.UserMessage.MicrophoneResumeInApp,
+                    onMicrophoneModeChanged = onMicrophoneModeChanged,
+                    onPushToTalkChanged = onPushToTalkChanged,
+                )
+            }
         }
     }
 }

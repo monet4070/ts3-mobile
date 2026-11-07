@@ -15,6 +15,9 @@
 维护与来源：
 
 - [开发约定](../CONTRIBUTING.md)、[架构](../ARCHITECTURE.md)、[设计决策](decisions/)
+- [使用体验与工程质量提升计划（2026-11-07）](plans/IMPROVEMENT_PLAN_2026-11-07_ZH.md)：分阶段范围、依赖、验收和交付顺序；当前为待实施规划。
+- [提升执行计划与工作量评估（2026-11-07）](plans/IMPROVEMENT_EXECUTION_PLAN_2026-11-07_ZH.md)：代码核查、收益、三点估算、分批任务与风险关卡；正在逐阶段实施。
+- [提升计划执行进度（2026-11-07）](plans/IMPROVEMENT_PROGRESS_2026-11-07_ZH.md)：实际状态、阶段证据及待验收项。
 - [更新日志](../CHANGELOG.md)、[第三方许可](../THIRD_PARTY_NOTICES.md)
 - [测试记录](testing/)与[历史开发计划](plans/)保留各自日期，不自动代表最新 APK 的验收。
 - [1.0.0 语音断续回归排查与修复](testing/AUDIO_PLAYBACK_REGRESSION_2026-11-05_ZH.md)记录离线复现和实机验证边界。
