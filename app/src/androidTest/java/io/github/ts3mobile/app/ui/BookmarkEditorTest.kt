@@ -5,6 +5,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
@@ -17,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import io.github.ts3mobile.app.bookmarks.BookmarkState
@@ -48,7 +50,7 @@ class BookmarkEditorTest {
         rule.onNodeWithText("Save passwords").assertDoesNotExist()
         rule.onNodeWithText("Save").assertIsNotEnabled()
         rule.onNodeWithText("Bookmark name").performTextInput("My server")
-        rule.onNodeWithText("Save").performClick()
+        saveWithSemantics()
         rule.runOnIdle {
             val saved = fixture.bookmarks.value.entries.single()
             assertEquals(fixture.form.value.host, saved.host)
@@ -84,10 +86,10 @@ class BookmarkEditorTest {
         }
         openNewBookmark()
         rule.onNodeWithText("Bookmark name").performTextInput("Unsaved draft")
-        rule.onNodeWithText("Save").performClick()
+        saveWithSemantics()
         rule.onNodeWithText("Bookmark operation failed. Saved bookmarks were kept. Please try again.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Unsaved draft").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Save").performClick()
+        saveWithSemantics()
         rule.runOnIdle {
             assertEquals(2, attempts)
             assertTrue(fixture.bookmarks.value.entries.isEmpty())
@@ -139,6 +141,12 @@ class BookmarkEditorTest {
     private fun openNewBookmark() {
         rule.onNodeWithText("Choose a saved server").performClick()
         rule.onNodeWithText("Add bookmark").performClick()
+    }
+
+    private fun saveWithSemantics() {
+        // These tests verify saving/retry. IME animation can move a touch target
+        // between down/up on CI; the separate large-text test checks real layout.
+        rule.onNodeWithText("Save").performSemanticsAction(SemanticsActions.OnClick) { it() }
     }
 
     private fun save(name: String) {
