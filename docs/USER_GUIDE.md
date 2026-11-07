@@ -48,6 +48,14 @@ tuning defaults to replace the four stored choices. This never clears identity,
 bookmarks or connection memory. A failed reset remains visible rather than
 deleting unreadable storage. Public 1.0.0/code14 still uses service-memory tuning.
 
+Development builds show a live input level in the tuning dialog while capture is
+already active. It uses the gate's post-denoise/post-gain RMS before the limiter,
+updates at most ten times per second, and shows the actual gate/sending state.
+The dialog's **Hold to talk** sends to the current channel through normal PTT;
+release, cancel, close or switch away to stop holding. Opening settings never
+starts capture. Continuous/Gate mode has a Stop microphone action. Levels are
+cleared when capture, routing or the observation ends and are not saved.
+
 Choose routes from those Android reports as available. Headset, Bluetooth and USB
 behavior depends on the device. AEC status reports Android's capability/activation,
 not a guarantee of acoustic quality. User actions provide per-user mute and volume.

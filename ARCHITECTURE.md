@@ -614,3 +614,19 @@ disconnect generation and conversation existence. A ViewModel-owned
 before binding; explicit navigation supersedes it. Single-target selection settles
 before mounting chat; summaries mount a restorable conversation list without
 message geometry/read callbacks. See [ADR-0025](docs/decisions/0025-private-message-notifications.md).
+
+## Subscribed microphone level boundary
+
+`MicrophoneFrameProcessor.levelDb` shares the existing gate RMS definition; an
+optional measurement for non-gated blocks cannot change gain/limiter/Opus output.
+`MicrophoneLevelMeter` owns one scalar and closeable subscriptions, with 100 ms
+monotonic publication limits and capture/processing/route revision barriers.
+Capture stop and configuration/routing invalidation clear stale values before
+late worker results can publish. No coroutine is created on the audio thread.
+
+The application exposes a cold polling Flow that closes its adapter subscription
+on cancellation. Only `MicrophoneLevelIndicator` collects it while started; levels
+never enter `MicrophoneCaptureState`, whole-screen state or notification updates.
+The tuning dialog uses normal PTT and an explicit current-channel warning, with
+focus/disposal releases and a stop action for continuous/gated capture. See
+[ADR-0026](docs/decisions/0026-live-microphone-levels.md).

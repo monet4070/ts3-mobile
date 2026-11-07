@@ -248,6 +248,15 @@
     <string name="private_message_notification_received">You have new private messages</string>
     <string name="private_message_notification_settings">Private message notifications</string>
     <string name="private_message_conversations">Choose a private conversation</string>
+    <string name="microphone_level_off">Microphone is off</string>
+    <string name="microphone_level_waiting">Microphone active · waiting for level</string>
+    <string name="microphone_level_sending">Microphone active · sending</string>
+    <string name="microphone_level_capturing">Microphone active · capturing</string>
+    <string name="microphone_level_gate_closed">Volume gate closed · listening</string>
+    <string name="microphone_level_gate_open">Volume gate open</string>
+    <string name="microphone_level_value">Input level: %1$d dBFS</string>
+    <string name="microphone_level_no_sample">Input level: —</string>
+    <string name="microphone_tuning_send_warning">Hold to talk below sends your voice to the current channel.</string>
     <string name="microphone_settings">Microphone settings</string>
     <string name="microphone_settings_lifetime">Changes apply immediately and are kept on this device after saving finishes. Opening settings does not start recording.</string>
     <string name="microphone_preferences_loading">Loading saved tuning…</string>

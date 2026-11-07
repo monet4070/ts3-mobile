@@ -43,9 +43,12 @@ import io.github.ts3mobile.app.service.UserMessage
 import io.github.ts3mobile.app.service.hasPlaybackFailure
 import io.github.ts3mobile.app.settings.MicrophonePreferenceField
 import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
+import io.github.ts3mobile.audio.opus.MicrophoneLevel
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.Ts3Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,6 +111,7 @@ fun MainScreen(
     onChatNotificationConsumed: (String) -> Unit = {},
     onUserNavigation: () -> Unit = {},
     onNotificationSettings: () -> Unit = {},
+    microphoneLevels: Flow<MicrophoneLevel?> = emptyFlow(),
 ) {
     val snackbar = remember { SnackbarHostState() }
     PokeFeedbackEffect(chatState, snackbar)
@@ -164,6 +168,9 @@ fun MainScreen(
             onMicrophonePreferenceCommit,
             onMicrophonePreferenceRetry,
             onMicrophonePreferenceReset,
+            microphoneLevels,
+            onPushToTalkChanged,
+            onMicrophoneModeChanged,
         )
     }
     var showBackgroundRuntime by rememberSaveable { mutableStateOf(false) }

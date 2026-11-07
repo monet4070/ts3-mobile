@@ -36,6 +36,7 @@ import io.github.ts3mobile.app.ui.MainScreen
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import io.github.ts3mobile.protocol.ServerConfig
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MainViewModel>()
@@ -183,6 +184,7 @@ class MainActivity : ComponentActivity() {
                     onChatNotificationConsumed = viewModel.chatNotificationEntry::consumed,
                     onUserNavigation = viewModel.chatNotificationEntry::cancel,
                     onNotificationSettings = ::openNotificationSettings,
+                    microphoneLevels = serviceBinder?.microphoneLevels ?: remember { emptyFlow() },
                 )
             }
         }

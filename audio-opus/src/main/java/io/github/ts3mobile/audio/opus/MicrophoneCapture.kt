@@ -9,6 +9,14 @@ interface MicrophoneCapture : EncodedVoiceSource, AutoCloseable {
     val generation: Long
     val isReleased: Boolean get() = !isCapturing
 
+    /** Optional scalar observation for older adapters; never starts or stops capture. */
+    fun observeLevels(): MicrophoneLevelSubscription =
+        object : MicrophoneLevelSubscription {
+            override val latest: MicrophoneLevel? = null
+
+            override fun close() = Unit
+        }
+
     fun requestStop() {}
 
     fun configure(

@@ -10,10 +10,11 @@
 | A1 | 离线实现与验收完成 | [4项旧实现失败、8项新增回归及137项完整套件](../testing/IMPROVEMENT_A1_Q1_2026-11-07_ZH.md) |
 | Q1 | 离线／云端验收完成 | [PR #8 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42348440916)通过；下载核对报告含导航8项与关键UI57项 |
 | A2 | 离线／云端验收完成 | [253 JVM／141 Android、真实Activity服务进程重启](../testing/IMPROVEMENT_A2_2026-11-07_ZH.md)；[PR #9 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42357799673)通过并核对报告 |
-| A3a / A3b | 离线实现与验收完成，远端待确认 | [263 JVM／154 Android、事务guard和可见Join](../testing/IMPROVEMENT_A3_2026-11-07_ZH.md) |
+| A3a / A3b | 离线／云端验收完成 | [263 JVM／154 Android、事务guard和可见Join](../testing/IMPROVEMENT_A3_2026-11-07_ZH.md) |
 | R1 | 离线／模拟器验收完成 | [Debug及minified候选同开发证书覆盖升级、真实Vault及原密钥保全](../testing/IMPROVEMENT_R1_2026-11-07_ZH.md)；不包含生产签名／实体设备 |
-| A4 | 离线／模拟器完成，云端待确认 | [282 JVM、完整 167 Android 通过／1 外部 fixture 默认跳过，真实系统开关两 fixture 通过](../testing/IMPROVEMENT_A4_2026-11-07_ZH.md) |
-| A5 / R2 | 待实施 | 输入电平、PTT 交互及第二批组合／覆盖升级验收 |
+| A4 | 离线／模拟器／云端完成 | [282 JVM、完整 167 Android 通过／1 外部 fixture 默认跳过，真实系统开关两 fixture 通过](../testing/IMPROVEMENT_A4_2026-11-07_ZH.md) |
+| A5 | 离线实现与模拟器验收完成 | [282 app／204 audio JVM、完整 177 Android 通过／1 外部 fixture 默认跳过及最终 27 项补验](../testing/IMPROVEMENT_A5_2026-11-07_ZH.md) |
+| R2 | 待实施 | 第二批组合／覆盖升级验收 |
 | C1 / C0 / C2 / R3 | 待实施 | 身份格式关卡、兼容加密、导入恢复 |
 | B1 / D1 / D2 / R4 | 待实施 | 静音量化关卡、主题与监测提取 |
 
@@ -27,3 +28,11 @@ R1 草稿 [PR #11](https://github.com/monet4070/ts3-mobile/pull/11) 初始 `e7b4
 
 A4 已提交草稿 [PR #12](https://github.com/monet4070/ts3-mobile/pull/12)，生产及回归源码 `0ca3f1c`，
 [离线／模拟器验收](../testing/IMPROVEMENT_A4_2026-11-07_ZH.md)完成，云端 CI 待确认。下一阶段 A5。
+
+A3 最新[CI 42363545006](https://github.com/monet4070/ts3-mobile/actions/runs/42363545006)与
+R1 最新[CI 42363547532](https://github.com/monet4070/ts3-mobile/actions/runs/42363547532)均通过，下载核对了263／129／194 JVM、81／11 Android。
+A4 测试修复至 `fac612b`，[CI 42364912604](https://github.com/monet4070/ts3-mobile/actions/runs/42364912604)通过，
+报告核对为282／129／194 JVM、96／11 Android，0失败。上述最新证据取代之前“待确认”状态。
+
+A5 已提交草稿 [PR #13](https://github.com/monet4070/ts3-mobile/pull/13)，生产与回归源码 `3adcbdb`，
+[离线／模拟器验收](../testing/IMPROVEMENT_A5_2026-11-07_ZH.md)完成，云端CI待确认。R2继续组合与覆盖升级验收。

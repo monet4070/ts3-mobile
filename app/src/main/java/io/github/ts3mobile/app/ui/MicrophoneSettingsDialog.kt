@@ -24,11 +24,15 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.settings.MicrophonePreferenceField
 import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
 import io.github.ts3mobile.audio.opus.EchoCancellationState
+import io.github.ts3mobile.audio.opus.MicrophoneLevel
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlin.math.roundToInt
 
 @Composable
@@ -40,6 +44,9 @@ internal fun MicrophoneSettingsDialog(
     onCommit: () -> Unit = {},
     onRetry: () -> Unit = {},
     onReset: () -> Unit = {},
+    levels: Flow<MicrophoneLevel?> = emptyFlow(),
+    onPushToTalkChanged: (Boolean) -> Unit = {},
+    onMicrophoneModeChanged: (MicrophoneMode) -> Unit = {},
 ) {
     val commit by rememberUpdatedState(onCommit)
     DisposableEffect(Unit) { onDispose { commit() } }
@@ -55,6 +62,7 @@ internal fun MicrophoneSettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(stringResource(R.string.microphone_settings_lifetime), style = MaterialTheme.typography.bodySmall)
+                MicrophoneTuningCapture(state, levels, onPushToTalkChanged, onMicrophoneModeChanged)
                 MicrophonePreferenceControls(preferenceStatus, onRetry, onReset)
                 Text(stringResource(R.string.microphone_volume_value, settings.volumePercent))
                 Slider(

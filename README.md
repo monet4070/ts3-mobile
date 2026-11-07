@@ -138,7 +138,16 @@ chat keyboard open, the compact voice bar's microphone-off icon can stop capture
 Open **More options → Microphone settings**. Input gain ranges from 0–200%; you can switch RNNoise and
 device echo cancellation, and adjust the gate threshold. Lower thresholds let quieter sounds trigger it.
 Lower it if soft speech is missed; raise it if background noise triggers transmission. Settings apply
-immediately, opening the dialog does not start capture, and service recreation restores defaults.
+immediately. Opening the dialog does not start capture. Development builds retain saved tuning across
+service recreation; public 1.0.0/code14 keeps tuning in service memory.
+
+Development builds show a live input level in the tuning dialog while capture is
+already active. It uses the gate's post-denoise/post-gain RMS before the limiter,
+updates at most ten times per second, and shows the actual gate/sending state.
+The dialog's **Hold to talk** sends to the current channel through normal PTT;
+release, cancel, close or switch away to stop holding. Opening settings never
+starts capture. Continuous/Gate mode has a Stop microphone action. Levels are
+cleared when capture, routing or the observation ends and are not saved.
 
 Tap the audio row's device name to choose from Android's available earpiece, speaker, headset, Bluetooth
 or USB routes. Available Bluetooth communication headsets are selected automatically at session start
