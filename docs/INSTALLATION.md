@@ -59,7 +59,8 @@ Android 覆盖安装需要相同的应用 ID、兼容签名和允许升级的版
 | 比将要安装的版本更新的应用 | Android 通常拒绝降级，尤其 versionCode 更低时；优先安装后续修复版本 |
 
 **不要为解决安装冲突直接卸载或清空存储。** 本地身份、加密收藏、连接表单与其他本机设置会丢失。
-当前应用没有身份导入导出、收藏迁移或应用内备份恢复工具；Android 备份/设备迁移也被限制。
+公开1.0.0/code14没有身份导入导出或收藏迁移；Android备份／设备迁移也被限制。
+本分支C2改进候选已支持自有加密身份备份和本地回退，尚未公开发布，见下方候选说明。
 旧身份关联的服务器权限可能无法由新身份继承。
 
 1.0.0 沿用旧公开证书，SHA-256 为：
@@ -76,7 +77,7 @@ e239102412f17ddd1909bd323b3825831b153fec4602ec00abb359da7d8be592
 应用不会自动检查更新。GitHub **Watch → Custom → Releases** 可订阅发布通知。
 更新前正常断开服务器；保留旧安装包有助于核对证书，但不保证能原地降级。
 遇到严重回归，优先等待兼容签名、versionCode 更高的修复包；不建议卸载后回退，
-因为没有内置身份备份。提交问题时提供版本和安装错误类型，不上传私钥、身份或私人服务器信息。
+公开code14没有内置身份备份；候选的本地回退也不能抵抗卸载／密钥丢失。提交问题时提供版本和安装错误类型，不上传私钥、身份或私人服务器信息。
 
 ## English
 
@@ -108,12 +109,40 @@ have unknown compatibility. Android normally rejects lower versionCodes.
 
 Do not resolve a signature conflict by immediately uninstalling or clearing data.
 That removes local identity, encrypted bookmarks/form memory and settings; a new
-identity may lose server-granted permissions. There is no identity import/export,
-bookmark transfer or in-app backup/restore tool, and Android backup/transfer is
-restricted. A certificate change needs its own migration announcement.
+identity may lose server-granted permissions. Published code 14 has no identity import/export or bookmark transfer, and Android backup/transfer is
+restricted. The unshipped C2 candidate adds encrypted identity backup/restore and
+local rollback; see the candidate scope below. A certificate change needs its own migration announcement.
 
 Disconnect normally before updates. Keep the old APK for certificate comparison,
 but do not assume in-place downgrades work. Prefer a higher-versionCode hotfix
 signed compatibly. Subscribe with GitHub Watch → Custom → Releases; the app has no
 automatic update checker. Report installation failures through [support](../SUPPORT.md)
 without posting credentials or identity material.
+
+
+## 身份备份改进候选 / Identity backup candidate
+
+本分支C2候选从“更多选项 → 身份与备份”提供自有`.ts3mbak`口令加密导出／导入和确认后本地回退。
+公开1.0.0/code14没有这些入口。当前候选为草稿PR，版本暂仍code14，仅在标准开发测试证书下验证，
+没有用公开发布私钥签名、合并或发行。不要根据相同版本名／code就推断APK包含候选功能，
+按具体源码／APK SHA及[身份候选验收](testing/IMPROVEMENT_R3_2026-11-07_ZH.md)判断。
+
+换安装前先用候选完成导出、关闭、回读认证；口令单独保管。目标安装选择文件后先校验，
+核对当前／新UID、offset、安全等级及权限影响，再确认替换，之后需手动连接。
+本地回退只依赖本安装中最后有效旧身份和同一Keystore密钥，不能代替外部备份。
+忘记口令无法恢复。签名冲突、物理坏文件或不可用现有密钥应保留原安装，用备份在另一全新安装恢复，
+不要为通过升级测试自动卸载／清空旧数据。本轮只验证离线／模拟器和测试签名，不代表公开证书／实体设备升级已验收。
+
+The unshipped C2 source candidate provides passphrase-encrypted `.ts3mbak` export,
+confirmed import and local rollback from **More options → Identity and backups**.
+Published 1.0.0/code 14 does not include these controls. Draft candidates still use
+code 14 and were tested only with the standard development certificate, not the
+published release private key. Identify exact source/APK fingerprints, not just
+the version label; see [R3 acceptance](testing/IMPROVEMENT_R3_2026-11-07_ZH.md).
+
+Export and verify the reopened file before moving installations; keep its passphrase
+separately. On the target, review both identities and permission impact, confirm,
+then connect manually. Local rollback needs this installation’s key and is not an
+external backup. Preserve the original installation on signature conflicts or
+unreadable files/keys and recover the external backup on another fresh installation.
+No production-signing or physical-device upgrade result is implied by emulator tests.
