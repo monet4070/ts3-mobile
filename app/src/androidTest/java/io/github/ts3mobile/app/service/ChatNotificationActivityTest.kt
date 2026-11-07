@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -126,7 +127,7 @@ class ChatNotificationActivityTest {
         val token = "11111111-1111-4111-8111-111111111111"
         ActivityScenario.launch<MainActivity>(PrivateMessageNotificationIntent.create(context, token)).use {
             rule.onNodeWithTag("chat_messages").assertDoesNotExist()
-            rule.onNodeWithText("Connect", useUnmergedTree = true).assertIsDisplayed()
+            rule.onNodeWithText("Connect", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
         }
     }
 
