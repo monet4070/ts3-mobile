@@ -630,3 +630,14 @@ never enter `MicrophoneCaptureState`, whole-screen state or notification updates
 The tuning dialog uses normal PTT and an explicit current-channel warning, with
 focus/disposal releases and a stop action for continuous/gated capture. See
 [ADR-0026](docs/decisions/0026-live-microphone-levels.md).
+
+## Portable identity backup prototype
+
+The C1 prototype separates a bounded portable AES-GCM/PBKDF2 container from the
+installation Keystore envelopes. The protocol codec adds only bounded identity
+validation/summary, including private/public correspondence; cipher/KDF and
+passphrase policy stay in app identity infrastructure. No import or replacement
+UI is connected at this stage. A tested qualification model and a one-transaction
+active/rollback/pending recovery contract precede C2 wiring; they cannot rely on
+UI phase alone. See [ADR-0027](docs/decisions/0027-portable-identity-backup.md) and
+[format v1](docs/IDENTITY_BACKUP_FORMAT_V1.md).

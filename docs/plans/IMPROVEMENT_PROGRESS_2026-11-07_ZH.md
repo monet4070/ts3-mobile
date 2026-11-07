@@ -15,7 +15,8 @@
 | A4 | 离线／模拟器／云端完成 | [282 JVM、完整 167 Android 通过／1 外部 fixture 默认跳过，真实系统开关两 fixture 通过](../testing/IMPROVEMENT_A4_2026-11-07_ZH.md) |
 | A5 | 离线实现与模拟器验收完成 | [282 app／204 audio JVM、完整 177 Android 通过／1 外部 fixture 默认跳过及最终 27 项补验](../testing/IMPROVEMENT_A5_2026-11-07_ZH.md) |
 | R2 | 离线／模拟器验收完成 | [第一批→第二批Debug／minified覆盖升级、四调音参数／原密文／原密钥／UID保全与组合流程](../testing/IMPROVEMENT_R2_2026-11-07_ZH.md) |
-| C1 / C0 / C2 / R3 | 待实施 | 身份格式关卡、兼容加密、导入恢复 |
+| C1 | 离线原型／参数关卡完成 | [132 protocol／295 app JVM、4 Android及跨提供者／资源／资格／计时证据](../testing/IMPROVEMENT_C1_2026-11-07_ZH.md) |
+| C0 / C2 / R3 | 待实施 | 兼容加密、导入恢复和身份批验收 |
 | B1 / D1 / D2 / R4 | 待实施 | 静音量化关卡、主题与监测提取 |
 
 P0/A1/Q1已经提交到草稿[PR #8](https://github.com/monet4070/ts3-mobile/pull/8)，固定源码`b1b44a9`；远端CI通过且报告已核对。A2是后续草稿[PR #9](https://github.com/monet4070/ts3-mobile/pull/9)，基于PR #8，源码`d3f481c`；为连续阶段PR补充`codex/**`目标分支CI触发。没有合并或公开发布，实际结果以各阶段记录及对应源码指纹为准。
@@ -39,3 +40,7 @@ A5 已提交草稿 [PR #13](https://github.com/monet4070/ts3-mobile/pull/13)，�
 
 R2 已提交草稿 [PR #14](https://github.com/monet4070/ts3-mobile/pull/14)，测试／工具源码 `c95935d`；
 [第二批验收](../testing/IMPROVEMENT_R2_2026-11-07_ZH.md)完成，生产仍沿用A5。下一阶段 C1。
+
+A5 [CI42366139680](https://github.com/monet4070/ts3-mobile/actions/runs/42366139680)与
+R2 [CI42366823505](https://github.com/monet4070/ts3-mobile/actions/runs/42366823505)通过且下载核对：
+两者282／129／204 JVM；A5 app107／audio14 Android，R2 app108／audio14 Android，全部零失败。

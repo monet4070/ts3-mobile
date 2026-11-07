@@ -54,6 +54,12 @@ android {
                 "META-INF/NOTICE.txt",
             )
     }
+
+    // Shared synthetic crypto vectors belong only to JVM/Android tests, never the application APK.
+    sourceSets {
+        getByName("test").resources.srcDir("src/testFixtures/resources")
+        getByName("androidTest").assets.srcDir("src/testFixtures/resources")
+    }
 }
 
 // Lock the resolved dependency graph of every configuration to the committed
