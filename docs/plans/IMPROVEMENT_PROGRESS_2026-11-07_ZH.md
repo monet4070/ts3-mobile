@@ -19,7 +19,8 @@
 | C0 | 离线／模拟器兼容验收完成 | [299 JVM／188 Android通过、三真实Vault双向兼容／缺钥保全及默认alias覆盖升级](../testing/IMPROVEMENT_C0_2026-11-07_ZH.md) |
 | C2.1 | 离线／模拟器验收完成 | [325 JVM、完整195 Android通过／1跳过及最终12补验、独立覆盖升级](../testing/IMPROVEMENT_C21_2026-11-07_ZH.md) |
 | C2.2 | 离线／模拟器验收完成 | [340 app／133 protocol JVM、完整201 Android通过／1跳过与最终7补验、实际Debug／minified SAF导出](../testing/IMPROVEMENT_C22_2026-11-07_ZH.md) |
-| C2.3 / R3 | 待实施 | 导入／替换／回退与身份批验收 |
+| C2.3 | 离线／模拟器验收完成 | [355 app JVM、完整206 Android通过／1跳过与最终9补验、独立安装Debug／minified实际导入／回退及四次精确材料核对](../testing/IMPROVEMENT_C23_2026-11-07_ZH.md) |
+| R3 | 待实施 | 身份候选组合与进程级崩溃矩阵 |
 | B1 / D1 / D2 / R4 | 待实施 | 静音量化关卡、主题与监测提取 |
 
 P0/A1/Q1已经提交到草稿[PR #8](https://github.com/monet4070/ts3-mobile/pull/8)，固定源码`b1b44a9`；远端CI通过且报告已核对。A2是后续草稿[PR #9](https://github.com/monet4070/ts3-mobile/pull/9)，基于PR #8，源码`d3f481c`；为连续阶段PR补充`codex/**`目标分支CI触发。没有合并或公开发布，实际结果以各阶段记录及对应源码指纹为准。
@@ -68,3 +69,6 @@ C2.1 [CI42388366562](https://github.com/monet4070/ts3-mobile/actions/runs/423883
 
 C2.2 已提交草稿 [PR #18](https://github.com/monet4070/ts3-mobile/pull/18)，源码 `dfc3aa1`；
 [SAF实际导出验收](../testing/IMPROVEMENT_C22_2026-11-07_ZH.md)完成，云端CI待确认；继续C2.3。
+
+C2.2 [CI42390907613](https://github.com/monet4070/ts3-mobile/actions/runs/42390907613)通过并下载核对：
+340／133／204 JVM、app131／audio14 Android，全部零失败。C2.3已完成实现和自动门禁，正在实际跨安装／minified文件恢复验收。

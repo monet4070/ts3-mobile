@@ -61,7 +61,7 @@ and x86_64. Installability does not mean every device/version has been tested; s
 
 **Keep the existing app when upgrading.** An in-place update needs the same application ID and
 compatible signing. Do not fix a conflict by immediately uninstalling or clearing storage: that removes
-the local identity, bookmarks and encrypted form. Encrypted identity export is available from More options → Identity and backups; import/restore is the next stage. Separate
+the local identity, bookmarks and encrypted form. Encrypted identity export/import and local rollback are available from More options → Identity and backups. Separate
 TS3 Mobile UI test packages have their own data and do not migrate into the release. See [installation
 and upgrades](docs/INSTALLATION.md) for checksums and certificates.
 
@@ -288,7 +288,7 @@ Up to 20 conversations share 500 messages / 2 MiB; older content may be evicted.
 retain received text. No ads, analytics or automatic project crash backend. Read [privacy](PRIVACY.md)
 for complete details.
 
-One active server. Whisper, file transfer, administration, identity import and
+One active server. Whisper, file transfer, administration and
 multi-server tabs are absent. Tested Bluetooth/background/acoustic coverage is recorded in
 [compatibility](docs/COMPATIBILITY.md).
 
@@ -342,4 +342,20 @@ and checking the original identity. Unverified files may be incomplete: retry to
 a new file. Document providers control cloud synchronization. Keep the passphrase
 separately; it cannot be recovered. A local previous identity is not an external
 backup. Opening this page does not create an identity or connect to a server.
-Import/restore and desktop-client format compatibility are not yet available.
+Desktop-client identity formats are not supported.
+
+
+To restore, choose **Import or restore**, enter the backup’s existing passphrase,
+and select the file. Review current/proposed UID, offset, security level and server
+permission impact, then **Confirm change**. Preflight/cancellation does not replace
+identity or connect. If connection work starts or the current identity changes,
+refresh the comparison and confirm again. **Review local previous identity** uses
+the same confirmation and idle requirements; the previous identity remains encrypted
+locally, not externally backed up. A confirmed save finishes safely even if the
+page closes; reopen/refresh to check its actual result. Connect manually afterwards.
+
+Keep the original installation when recovering a physically unreadable Preferences
+file or unusable local key. Those originals are not automatically erased or reset;
+restore a verified external backup on another fresh installation. A missing alias
+with readable Preferences can accept an explicitly verified import, preserving the
+old unreadable ciphertext as evidence rather than a usable rollback.

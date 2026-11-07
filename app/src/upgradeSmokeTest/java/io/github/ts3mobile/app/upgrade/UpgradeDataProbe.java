@@ -44,9 +44,11 @@ public final class UpgradeDataProbe extends Instrumentation {
             Context context = getTargetContext();
             targetLoader = context.getClassLoader();
             SharedPreferences marker = context.getSharedPreferences(MARKER, Context.MODE_PRIVATE);
-            if ("verify-raw".equals(stage)) {
-                verifyRawStorage(context, marker);
-                result.putString("stream", "UPGRADE_REAL_VAULT_FILES_KEYS_UID_OK\n");
+            if ("verify-raw".equals(stage) || "verify-after-identity-maintenance".equals(stage)) {
+                boolean changedIdentity = "verify-after-identity-maintenance".equals(stage);
+                verifyRawStorage(context, marker, changedIdentity);
+                result.putString("stream", changedIdentity ? "UPGRADE_UNRELATED_FILES_ORIGINAL_KEYS_UID_OK\n"
+                    : "UPGRADE_REAL_VAULT_FILES_KEYS_UID_OK\n");
                 finish(Activity.RESULT_OK, result);
                 return;
             }
@@ -203,6 +205,10 @@ public final class UpgradeDataProbe extends Instrumentation {
     }
 
     private void verifyRawStorage(Context context, SharedPreferences marker) throws Exception {
+        verifyRawStorage(context, marker, false);
+    }
+
+    private void verifyRawStorage(Context context, SharedPreferences marker, boolean changedIdentity) throws Exception {
         require(marker.getInt("uid", -1) == context.getApplicationInfo().uid, "Application UID changed");
         if (marker.contains("tuning_digest")) {
             require(fileDigest(context, "ts3_microphone_preferences").equals(marker.getString("tuning_digest", "")),
@@ -211,7 +217,13 @@ public final class UpgradeDataProbe extends Instrumentation {
         KeyStore keys = KeyStore.getInstance("AndroidKeyStore");
         keys.load(null);
         for (int i = 0; i < FILES.length; i++) {
-            require(fileDigest(context, FILES[i]).equals(marker.getString("file_digest_" + i, "")), "Encrypted vault file changed");
+            // Only the explicitly named maintenance stage permits the intentionally changed
+            // identity file. Every original key, other Vault and tuning byte is still checked.
+            if (!changedIdentity || i != 0) {
+                require(fileDigest(context, FILES[i]).equals(marker.getString("file_digest_" + i, "")), "Encrypted vault file changed");
+            } else {
+                require(new File(context.getFilesDir(), "datastore/ts3_identity.preferences_pb").length() > 0, "Identity store missing");
+            }
             SecretKey key = (SecretKey) keys.getKey(ALIASES[i], null);
             require(key != null, "Vault key missing after update");
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");

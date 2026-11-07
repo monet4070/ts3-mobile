@@ -140,7 +140,7 @@ bypass Doze; the background runtime check links to Android battery settings.
 Uninstalling the app removes its saved server history, local diagnostics,
 preferences, encrypted bookmarks, encrypted connection form and encrypted identity
 under normal Android behavior. Clearing the app's storage
-has the same effect. The app provides passphrase-encrypted identity export (restore/import follows separately);
+has the same effect. The app provides passphrase-encrypted identity export/import and local rollback;
 deleting this data can lose server permissions tied to the old identity.
 Data already received by a TeamSpeak server or other
 participants is outside the project's control.
@@ -166,3 +166,16 @@ cleared best effort; no plaintext temporary file or persisted URI grant is used.
 Passwords are not saved on rotation/process death or put in diagnostics/clipboard.
 The identity page disables screenshots/recents capture. JVM/IME memory erasure
 cannot be guaranteed. Forgetting the passphrase prevents recovery of the file.
+
+
+Explicit import reads only the document selected through OpenDocument, enforces
+byte/KDF limits, decrypts and validates on the device. Candidate plaintext stays in
+private memory until confirmation/cancellation; only identity summaries and fixed
+failure categories enter observable UI state. No plaintext file, password hint or
+persisted URI grant. A current/proposed identity comparison and explicit confirmation
+precede replacement/rollback. The same excluded local identity store retains a
+verified previous encrypted identity and bounded recovery evidence (one payload).
+Connection ownership blocks mutation until actual work settles; import/rollback
+never auto-connect. Forgetting the passphrase or losing all external backups is
+not recoverable by the project. Existing unusable aliases and physically corrupt
+Preferences are preserved rather than automatically deleted to make recovery pass.

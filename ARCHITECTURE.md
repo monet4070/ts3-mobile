@@ -698,3 +698,24 @@ actually returns. No arbitrary document deletion and no cloud durability claim.
 The test provider is Java in the separate Android instrumentation APK only and has
 no dependency on the target APK or its Kotlin runtime. See
 [ADR-0030](docs/decisions/0030-verified-document-backups.md).
+
+
+## Confirmed identity restore (C2.3)
+
+The private identity Activity provides mutually qualified export/restore tabs.
+`IdentityRestoreController` owns one OpenDocument slot, an opaque operation id,
+a private `ImportedIdentity` candidate and the comparison revision. Candidate
+bytes are strictly UTF-8 decoded and inspected after bounded container/KDF checks
+and authentication. Passwords/candidate bytes never enter observable/saved state.
+Preflight changes no active identity. Confirmation delegates to the existing
+Application repository transaction; BUSY/stale retains the candidate but requires
+refreshing the displayed comparison and another explicit confirmation. Rollback
+previews the latest verified previous identity under the same revision/gate rules.
+
+The commit worker owns candidate cleanup through durable acknowledgement even
+when the ViewModel disappears. A completion refresh re-reads authoritative state;
+new Activities always load the repository. No auto-connect. Existing unusable keys
+and physical Preferences corruption are never reset; external backups can restore
+on another fresh installation. Real independent test aliases/stores and resolver
+streams exercise import, wrong-password preservation, confirmation and rollback.
+See [ADR-0031](docs/decisions/0031-confirmed-identity-restore.md).
