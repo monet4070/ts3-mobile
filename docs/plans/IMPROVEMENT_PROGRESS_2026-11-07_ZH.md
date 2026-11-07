@@ -65,3 +65,6 @@ C2.1 已提交草稿 [PR #17](https://github.com/monet4070/ts3-mobile/pull/17)�
 
 C2.1 [CI42388366562](https://github.com/monet4070/ts3-mobile/actions/runs/42388366562)重试后通过并下载核对：
 325／132／204 JVM、app124／audio14 Android，全零失败；首次失败为既有Opus源码下载连接重置。
+
+C2.2 已提交草稿 [PR #18](https://github.com/monet4070/ts3-mobile/pull/18)，源码 `dfc3aa1`；
+[SAF实际导出验收](../testing/IMPROVEMENT_C22_2026-11-07_ZH.md)完成，云端CI待确认；继续C2.3。
