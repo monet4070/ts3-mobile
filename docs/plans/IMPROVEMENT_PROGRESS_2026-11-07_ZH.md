@@ -72,3 +72,6 @@ C2.2 已提交草稿 [PR #18](https://github.com/monet4070/ts3-mobile/pull/18)�
 
 C2.2 [CI42390907613](https://github.com/monet4070/ts3-mobile/actions/runs/42390907613)通过并下载核对：
 340／133／204 JVM、app131／audio14 Android，全部零失败。C2.3已完成实现和自动门禁，正在实际跨安装／minified文件恢复验收。
+
+C2.3 已提交草稿 [PR #19](https://github.com/monet4070/ts3-mobile/pull/19)，源码 `dbe74bf`；
+[独立安装导入／回退验收](../testing/IMPROVEMENT_C23_2026-11-07_ZH.md)完成，云端CI待确认；继续R3。
