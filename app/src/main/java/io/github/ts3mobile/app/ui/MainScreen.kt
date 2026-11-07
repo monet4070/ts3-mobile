@@ -112,6 +112,7 @@ fun MainScreen(
     onUserNavigation: () -> Unit = {},
     onNotificationSettings: () -> Unit = {},
     microphoneLevels: Flow<MicrophoneLevel?> = emptyFlow(),
+    onIdentityManagement: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     PokeFeedbackEffect(chatState, snackbar)
@@ -221,6 +222,7 @@ fun MainScreen(
                             serviceState.status.phase == ConnectionPhase.CONNECTED,
                         ) { showSearch = true },
                         MainMenuAction(R.string.bookmarks_title, UiIcon.Bookmark) { showBookmarks = true },
+                        MainMenuAction(R.string.identity_title, UiIcon.Shield, action = onIdentityManagement),
                         MainMenuAction(R.string.microphone_settings, UiIcon.Mic, startsGroup = true) { showMicrophoneSettings = true },
                         MainMenuAction(R.string.background_runtime_title, UiIcon.Battery) {
                             onRefreshBackgroundRuntime()

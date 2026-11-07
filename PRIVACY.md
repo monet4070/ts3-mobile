@@ -140,7 +140,7 @@ bypass Doze; the background runtime check links to Android battery settings.
 Uninstalling the app removes its saved server history, local diagnostics,
 preferences, encrypted bookmarks, encrypted connection form and encrypted identity
 under normal Android behavior. Clearing the app's storage
-has the same effect. The app does not provide an identity export or restore tool;
+has the same effect. The app provides passphrase-encrypted identity export (restore/import follows separately);
 deleting this data can lose server permissions tied to the old identity.
 Data already received by a TeamSpeak server or other
 participants is outside the project's control.
@@ -154,3 +154,15 @@ identity store. Pending verification stores a SHA-256 digest; no plaintext priva
 key or passphrase is persisted. A local rollback shares the installation key and
 cannot recover a lost Keystore. Unreadable Preferences files are preserved and
 reported; they are never automatically cleared to create a replacement identity.
+
+
+Explicit identity export writes only an authenticated passphrase-encrypted
+`.ts3mbak` document to the user-selected SAF provider. The provider receives
+ciphertext and a generic filename, never the passphrase or plaintext key. Successful
+close is followed by bounded reread/authentication and exact identity verification;
+this does not certify provider/cloud synchronization. Failed files are not
+automatically deleted. Export buffers/passphrase remain in private memory and are
+cleared best effort; no plaintext temporary file or persisted URI grant is used.
+Passwords are not saved on rotation/process death or put in diagnostics/clipboard.
+The identity page disables screenshots/recents capture. JVM/IME memory erasure
+cannot be guaranteed. Forgetting the passphrase prevents recovery of the file.

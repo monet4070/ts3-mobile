@@ -24,7 +24,7 @@ object Ts3IdentityCodec {
             require(publicKey.isValid && !publicKey.isInfinity)
             require(LocalIdentity.load(privateKey).publicKey.normalize() == publicKey.normalize())
             require(identity.keyOffset >= 0)
-            return Ts3IdentitySummary(identity.uid.toString(), identity.keyOffset, identity.securityLevel)
+            return Ts3IdentitySummary(identity.uid.toBase64(), identity.keyOffset, identity.securityLevel)
         } catch (_: Exception) {
             // Parser/provider messages may contain the source INI or private scalar.
             throw InvalidIdentityMaterial()

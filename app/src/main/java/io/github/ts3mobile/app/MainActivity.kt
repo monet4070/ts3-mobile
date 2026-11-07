@@ -179,6 +179,11 @@ class MainActivity : ComponentActivity() {
                     onAwayChanged = { away, message -> serviceBinder?.setAway(away, message) },
                     onPresenceRetry = { serviceBinder?.retryPresence() },
                     onResolveUserChannel = { id, uid -> serviceBinder?.resolveUserChannel(id, uid) },
+                    onIdentityManagement = {
+                        startActivity(
+                            Intent(this, io.github.ts3mobile.app.identity.IdentityManagementActivity::class.java),
+                        )
+                    },
                     onOpenRepository = { openProjectRepository(this) },
                     chatNotification = chatNotification,
                     onChatNotificationConsumed = viewModel.chatNotificationEntry::consumed,

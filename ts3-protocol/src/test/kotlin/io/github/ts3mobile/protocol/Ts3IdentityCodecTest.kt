@@ -12,11 +12,21 @@ class Ts3IdentityCodecTest {
         val before = Ts3IdentityCodec.inspect(identity.export())
         val after = Ts3IdentityCodec.inspect(Ts3IdentityCodec.decode(identity.export()).export())
         assertEquals(before, after)
-        assertEquals(identity.uid.toString(), before.uid)
+        assertEquals(identity.uid.toBase64(), before.uid)
         assertEquals(identity.keyOffset, before.keyOffset)
         assertEquals(identity.securityLevel, before.securityLevel)
         assertEquals(identity.privateKey, Ts3IdentityCodec.decode(identity.export()).privateKey)
         assertFalse(before.toString().contains(before.uid))
+    }
+
+    @Test fun summaryUidIsTheStableTwentyByteBase64IdentifierUsedByConnections() {
+        val identity = LocalIdentity.generateNew(0)
+        val before = Ts3IdentityCodec.inspect(identity.export())
+        assertEquals(20, java.util.Base64.getDecoder().decode(before.uid).size)
+        assertEquals(28, before.uid.length)
+        assertFalse(before.uid.contains("com.github"))
+        identity.keyOffset += 1
+        assertEquals(before.uid, Ts3IdentityCodec.inspect(identity.export()).uid)
     }
 
     @Test fun mismatchedPublicAndPrivateKeysAreRejected() {
