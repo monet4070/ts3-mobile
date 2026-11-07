@@ -78,3 +78,6 @@ C2.3 已提交草稿 [PR #19](https://github.com/monet4070/ts3-mobile/pull/19)�
 
 C2.3 [CI42393919381](https://github.com/monet4070/ts3-mobile/actions/runs/42393919381)通过并下载核对：
 355／133／204 JVM、app135／audio14 Android，全部零失败。R3本地8个真实进程终止用例全部符合预期。
+
+R3 已提交草稿 [PR #20](https://github.com/monet4070/ts3-mobile/pull/20)，测试／工具源码 `7942116`；
+[身份候选验收](../testing/IMPROVEMENT_R3_2026-11-07_ZH.md)完成，云端CI待确认；继续B1量化关卡。
