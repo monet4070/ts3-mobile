@@ -51,3 +51,6 @@ C1 已提交草稿 [PR #15](https://github.com/monet4070/ts3-mobile/pull/15)，�
 
 C1 [CI42368616849](https://github.com/monet4070/ts3-mobile/actions/runs/42368616849)通过且下载核对：
 295／132／204 JVM，app112／audio14 Android，全部零失败；本地参数和资源关卡证据仍见C1记录。
+
+C0 已提交草稿 [PR #16](https://github.com/monet4070/ts3-mobile/pull/16)，源码 `3a3c10e`，
+[兼容验收](../testing/IMPROVEMENT_C0_2026-11-07_ZH.md)完成；云端 CI 待确认。开始 C2.1 存储事务与维护互斥。
