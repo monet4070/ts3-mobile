@@ -104,6 +104,11 @@ PCM, waveform or level history is stored or sent elsewhere. Observation cannot
 start recording or ask for permission. The explicit Hold to talk inside tuning
 is normal channel transmission, with the same permission and lifecycle rules.
 
+Development builds report missing/unusable local encryption keys without
+creating a replacement during a read or overwriting the original encrypted
+identity/form/bookmark blob. This preserves failure evidence; it cannot recover
+a lost key. Portable external-backup recovery is a separate workflow.
+
 ## Data not collected by this project
 
 The app contains no analytics, advertising, telemetry, project-operated crash
