@@ -49,5 +49,5 @@ Gradle测试结束会卸载测试应用，因此视觉检查另外安装刚构�
 
 - 生产：新增偏好状态／存储／控制器与状态操作UI；Activity/Service/MainScreen/设置对话框窄接线。
 - 测试：新增12项JVM与2项Android生命周期回归，设置UI追加失败／重置2项，fixture增加保存状态与动作计数。
-- 配置：新偏好文件的备份排除；CI追加MicrophoneSettingsTest与MicrophonePreferenceLifecycleTest。
+- 配置：新偏好文件的备份排除；CI追加MicrophoneSettingsTest与MicrophonePreferenceLifecycleTest，并让目标为`codex/**`的阶段PR也执行同一门禁。
 - 文档：ADR、双语README／指南／隐私、架构、进度及本记录。无依赖、协议或旧存储迁移。

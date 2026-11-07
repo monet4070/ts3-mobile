@@ -16,4 +16,4 @@
 | C1 / C0 / C2 / R3 | 待实施 | 身份格式关卡、兼容加密、导入恢复 |
 | B1 / D1 / D2 / R4 | 待实施 | 静音量化关卡、主题与监测提取 |
 
-P0/A1/Q1已经提交到草稿[PR #8](https://github.com/monet4070/ts3-mobile/pull/8)，固定源码`b1b44a9`；远端CI通过且报告已核对。A2在后续分支`codex/microphone-preferences`实施。没有合并或公开发布，实际结果以各阶段记录及对应源码指纹为准。
+P0/A1/Q1已经提交到草稿[PR #8](https://github.com/monet4070/ts3-mobile/pull/8)，固定源码`b1b44a9`；远端CI通过且报告已核对。A2是后续草稿[PR #9](https://github.com/monet4070/ts3-mobile/pull/9)，基于PR #8，源码`d3f481c`；为连续阶段PR补充`codex/**`目标分支CI触发。没有合并或公开发布，实际结果以各阶段记录及对应源码指纹为准。

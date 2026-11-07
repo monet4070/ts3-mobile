@@ -88,8 +88,10 @@ emulator (no TeamSpeak server or credentials are required):
 ```
 
 The preview tests write PNGs into the app's external `ui-previews` directory.
-CI also runs the main-tab chat navigation, existing channel/private chat and
-bookmark editor/list regressions alongside microphone/playback checks. JUnit,
+CI also runs the main-tab chat navigation, channel/private chat, bookmark
+editor/list and microphone preference workflows alongside microphone/playback
+checks. Pull requests into `main` and stacked `codex/**` branches receive the
+same checks. JUnit,
 Android test and lint XML reports plus emulator startup logs are retained for
 seven days, including failed runs. These offline tests use synthetic data;
 never add live identities, messages or device dumps to artifact paths.

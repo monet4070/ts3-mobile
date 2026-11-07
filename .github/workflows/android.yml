@@ -10,7 +10,7 @@ on:
       - 'NOTICE'
       - '.github/ISSUE_TEMPLATE/**'
   pull_request:
-    branches: [main]
+    branches: [main, 'codex/**']
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
