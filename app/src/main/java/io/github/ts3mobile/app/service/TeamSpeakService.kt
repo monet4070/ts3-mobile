@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import io.github.ts3mobile.app.Ts3MobileApplication
 import io.github.ts3mobile.app.bookmarks.BookmarkChannelSelection
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
 import io.github.ts3mobile.app.bookmarks.bookmarkContext
@@ -18,7 +19,7 @@ import io.github.ts3mobile.app.chat.PokeRecipient
 import io.github.ts3mobile.app.chat.SessionChatController
 import io.github.ts3mobile.app.history.SuccessServerHistoryStore
 import io.github.ts3mobile.app.history.successServerHistoryStore
-import io.github.ts3mobile.app.identity.IdentityVault
+import io.github.ts3mobile.app.identity.IdentityRepository
 import io.github.ts3mobile.app.settings.MicrophonePreferenceController
 import io.github.ts3mobile.app.settings.MicrophonePreferenceField
 import io.github.ts3mobile.app.settings.MicrophonePreferenceState
@@ -58,7 +59,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     private lateinit var sessionControls: SessionControlsController
     private lateinit var connectionCoordinator: ConnectionCoordinator
 
-    private lateinit var identityVault: IdentityVault
+    private lateinit var identities: IdentityRepository
     private lateinit var audioPlayer: OpusAudioPlayer
     private val captureRoutes = CaptureRouteTracker()
 
@@ -88,7 +89,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
             SessionNotifications(this) { types ->
                 sessionDiagnostics.record(DiagnosticEventKind.FOREGROUND_TYPES, types.toLong())
             }
-        identityVault = IdentityVault(applicationContext)
+        identities = (application as Ts3MobileApplication).identities
         sessionControls =
             SessionControlsController(serviceScope, mutableState) {
                 checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -122,7 +123,8 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 mainHandler.post { if (!destroyed) microphoneController.setSettings(settings) }
             }
         audioRouter = AudioDeviceRouter(applicationContext, ::onAudioRoutingChanged)
-        connectionCoordinator = ConnectionCoordinator(this, clockMs = SystemClock::elapsedRealtime, chat = chatController)
+        connectionCoordinator =
+            ConnectionCoordinator(this, clockMs = SystemClock::elapsedRealtime, chat = chatController, identityGate = identities.gate)
         networkMonitor =
             DefaultNetworkMonitor(applicationContext) { network ->
                 networkAvailable.value =
@@ -175,8 +177,15 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
             ACTION_CONNECT -> {
                 val config = intent.toServerConfig() ?: return START_NOT_STICKY
                 sessionDiagnostics.record(DiagnosticEventKind.CONNECT_REQUESTED)
-                notifications.startConnecting(config.host)
-                connectionCoordinator.beginConnection(config)
+                if (connectionCoordinator.beginConnection(config)) {
+                    notifications.startConnecting(config.host)
+                } else {
+                    // A bound Service survives stopSelfResult; satisfy the promotion deadline
+                    // with a truthful maintenance notification, then remove it immediately.
+                    notifications.rejectIdentityMaintenanceStart()
+                    mutableState.update { it.copy(statusMessage = UserMessage.IdentityMaintenance) }
+                    stopSelfResult(startId)
+                }
             }
 
             ACTION_DISCONNECT -> {
@@ -206,6 +215,9 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         destroyed = true
         // A queued exit teardown must not touch a destroyed service.
         mainHandler.removeCallbacksAndMessages(null)
+        // Destruction's asynchronous capture release outlives coordinator.close(). Keep
+        // process ownership until the final Android audio/notification cleanup completes.
+        val teardownOwner = identities.gate.beginConnection()
         connectionCoordinator.close()
         backgroundRuntime.close()
         sessionDiagnostics.close()
@@ -216,8 +228,12 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         microphonePreferences.close()
         microphoneController.closeAfterRelease {
             mainHandler.post {
-                audioRouter.close()
-                notifications.stop()
+                try {
+                    audioRouter.close()
+                    notifications.stop()
+                } finally {
+                    teardownOwner?.let(identities.gate::finishConnection)
+                }
             }
         }
         audioPlayer.close()
@@ -285,7 +301,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         microphoneController.stopSerialized()
     }
 
-    override suspend fun createIdentity(): String = identityVault.getOrCreate()
+    override suspend fun createIdentity(): String = identities.getOrCreateForConnection()
 
     override fun startAudioRouting() {
         audioRouter.start()

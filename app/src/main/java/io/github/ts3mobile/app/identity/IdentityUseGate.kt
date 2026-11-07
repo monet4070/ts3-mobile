@@ -1,33 +1,62 @@
 package io.github.ts3mobile.app.identity
 
-/** Process-owned qualification model; C1 tests it before C2 attaches real lifecycle/transactions. */
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+internal enum class IdentityUseState { IDLE, CONNECTION, MAINTENANCE }
+
+/** Application-owned qualification shared across Service and Activity lifetimes. */
 internal class IdentityUseGate {
     private val lock = Any()
     private var next = 0L
-    private var connection: Long? = null
+    private val connections = mutableSetOf<Long>()
     private var maintenance: Long? = null
+    private val mutableState = MutableStateFlow(IdentityUseState.IDLE)
+    val state = mutableState.asStateFlow()
 
-    /** Replacement connects may supersede an older connection owner, never maintenance. */
+    /** Every superseded owner must also finish; a late old task still blocks maintenance. */
     fun beginConnection(): Long? =
         synchronized(lock) {
             if (maintenance != null) return@synchronized null
-            (++next).also { connection = it }
+            (++next).also {
+                connections += it
+                publish()
+            }
         }
 
-    /** Caller must retain the owner through all handshake/reconnect/exit work, not just phase changes. */
+    fun ownsConnection(token: Long): Boolean = synchronized(lock) { token in connections }
+
     fun finishConnection(token: Long) {
-        synchronized(lock) { if (connection == token) connection = null }
+        synchronized(lock) {
+            connections -= token
+            publish()
+        }
     }
 
     fun beginMaintenance(): Long? =
         synchronized(lock) {
-            if (connection != null || maintenance != null) return@synchronized null
-            (++next).also { maintenance = it }
+            if (connections.isNotEmpty() || maintenance != null) return@synchronized null
+            (++next).also {
+                maintenance = it
+                publish()
+            }
         }
 
     fun finishMaintenance(token: Long) {
-        synchronized(lock) { if (maintenance == token) maintenance = null }
+        synchronized(lock) {
+            if (maintenance == token) maintenance = null
+            publish()
+        }
     }
 
     fun ownsMaintenance(token: Long): Boolean = synchronized(lock) { maintenance == token }
+
+    private fun publish() {
+        mutableState.value =
+            when {
+                maintenance != null -> IdentityUseState.MAINTENANCE
+                connections.isNotEmpty() -> IdentityUseState.CONNECTION
+                else -> IdentityUseState.IDLE
+            }
+    }
 }

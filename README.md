@@ -326,3 +326,9 @@ Built on [ts3j](https://github.com/Manevolent/ts3j), licensed [Apache-2.0](LICEN
 by TeamSpeak Systems GmbH. Thanks to [@polleyr](https://github.com/polleyr) for
 [server-password authentication](https://github.com/monet4070/ts3-mobile/pull/1) and English
 localization. Follow the [Code of Conduct](CODE_OF_CONDUCT.md) when contributing.
+
+Identity storage corruption or a missing local key now reports a fixed recovery
+failure and preserves existing data; it never silently creates a different identity.
+The internal maintenance/recovery transactions are documented in
+[ADR-0029](docs/decisions/0029-identity-maintenance-transactions.md); the user-facing
+backup workflow is the next stage.

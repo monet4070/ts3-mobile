@@ -40,6 +40,19 @@ internal class SessionNotifications(
         )
     }
 
+    /** Android still requires promotion when a rejected foreground start remains bound. */
+    fun rejectIdentityMaintenanceStart() {
+        val notification =
+            NotificationCompat.Builder(service, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_app)
+                .setContentTitle(service.getString(R.string.app_name))
+                .setContentText(service.getString(R.string.status_identity_maintenance))
+                .setOnlyAlertOnce(true)
+                .build()
+        promote(notification, includeMicrophone = false)
+        stop()
+    }
+
     fun update(state: TeamSpeakServiceState) {
         if (state.status.phase !in foregroundPhases || state.serverLabel == null) return
         manager.notify(NOTIFICATION_ID, build(state))

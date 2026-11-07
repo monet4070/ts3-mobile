@@ -45,7 +45,7 @@ Compose UI / MainActivity
 TeamSpeakService (Android application layer)
         ├── Ts3SessionClient (protocol port)
         ├── OpusAudioPlayer / OpusMicrophoneCapture (audio ports)
-        └── IdentityVault (local encrypted storage)
+        └── Application-owned IdentityRepository → IdentityStore / IdentityVault (local encrypted storage)
                 │
                 ├── ts3-protocol (JVM models, session adapter, channel ordering)
                 └── audio-opus (JNI libopus/RNNoise and Android audio I/O)
@@ -651,3 +651,29 @@ ciphertext reads fail on missing/unusable keys without creating an alias or
 rewriting data. Context/default constructor entry points remain available, with
 internal store/cipher injection for isolated tests. The portable password backup
 format is a different boundary. See [ADR-0028](docs/decisions/0028-compatible-keystore-envelopes.md).
+
+
+## Identity maintenance transactions (C2.1)
+
+`Ts3MobileApplication` explicitly owns one `IdentityRepository` and `IdentityUseGate`.
+Android components share them across instance replacement. `IdentityConnectionLease`
+tracks epoch work before scheduling: handshake, reconnect, watch/probe, channel
+operations, terminal cleanup and exit. Cancelled work retains its owner until it
+actually finishes; all superseded owners count. Service destruction separately
+retains ownership through asynchronous audio cleanup. Maintenance blocks connection
+registration synchronously; terminal phase alone never grants maintenance.
+
+`IdentityStore` keeps the legacy active field and cipher unchanged. Initial creation
+runs inside the DataStore transaction; cancellation waits for acknowledgement.
+Replacement writes active, verified previous rollback and pending plaintext digest
+in one atomic transaction. Readback validates identity correspondence/digest and
+clears pending. Restart validates pending active or restores a valid rollback;
+corruption/key loss never generates a replacement. Unreadable blobs are retained
+as evidence, not advertised as rollback. Physically unreadable Preferences fails
+without resetting the file. Confirmations carry a state revision. Public observable
+state contains summaries/fixed errors only. No UI replacement or SAF entry yet.
+
+The legacy `IdentityVault.getOrCreate` signature is retained; identity read failures
+now use fixed `IdentityOperationException` categories without provider causes.
+See [ADR-0029](docs/decisions/0029-identity-maintenance-transactions.md) for that error
+migration, cancellation and Android rejected-foreground-start requirements.

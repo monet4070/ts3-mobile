@@ -44,6 +44,16 @@ class IdentityUseGateTest {
         assertTrue(gate.ownsMaintenance(current))
     }
 
+    @Test fun newerOwnerFinishingCannotReleaseUnfinishedSupersededWork() {
+        val gate = IdentityUseGate()
+        val old = checkNotNull(gate.beginConnection())
+        val newer = checkNotNull(gate.beginConnection())
+        gate.finishConnection(newer)
+        assertNull(gate.beginMaintenance())
+        gate.finishConnection(old)
+        assertNotNull(gate.beginMaintenance())
+    }
+
     @Test fun concurrentConnectAndCommitQualificationHaveExactlyOneWinner() {
         repeat(100) {
             val gate = IdentityUseGate()
