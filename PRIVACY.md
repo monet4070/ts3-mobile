@@ -98,6 +98,12 @@ Disconnect, service destruction or closing the captured conversation makes old
 clicks unusable. Returning clears the summary without clearing unread messages;
 only actually visible messages advance read state. No third-party push is used.
 
+The tuning level indicator retains one scalar snapshot only while subscribed.
+It contains RMS, capture/processing/route revisions and gate/sending state; no
+PCM, waveform or level history is stored or sent elsewhere. Observation cannot
+start recording or ask for permission. The explicit Hold to talk inside tuning
+is normal channel transmission, with the same permission and lifecycle rules.
+
 ## Data not collected by this project
 
 The app contains no analytics, advertising, telemetry, project-operated crash

@@ -28,6 +28,7 @@ import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import io.github.ts3mobile.app.withSelectedHistoryEntry
+import io.github.ts3mobile.audio.opus.MicrophoneLevel
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
@@ -41,6 +42,7 @@ import io.github.ts3mobile.protocol.Ts3Channel
 import io.github.ts3mobile.protocol.Ts3Participant
 import io.github.ts3mobile.protocol.Ts3PokeEvent
 import io.github.ts3mobile.protocol.Ts3TextEvent
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.Locale
 
 internal class UiFixture(connected: Boolean = false) {
@@ -51,6 +53,7 @@ internal class UiFixture(connected: Boolean = false) {
     val chat = mutableStateOf(ChatState())
     val chatNotification = mutableStateOf<ChatNotificationDestination?>(null)
     var notificationSettings = 0
+    val microphoneLevels = MutableStateFlow<MicrophoneLevel?>(null)
     val sentBodies = mutableListOf<String>()
     val sentTargets = mutableListOf<TextTarget>()
     val sentPokes = mutableListOf<Pair<TextTarget.Private, String>>()
@@ -199,6 +202,7 @@ internal class UiFixture(connected: Boolean = false) {
                     onChatNotificationConsumed = { if (chatNotification.value?.requestId == it) chatNotification.value = null },
                     onUserNavigation = { chatNotification.value = null },
                     onNotificationSettings = { notificationSettings++ },
+                    microphoneLevels = microphoneLevels,
                     onChatDraft = {
                         chatStore.updateDraft(it)
                         refreshChat()

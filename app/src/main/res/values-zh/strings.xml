@@ -236,6 +236,15 @@
     <string name="private_message_notification_received">你收到了新私信</string>
     <string name="private_message_notification_settings">私信通知设置</string>
     <string name="private_message_conversations">选择私信会话</string>
+    <string name="microphone_level_off">麦克风未开启</string>
+    <string name="microphone_level_waiting">麦克风已开启 · 等待电平</string>
+    <string name="microphone_level_sending">麦克风已开启 · 正在发送</string>
+    <string name="microphone_level_capturing">麦克风已开启 · 正在采集</string>
+    <string name="microphone_level_gate_closed">门控关闭 · 正在监听</string>
+    <string name="microphone_level_gate_open">门控开启</string>
+    <string name="microphone_level_value">输入电平：%1$d dBFS</string>
+    <string name="microphone_level_no_sample">输入电平：—</string>
+    <string name="microphone_tuning_send_warning">按住下方按钮讲话会将声音发送到当前频道。</string>
     <string name="microphone_settings">麦克风设置</string>
     <string name="microphone_settings_lifetime">修改立即生效，保存完成后会保留在本机。打开设置不会开始录音。</string>
     <string name="microphone_preferences_loading">正在载入已保存的调音参数…</string>

@@ -23,7 +23,10 @@ class OpusMicrophoneCapture(
     private val lifecycleLock = Any()
     private var options = MicrophoneProcessingOptions()
     private val captureGeneration = AtomicLong(0)
+    private val levelMeter = MicrophoneLevelMeter()
     override val generation: Long get() = captureGeneration.get()
+
+    override fun observeLevels(): MicrophoneLevelSubscription = levelMeter.subscribe()
 
     @Volatile
     private var control: CaptureControl? = null
@@ -49,7 +52,10 @@ class OpusMicrophoneCapture(
             if (updated == options) return
             options = updated
             control?.frames?.reset()
-            control?.let(::publishState)
+            control?.let { current ->
+                activateLevels(current)
+                publishState(current)
+            }
         }
     }
 
@@ -76,6 +82,7 @@ class OpusMicrophoneCapture(
             control?.let { current ->
                 current.frames.reset()
                 current.routeRevision.incrementAndGet()
+                activateLevels(current)
                 current.echoState = EchoCancellationState.PENDING
                 publishState(current)
             }
@@ -93,8 +100,7 @@ class OpusMicrophoneCapture(
             ) { "Microphone permission is not granted" }
 
             val captureResources = CaptureResources.create(preferredDevice, options.settings)
-            captureGeneration.incrementAndGet()
-            val newControl = CaptureControl()
+            val newControl = CaptureControl(captureGeneration.incrementAndGet())
             newControl.routingListener =
                 AudioRouting.OnRoutingChangedListener { routing ->
                     synchronized(lifecycleLock) {
@@ -108,11 +114,13 @@ class OpusMicrophoneCapture(
                 }
             control = newControl
             resources = captureResources
+            activateLevels(newControl)
             try {
                 captureResources.startRecording()
                 captureResources.listen(newControl.routingListener)
             } catch (error: RuntimeException) {
                 newControl.running.set(false)
+                levelMeter.stop(newControl.generation)
                 captureResources.close()
                 if (captureResources.released) {
                     control = null
@@ -135,6 +143,7 @@ class OpusMicrophoneCapture(
     override fun requestStop() {
         control?.let { current ->
             current.running.set(false)
+            levelMeter.stop(current.generation)
             current.frames.stop()
         }
         worker?.interrupt()
@@ -172,6 +181,10 @@ class OpusMicrophoneCapture(
     }
 
     override fun close() = stop()
+
+    private fun activateLevels(current: CaptureControl) {
+        levelMeter.activate(current.generation, current.frames.revision(), current.routeRevision.get()) { current.running.get() }
+    }
 
     private fun captureLoop(
         captureResources: CaptureResources,
@@ -212,9 +225,21 @@ class OpusMicrophoneCapture(
                 if (read == 0) continue
                 if (revision != captureControl.frames.revision()) continue
                 val denoiserPcm = assembler.append(inputPcm, read) ?: continue
-                val encoded = pipeline.process(denoiserPcm, current, revision, routeRevision)
+                val encoded = pipeline.process(denoiserPcm, current, revision, routeRevision, levelMeter.isObserved())
                 if (encoded == null) continue
                 captureControl.frames.publish(revision, encoded, pipeline.isSpeaking)
+                if (pipeline.levelDb.isFinite()) {
+                    levelMeter.offer(
+                        captureControl.generation,
+                        revision,
+                        routeRevision,
+                        pipeline.levelDb,
+                        current.volumeGate,
+                        pipeline.isSpeaking,
+                        captureControl.frames.isTransmitting(),
+                        current.settings.gateThresholdDb,
+                    )
+                }
                 captureControl.encoded.addAndGet(encoded.size.toLong())
                 publishState(captureControl)
             }
@@ -229,6 +254,7 @@ class OpusMicrophoneCapture(
             }
         } finally {
             captureControl.running.set(false)
+            levelMeter.stop(captureControl.generation)
             captureControl.frames.stop()
             val encodedCount = captureControl.encoded.get()
             if (encodedCount > 0L) {
@@ -263,7 +289,7 @@ class OpusMicrophoneCapture(
         }
     }
 
-    private class CaptureControl {
+    private class CaptureControl(val generation: Long) {
         val running = AtomicBoolean(true)
         val frames = CaptureVoiceBuffer()
         val encoded = AtomicLong(0)

@@ -47,6 +47,7 @@ internal class MicrophoneController(
     private val closed = AtomicBoolean(false)
     private val feedback = MicrophoneFeedback(state, diagnosticsRecorder, refreshDiagnostics, conciseMessage, recordEvent)
     private val microphone = captureFactory(context.applicationContext, ::onMicrophoneFailure, ::onCaptureState)
+    val levels = observeMicrophoneLevels(microphone)
     private val voiceSource = MicrophoneVoiceSource(microphone)
     private val stopPending = AtomicBoolean(false)
     private val afterRelease = AtomicReference<(() -> Unit)?>(null)

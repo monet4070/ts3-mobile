@@ -459,6 +459,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         ): Boolean = state.value.bookmarkContext()?.accepts(entry, selection) == true
 
         val microphonePreferenceState: StateFlow<MicrophonePreferenceState> get() = microphonePreferences.state
+        val microphoneLevels get() = microphoneController.levels
         val chatState: StateFlow<ChatState> get() = chatController.state
 
         fun submitChannelText() = chatController.submitChannel()
