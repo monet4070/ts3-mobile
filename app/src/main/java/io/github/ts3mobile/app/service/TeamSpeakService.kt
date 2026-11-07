@@ -16,6 +16,10 @@ import io.github.ts3mobile.app.chat.SessionChatController
 import io.github.ts3mobile.app.history.SuccessServerHistoryStore
 import io.github.ts3mobile.app.history.successServerHistoryStore
 import io.github.ts3mobile.app.identity.IdentityVault
+import io.github.ts3mobile.app.settings.MicrophonePreferenceController
+import io.github.ts3mobile.app.settings.MicrophonePreferenceField
+import io.github.ts3mobile.app.settings.MicrophonePreferenceState
+import io.github.ts3mobile.app.settings.microphonePreferenceStore
 import io.github.ts3mobile.audio.opus.AudioDeviceRouter
 import io.github.ts3mobile.audio.opus.AudioRoutingState
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
@@ -57,6 +61,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
     @Volatile private var destroyed = false
     private lateinit var microphoneController: MicrophoneController
+    private lateinit var microphonePreferences: MicrophonePreferenceController
     private lateinit var audioRouter: AudioDeviceRouter
     private lateinit var historyStore: SuccessServerHistoryStore
     private lateinit var sessionDiagnostics: SessionDiagnostics
@@ -105,6 +110,12 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 conciseMessage = { conciseMessage(it) },
                 recordEvent = { sessionDiagnostics.record(it) },
             )
+        microphonePreferences =
+            MicrophonePreferenceController(serviceScope, microphonePreferenceStore(applicationContext)) { settings ->
+                // Queue every application, including UI edits, in the controller's
+                // publication order so an IO load cannot overtake a newer UI edit.
+                mainHandler.post { if (!destroyed) microphoneController.setSettings(settings) }
+            }
         audioRouter = AudioDeviceRouter(applicationContext, ::onAudioRoutingChanged)
         connectionCoordinator = ConnectionCoordinator(this, clockMs = SystemClock::elapsedRealtime, chat = chatController)
         networkMonitor =
@@ -190,6 +201,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         networkMonitor.close()
         sessionControls.close()
         pokeAlerts.close()
+        microphonePreferences.close()
         microphoneController.closeAfterRelease {
             mainHandler.post {
                 audioRouter.close()
@@ -429,6 +441,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     }
 
     inner class SessionBinder : Binder() {
+        val microphonePreferenceState: StateFlow<MicrophonePreferenceState> get() = microphonePreferences.state
         val chatState: StateFlow<ChatState> get() = chatController.state
 
         fun submitChannelText() = chatController.submitChannel()
@@ -522,7 +535,21 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
         fun retryPresence() = sessionControls.retryPresence()
 
-        fun setMicrophoneSettings(settings: MicrophoneSettings) = microphoneController.setSettings(settings)
+        fun setMicrophoneSettings(settings: MicrophoneSettings) = microphonePreferences.replace(settings)
+
+        fun editMicrophonePreference(
+            field: MicrophonePreferenceField,
+            settings: MicrophoneSettings,
+        ) = microphonePreferences.edit(
+            field,
+            settings,
+        )
+
+        fun commitMicrophonePreferences() = microphonePreferences.commit()
+
+        fun retryMicrophonePreferences() = microphonePreferences.retry()
+
+        fun resetMicrophonePreferences() = microphonePreferences.reset()
 
         fun setMicrophoneMode(mode: MicrophoneMode) {
             microphoneController.setMode(mode)

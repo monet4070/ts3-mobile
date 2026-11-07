@@ -23,8 +23,10 @@ import io.github.ts3mobile.app.discovery.resolveParticipantChannel
 import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.app.service.ParticipantAudioSettings
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
+import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import io.github.ts3mobile.app.withSelectedHistoryEntry
+import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ControlOutcome
@@ -94,6 +96,9 @@ internal class UiFixture(connected: Boolean = false) {
     var disconnects = 0
     var copies = 0
     var repositoryOpens = 0
+    val microphonePreferenceStatus = mutableStateOf(MicrophonePreferenceStatus.SAVED)
+    var microphonePreferenceRetries = 0
+    var microphonePreferenceCommits = 0
     val joins = mutableListOf<Pair<Int, String>>()
     val transmission = mutableListOf<Boolean>()
 
@@ -259,6 +264,10 @@ internal class UiFixture(connected: Boolean = false) {
                     onResolveUserChannel = { id, uid -> resolveParticipantChannel(state.value.snapshot, id, uid) },
                     onOpenRepository = { repositoryOpens++ },
                     onMicrophoneSettingsChanged = { state.value = state.value.copy(microphoneSettings = it) },
+                    microphonePreferenceStatus = microphonePreferenceStatus.value,
+                    onMicrophonePreferenceCommit = { microphonePreferenceCommits++ },
+                    onMicrophonePreferenceRetry = { microphonePreferenceRetries++ },
+                    onMicrophonePreferenceReset = { state.value = state.value.copy(microphoneSettings = MicrophoneSettings()) },
                     onPokeDismiss = {
                         chatStore.dismissPoke(it)
                         refreshChat()

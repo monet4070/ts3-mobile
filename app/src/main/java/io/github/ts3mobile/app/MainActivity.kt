@@ -29,6 +29,7 @@ import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakService
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
+import io.github.ts3mobile.app.settings.MicrophonePreferenceState
 import io.github.ts3mobile.app.ui.MainScreen
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import io.github.ts3mobile.protocol.ServerConfig
@@ -91,6 +92,8 @@ class MainActivity : ComponentActivity() {
                     .collectAsStateWithLifecycle()
                 val fallbackChat = remember { MutableStateFlow(ChatState()) }
                 val chatState by (serviceBinder?.chatState ?: fallbackChat).collectAsStateWithLifecycle()
+                val fallbackPreferences = remember { MutableStateFlow(MicrophonePreferenceState()) }
+                val microphonePreferences by (serviceBinder?.microphonePreferenceState ?: fallbackPreferences).collectAsStateWithLifecycle()
                 val form by viewModel.form.collectAsStateWithLifecycle()
                 val history by viewModel.history.collectAsStateWithLifecycle()
                 val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
@@ -144,7 +147,11 @@ class MainActivity : ComponentActivity() {
                     onChatConversationClosed = { serviceBinder?.closeChat(it) },
                     onPoke = { recipient, reason -> serviceBinder?.poke(recipient, reason) ?: false },
                     onPokeDismiss = { serviceBinder?.dismissPoke(it) },
-                    onMicrophoneSettingsChanged = { serviceBinder?.setMicrophoneSettings(it) },
+                    microphonePreferenceStatus = microphonePreferences.status,
+                    onMicrophonePreferenceEdit = { field, settings -> serviceBinder?.editMicrophonePreference(field, settings) },
+                    onMicrophonePreferenceCommit = { serviceBinder?.commitMicrophonePreferences() },
+                    onMicrophonePreferenceRetry = { serviceBinder?.retryMicrophonePreferences() },
+                    onMicrophonePreferenceReset = { serviceBinder?.resetMicrophonePreferences() },
                     bookmarks = bookmarks,
                     canUseBookmarkConnection = serviceBinder != null,
                     onBookmarkSave = viewModel::saveBookmark,

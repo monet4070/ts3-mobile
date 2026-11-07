@@ -1,12 +1,19 @@
 # Privacy
 
-Last updated: 2026-11-02 · [简体中文](PRIVACY_ZH.md)
+Last updated: 2026-11-07 · [简体中文](PRIVACY_ZH.md)
 
 TS3 Mobile is an unofficial client that connects directly from the Android
 device to TeamSpeak servers selected by the user. The maintainers do not
 operate an intermediary service for those connections.
 
 ## Data handled on the device
+
+- The development branch stores input gain, noise-suppression preference,
+  device-AEC preference and gate threshold in a separate versioned local
+  preferences file, excluded from cloud backup/device transfer. It contains no
+  audio, identity, endpoint, PTT state or capture mode. Restore defaults affects
+  only this tuning file; loading/saving does not start recording. Public
+  1.0.0/code14 retains these tuning choices only in service memory.
 
 - The ten most recent successfully connected server addresses and ports are
   saved in app-private local storage for connection-page prefill and selection.

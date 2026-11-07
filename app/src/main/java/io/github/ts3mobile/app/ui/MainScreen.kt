@@ -38,6 +38,8 @@ import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.service.UserMessage
 import io.github.ts3mobile.app.service.hasPlaybackFailure
+import io.github.ts3mobile.app.settings.MicrophonePreferenceField
+import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.Ts3Channel
@@ -90,6 +92,14 @@ fun MainScreen(
     onPresenceRetry: () -> Unit = {},
     onResolveUserChannel: (Int, String) -> Int? = { _, _ -> null },
     onOpenRepository: () -> Unit = {},
+    microphonePreferenceStatus: MicrophonePreferenceStatus = MicrophonePreferenceStatus.SAVED,
+    onMicrophonePreferenceEdit: (
+        MicrophonePreferenceField,
+        MicrophoneSettings,
+    ) -> Unit = { _, value -> onMicrophoneSettingsChanged(value) },
+    onMicrophonePreferenceCommit: () -> Unit = {},
+    onMicrophonePreferenceRetry: () -> Unit = {},
+    onMicrophonePreferenceReset: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     PokeFeedbackEffect(chatState, snackbar)
@@ -136,7 +146,15 @@ fun MainScreen(
     }
     var showMicrophoneSettings by rememberSaveable { mutableStateOf(false) }
     if (showMicrophoneSettings) {
-        MicrophoneSettingsDialog(serviceState, onMicrophoneSettingsChanged) { showMicrophoneSettings = false }
+        MicrophoneSettingsDialog(
+            serviceState,
+            onMicrophonePreferenceEdit,
+            { showMicrophoneSettings = false },
+            microphonePreferenceStatus,
+            onMicrophonePreferenceCommit,
+            onMicrophonePreferenceRetry,
+            onMicrophonePreferenceReset,
+        )
     }
     var showBackgroundRuntime by rememberSaveable { mutableStateOf(false) }
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
