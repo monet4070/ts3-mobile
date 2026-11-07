@@ -36,3 +36,6 @@ A4 测试修复至 `fac612b`，[CI 42364912604](https://github.com/monet4070/ts3
 
 A5 已提交草稿 [PR #13](https://github.com/monet4070/ts3-mobile/pull/13)，生产与回归源码 `3adcbdb`，
 [离线／模拟器验收](../testing/IMPROVEMENT_A5_2026-11-07_ZH.md)完成，云端CI待确认。R2继续组合与覆盖升级验收。
+
+R2 已提交草稿 [PR #14](https://github.com/monet4070/ts3-mobile/pull/14)，测试／工具源码 `c95935d`；
+[第二批验收](../testing/IMPROVEMENT_R2_2026-11-07_ZH.md)完成，生产仍沿用A5。下一阶段 C1。
