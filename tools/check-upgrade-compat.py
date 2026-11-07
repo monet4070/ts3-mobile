@@ -11,6 +11,7 @@ import subprocess
 import uuid
 import zipfile
 
+from apk_signing import apk_certificate_sha256
 from audio_build_config import android_config, build_tools, require_file
 
 
@@ -60,10 +61,7 @@ def main():
 
     def certificate(apk):
         report = run([apksigner, "verify", "--print-certs", apk])
-        matches = re.findall(r"Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]+)", report)
-        if len(matches) != 1:
-            raise RuntimeError("Expected one APK signer")
-        return matches[0].lower()
+        return apk_certificate_sha256(report)
 
     metadata = []
     for apk in (baseline, candidate):

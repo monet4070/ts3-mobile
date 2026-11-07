@@ -10,6 +10,7 @@ import subprocess
 import time
 import uuid
 
+from apk_signing import apk_certificate_sha256
 from audio_build_config import android_config, build_tools, require_file
 
 POINTS = (
@@ -64,11 +65,7 @@ def main():
             raise RuntimeError("Crash runner requires a Debug candidate; minified user flows are validated separately")
     certificates = []
     for apk in (app, test):
-        matches = re.findall(r"Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]+)",
-                             run([signer, "verify", "--print-certs", apk]))
-        if len(matches) != 1:
-            raise RuntimeError("Expected one APK signer")
-        certificates.append(matches[0].lower())
+        certificates.append(apk_certificate_sha256(run([signer, "verify", "--print-certs", apk])))
     if certificates[0] != certificates[1]:
         raise RuntimeError("App/test signers do not match")
     if run(serial + ["shell", "getprop", "ro.kernel.qemu"]).strip() != "1":
