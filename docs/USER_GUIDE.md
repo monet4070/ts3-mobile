@@ -50,7 +50,12 @@ microphone mode. Android callback and hardware latency still need physical-heads
 Use Chat for the current channel. Send private message in user actions opens a
 private conversation; the chat header switches conversations. Drafts and unread
 positions are separate. Long-press to copy a message body. Closing a private chat
-clears its retained messages and draft.
+clears its retained messages and draft. Switching to Channels or Users and back keeps the reading
+position and the choice to follow new messages. New messages do not move you
+away from older history; use the new-message button to jump to the latest.
+Ordinary reconnect and Activity recreation retain the position while the same
+service session exists. A new manual connection starts fresh. If an old message
+has left the bounded history, the view moves to a retained message nearby.
 
 Send outcomes distinguish server acceptance, rejection and unknown results.
 Acceptance is not a read receipt; unknown messages are never automatically resent.

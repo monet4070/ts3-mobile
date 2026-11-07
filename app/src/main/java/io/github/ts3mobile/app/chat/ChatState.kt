@@ -16,6 +16,8 @@ data class ChatState(
     val invalidEvent: Boolean = false,
     val conversationLimitReached: Boolean = false,
     val pokeNoticeId: Long? = null,
+    /** Opaque manual-session UI namespace; survives reconnect, never reused by a new service. */
+    val sessionToken: String? = null,
 ) {
     val active: ChatConversation get() = conversations.firstOrNull { it.key == selected } ?: conversations.first()
     val messages: List<ChatMessage> get() = active.messages
