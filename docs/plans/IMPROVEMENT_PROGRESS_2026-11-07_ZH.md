@@ -82,3 +82,7 @@ C2.3 [CI42393919381](https://github.com/monet4070/ts3-mobile/actions/runs/423939
 
 R3 已提交草稿 [PR #20](https://github.com/monet4070/ts3-mobile/pull/20)，测试／工具源码 `7942116`；
 [身份候选验收](../testing/IMPROVEMENT_R3_2026-11-07_ZH.md)完成，云端CI待确认；继续B1量化关卡。
+
+B1.1 已提交草稿 [PR #21](https://github.com/monet4070/ts3-mobile/pull/21)，测量源码 `03e0ad3`；
+204项音频JVM、Lint／格式及12条模拟器轨迹通过。B1.2继续有界隔离；B1整体尚未完成。
+R3签名解析工具修复 `452b7df` 的[云端复验](https://github.com/monet4070/ts3-mobile/actions/runs/42397034160)运行中。
