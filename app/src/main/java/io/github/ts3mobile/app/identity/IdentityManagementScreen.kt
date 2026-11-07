@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -39,11 +40,14 @@ internal fun IdentityManagementScreen(
     onRefresh: () -> Unit,
     onCancel: () -> Unit,
     onClose: () -> Unit,
+    restoreActive: Boolean = false,
+    restoreContent: (@Composable () -> Unit)? = null,
 ) {
     // Never save password inputs to the Activity instance state or retained controller.
     var password by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
-    val idle = !state.working && !state.pickerOutstanding
+    var showRestore by rememberSaveable { mutableStateOf(false) }
+    val idle = !state.working && !state.pickerOutstanding && !restoreActive
     Surface(Modifier.fillMaxSize()) {
         Column(
             Modifier.windowInsetsPadding(WindowInsets.safeDrawing).imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -58,30 +62,48 @@ internal fun IdentityManagementScreen(
                 if (snapshot.rollback != null) Text(stringResource(R.string.identity_local_rollback))
             }
             if (useState == IdentityUseState.CONNECTION) Text(stringResource(R.string.identity_disconnect_first))
-            Text(stringResource(R.string.identity_backup_guidance))
-            BackupPasswordField(password, R.string.identity_password, idle) { password = it }
-            BackupPasswordField(confirmation, R.string.identity_password_confirm, idle) { confirmation = it }
-            Button(
-                onClick = {
-                    val secret = password.toCharArray()
-                    val repeated = confirmation.toCharArray()
-                    password = ""
-                    confirmation = ""
-                    onExport(secret, repeated)
-                },
-                enabled = idle && useState == IdentityUseState.IDLE && state.snapshot?.active != null && state.snapshot.unreadable.not(),
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(stringResource(R.string.identity_export)) }
-            Text(stringResource(state.status.label()))
-            if (state.status == IdentityExportStatus.VERIFIED) state.exported?.let { IdentitySummaryView(it) }
-            if (state.working || state.pickerOutstanding) {
-                TextButton(onClick = {
-                    password = ""
-                    confirmation = ""
-                    onCancel()
-                }) { Text(stringResource(R.string.action_cancel)) }
+            if (restoreContent != null) {
+                androidx.compose.foundation.layout.Row {
+                    TextButton(onClick = { showRestore = false }, enabled = idle) { Text(stringResource(R.string.identity_export_tab)) }
+                    TextButton(onClick = {
+                        password = ""
+                        confirmation = ""
+                        showRestore = true
+                    }, enabled = idle) {
+                        Text(stringResource(R.string.identity_restore_tab))
+                    }
+                }
             }
-            TextButton(onClick = onRefresh, enabled = idle) { Text(stringResource(R.string.identity_refresh)) }
+            if (showRestore && restoreContent != null) {
+                restoreContent()
+            } else {
+                Text(stringResource(R.string.identity_backup_guidance))
+                BackupPasswordField(password, R.string.identity_password, idle) { password = it }
+                BackupPasswordField(confirmation, R.string.identity_password_confirm, idle) { confirmation = it }
+                Button(
+                    onClick = {
+                        val secret = password.toCharArray()
+                        val repeated = confirmation.toCharArray()
+                        password = ""
+                        confirmation = ""
+                        onExport(secret, repeated)
+                    },
+                    enabled =
+                        idle && useState == IdentityUseState.IDLE &&
+                            state.snapshot?.active != null && state.snapshot.unreadable.not(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.identity_export)) }
+                Text(stringResource(state.status.label()))
+                if (state.status == IdentityExportStatus.VERIFIED) state.exported?.let { IdentitySummaryView(it) }
+                if (state.working || state.pickerOutstanding) {
+                    TextButton(onClick = {
+                        password = ""
+                        confirmation = ""
+                        onCancel()
+                    }) { Text(stringResource(R.string.action_cancel)) }
+                }
+                TextButton(onClick = onRefresh, enabled = idle) { Text(stringResource(R.string.identity_refresh)) }
+            }
             TextButton(onClick = onClose) { Text(stringResource(R.string.action_close)) }
         }
     }
@@ -96,7 +118,7 @@ internal fun IdentitySummaryView(summary: Ts3IdentitySummary) {
 }
 
 @Composable
-private fun BackupPasswordField(
+internal fun BackupPasswordField(
     value: String,
     label: Int,
     enabled: Boolean,
