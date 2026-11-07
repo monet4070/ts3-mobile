@@ -34,6 +34,8 @@ sealed interface UserMessage {
 
     data class ChannelJoinFailed(val cause: String) : UserMessage
 
+    data object ChannelTargetChanged : UserMessage
+
     data class ChannelRestoreFailed(val cause: String) : UserMessage
 
     data object MicrophonePermissionForContinuous : UserMessage

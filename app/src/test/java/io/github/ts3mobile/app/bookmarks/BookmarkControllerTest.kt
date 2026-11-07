@@ -54,6 +54,28 @@ class BookmarkControllerTest {
             assertFalse(controller.state.value.failed)
         }
 
+    @Test fun queuedSaveChecksConnectionAfterWaitingForTheInitialLoad() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val store = FakeStore().apply { readGate = gate }
+            val controller = BookmarkController(backgroundScope, store)
+            var valid = true
+            runCurrent()
+            controller.saveValidated(entry) { valid }
+            runCurrent()
+            valid = false
+            gate.complete(Unit)
+            runCurrent()
+            assertTrue(controller.state.value.contextChanged)
+            assertTrue(controller.state.value.failed)
+            assertTrue(store.entries.isEmpty())
+            valid = true
+            controller.saveValidated(entry) { valid }
+            runCurrent()
+            assertEquals("Fixture", store.entries.single().name)
+            assertFalse(controller.state.value.contextChanged)
+        }
+
     private class FakeStore : BookmarkStore {
         var entries = emptyList<ServerBookmark>()
         var readGate: CompletableDeferred<Unit>? = null

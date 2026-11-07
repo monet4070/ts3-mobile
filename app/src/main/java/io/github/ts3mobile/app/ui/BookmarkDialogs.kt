@@ -14,6 +14,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import io.github.ts3mobile.app.ConnectionFormState
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.bookmarks.BookmarkChannelSelection
+import io.github.ts3mobile.app.bookmarks.BookmarkConnectionContext
 import io.github.ts3mobile.app.bookmarks.BookmarkState
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
 import java.util.UUID
@@ -28,12 +30,15 @@ internal fun BookmarkDialogs(
     onSelect: (ServerBookmark) -> Unit,
     onConnect: (ServerBookmark) -> Unit,
     onReload: () -> Unit,
+    connection: BookmarkConnectionContext? = null,
+    onSaveFromConnection: (ServerBookmark, BookmarkChannelSelection) -> Unit = { entry, _ -> onSave(entry) },
     onDismiss: () -> Unit,
 ) {
     var editing by remember { mutableStateOf<ServerBookmark?>(null) }
     var deleting by remember { mutableStateOf<ServerBookmark?>(null) }
+    var initialSelection by remember { mutableStateOf<BookmarkChannelSelection?>(null) }
     editing?.let { original ->
-        BookmarkEditor(original, state, onSave) { editing = null }
+        BookmarkEditor(original, state, onSave, connection, initialSelection, onSaveFromConnection) { editing = null }
         return
     }
     deleting?.let { entry ->
@@ -59,6 +64,7 @@ internal fun BookmarkDialogs(
         state = state,
         canConnect = canConnect,
         onAdd = {
+            initialSelection = null
             editing =
                 ServerBookmark(
                     UUID.randomUUID().toString(),
@@ -68,7 +74,10 @@ internal fun BookmarkDialogs(
                     nickname = form.nickname,
                 )
         },
-        onEdit = { editing = it },
+        onEdit = {
+            initialSelection = null
+            editing = it
+        },
         onDelete = { deleting = it },
         onSelect = {
             onSelect(it)
@@ -80,5 +89,17 @@ internal fun BookmarkDialogs(
         },
         onReload = onReload,
         onDismiss = onDismiss,
+        onSaveCurrent =
+            connection?.let { active ->
+                {
+                    val id = active.currentChannelId?.takeIf { channel -> active.channels.count { it.id == channel } == 1 }
+                    initialSelection = BookmarkChannelSelection(active.connection.token, id)
+                    editing =
+                        ServerBookmark(
+                            UUID.randomUUID().toString(), name = "", host = active.connection.host,
+                            port = active.connection.port, nickname = active.connection.nickname, defaultChannelId = id,
+                        )
+                }
+            },
     )
 }

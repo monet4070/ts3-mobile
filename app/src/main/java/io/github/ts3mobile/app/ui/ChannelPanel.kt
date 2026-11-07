@@ -18,6 +18,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,11 +29,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.protocol.ChannelTree
+import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.Ts3Channel
 import io.github.ts3mobile.protocol.Ts3Participant
 
@@ -43,7 +49,7 @@ internal fun ChannelList(
     onJoinChannel: (Int, String) -> Unit,
     onPoke: (Ts3Participant) -> Unit = {},
 ) {
-    var passwordChannel by remember { mutableStateOf<Ts3Channel?>(null) }
+    var passwordChannel by remember(state.bookmarkConnection?.token) { mutableStateOf<Ts3Channel?>(null) }
     var expandedChannelIds by rememberSaveable { mutableStateOf(intArrayOf()) }
     val currentChannelId = state.snapshot.currentChannelId
     val rows =
@@ -54,6 +60,20 @@ internal fun ChannelList(
         remember(state.snapshot.participants) {
             state.snapshot.participants.groupBy(Ts3Participant::channelId)
         }
+    val requestJoin: (Ts3Channel) -> Unit = { channel ->
+        if (state.status.phase == ConnectionPhase.CONNECTED && state.switchingChannelId == null &&
+            channel.id != currentChannelId && state.snapshot.channels.count { it.id == channel.id } == 1
+        ) {
+            if (channel.hasPassword) passwordChannel = channel else onJoinChannel(channel.id, "")
+        }
+    }
+    LaunchedEffect(state.status.phase, state.snapshot.channels) {
+        if (state.status.phase != ConnectionPhase.CONNECTED ||
+            passwordChannel?.let { selected -> state.snapshot.channels.count { it.id == selected.id } != 1 } == true
+        ) {
+            passwordChannel = null
+        }
+    }
 
     LaunchedEffect(currentChannelId) {
         if (currentChannelId != null && currentChannelId !in expandedChannelIds) {
@@ -63,7 +83,9 @@ internal fun ChannelList(
 
     passwordChannel?.let { channel ->
         ChannelPasswordDialog(channel.name, onDismiss = { passwordChannel = null }) { password ->
-            onJoinChannel(channel.id, password)
+            if (state.status.phase == ConnectionPhase.CONNECTED && state.snapshot.channels.count { it.id == channel.id } == 1) {
+                onJoinChannel(channel.id, password)
+            }
             passwordChannel = null
         }
     }
@@ -79,6 +101,8 @@ internal fun ChannelList(
             val isSwitching = row.channel.id == state.switchingChannelId
             val participants = participantsByChannel[row.channel.id].orEmpty()
             val isExpanded = row.channel.id in expandedChannelIds
+            val joinDescription = stringResource(R.string.channel_join_named, row.channel.name)
+            val canJoin = !isCurrent && state.switchingChannelId == null && state.status.phase == ConnectionPhase.CONNECTED
             Column(Modifier.fillMaxWidth()) {
                 Row(
                     modifier =
@@ -109,16 +133,19 @@ internal fun ChannelList(
                                             expandedChannelIds + row.channel.id
                                         }
                                 },
-                                onDoubleClick = {
-                                    if (!isCurrent && state.switchingChannelId == null) {
-                                        if (row.channel.hasPassword) {
-                                            passwordChannel = row.channel
-                                        } else {
-                                            onJoinChannel(row.channel.id, "")
-                                        }
-                                    }
-                                },
+                                onDoubleClick = { requestJoin(row.channel) },
                             )
+                            .semantics {
+                                if (canJoin) {
+                                    customActions =
+                                        listOf(
+                                            CustomAccessibilityAction(joinDescription) {
+                                                requestJoin(row.channel)
+                                                true
+                                            },
+                                        )
+                                }
+                            }
                             .padding(
                                 start = (8 + row.depth * 20).coerceAtMost(88).dp,
                                 end = 16.dp,
@@ -184,6 +211,13 @@ internal fun ChannelList(
                             modifier = Modifier.size(20.dp),
                             strokeWidth = 2.dp,
                         )
+                    }
+                    if (!isCurrent) {
+                        TextButton(
+                            onClick = { requestJoin(row.channel) },
+                            enabled = canJoin,
+                            modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = joinDescription },
+                        ) { Text(stringResource(R.string.action_join)) }
                     }
                 }
                 if (isExpanded) {

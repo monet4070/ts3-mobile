@@ -21,6 +21,11 @@ channels prompt for a password. Search in the audio controls or More options
 looks through loaded channel names/topics and nicknames. User-channel joins
 resolve the current target again. Channel details and administration are absent.
 
+The development branch also shows a Join action on each other channel and a
+matching accessibility action; double-tap remains available. Protected joins use
+the same password dialog. A connection/channel replacement invalidates a pending
+target. The public 1.0.0/code14 APK still uses its existing gestures/search entry.
+
 ## Microphone and listening
 
 | Mode | Capture and transmission |
@@ -92,6 +97,19 @@ More settings contains default channel ID and opt-in password storage. Form
 passwords are not copied automatically. Turning password storage off removes that
 bookmark's passwords without clearing independent form memory. Up to 50 entries
 are stored in a separate encrypted local vault.
+
+In the development branch, Save current connection uses the active endpoint and
+nickname, even if you edited the connection form meanwhile. Its current channel
+is preselected. For a bookmark matching the connected endpoint, Choose default
+channel lists names with parent paths; Use current channel selects it directly.
+This stores the same channel ID as before. Passwords are still explicit opt-in
+and are never copied from the active session. Changing the selected channel
+clears its previously entered channel password.
+
+Connection replacement, channel deletion or an out-of-date bookmark revision
+keeps your draft and prevents a stale save. Choose again, clear the default
+channel, or use the numeric field in More settings for deliberate offline/manual
+editing. Choosing a channel does not grant permission to join it.
 
 ## Away, background and exit
 

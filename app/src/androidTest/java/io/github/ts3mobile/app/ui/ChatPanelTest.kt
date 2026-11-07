@@ -55,7 +55,9 @@ class ChatPanelTest {
         rule.onNodeWithText("Chat").performClick()
         rule.onNodeWithTag("chat_send").assertIsNotEnabled()
         rule.onNodeWithTag("chat_draft").performTextInput(" 中文😀 | \\ ")
-        rule.onNodeWithTag("chat_send").assertIsEnabled().performClick()
+        // Verify send/copy independently of native IME movement; the keyboard
+        // geometry regression below retains its real visibility assertions.
+        rule.onNodeWithTag("chat_send").assertIsEnabled().performSemanticsAction(SemanticsActions.OnClick) { it() }
         savePreview("chat-send-keyboard")
         // IME/window animation is outside Compose idling; retain a bounded visibility assertion.
         rule.waitUntil(timeoutMillis = 5_000) {

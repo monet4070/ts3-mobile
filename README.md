@@ -21,8 +21,9 @@ to register.
 
 ## Contents
 
-Development branch: chat reading position survives main-tab changes, and saved
-microphone tuning survives service/process restart. These additions are not in
+Development branch: chat reading position survives main-tab changes, saved
+microphone tuning survives service/process restart, and bookmarks can select
+the current connection/channel by name with a visible channel Join action. These additions are not in
 the public 1.0.0/code14 APK. Track delivery and offline validation in the
 [improvement progress](docs/plans/IMPROVEMENT_PROGRESS_2026-11-07_ZH.md).
 

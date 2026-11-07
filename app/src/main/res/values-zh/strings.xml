@@ -285,6 +285,16 @@
     <string name="bookmark_empty">还没有收藏的服务器</string>
     <string name="bookmark_failed">收藏操作失败，原有收藏已保留。请重试。</string>
     <string name="bookmark_reload">重新读取收藏</string>
+    <string name="bookmark_save_current">保存当前连接</string>
+    <string name="bookmark_choose_channel">选择默认频道</string>
+    <string name="bookmark_channel_search">搜索频道名称或路径</string>
+    <string name="bookmark_channel_result_limit">最多显示100项匹配结果，可缩小搜索范围查找其他频道。</string>
+    <string name="bookmark_channel_empty">没有匹配的频道</string>
+    <string name="bookmark_use_current_channel">使用当前频道</string>
+    <string name="bookmark_clear_channel">清除默认频道</string>
+    <string name="bookmark_context_changed">连接或所选频道已变化，编辑内容已保留。请重新选择，或清除默认频道后手动编辑。</string>
+    <string name="channel_join_named">加入频道%1$s</string>
+    <string name="channel_target_changed">连接或频道已变化，请重新选择频道。</string>
     <string name="presence_title">暂离与状态</string>
     <string name="presence_away">暂时离开</string>
     <string name="presence_message">暂离留言（最多 256 UTF-8 字节）</string>

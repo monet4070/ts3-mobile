@@ -28,8 +28,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.ConnectionFormState
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.bookmarks.BookmarkChannelSelection
 import io.github.ts3mobile.app.bookmarks.BookmarkState
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
+import io.github.ts3mobile.app.bookmarks.bookmarkContext
 import io.github.ts3mobile.app.chat.ChatConversationKey
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.chat.PokeRecipient
@@ -100,13 +102,14 @@ fun MainScreen(
     onMicrophonePreferenceCommit: () -> Unit = {},
     onMicrophonePreferenceRetry: () -> Unit = {},
     onMicrophonePreferenceReset: () -> Unit = {},
+    onBookmarkSaveFromConnection: (ServerBookmark, BookmarkChannelSelection) -> Unit = { entry, _ -> onBookmarkSave(entry) },
 ) {
     val snackbar = remember { SnackbarHostState() }
     PokeFeedbackEffect(chatState, snackbar)
     chatState.pokeNotice?.let { PokeNoticeDialog(it, onPokeDismiss) { onPushToTalkChanged(false) } }
     var showPresence by rememberSaveable { mutableStateOf(false) }
     var showSearch by rememberSaveable { mutableStateOf(false) }
-    var joinTarget by androidx.compose.runtime.remember { mutableStateOf<Ts3Channel?>(null) }
+    var joinTarget by androidx.compose.runtime.remember(serviceState.bookmarkConnection?.token) { mutableStateOf<Ts3Channel?>(null) }
     LaunchedEffect(serviceState.status.phase) {
         if (serviceState.status.phase != ConnectionPhase.CONNECTED) {
             showPresence = false
@@ -142,6 +145,8 @@ fun MainScreen(
             onBookmarkSelect,
             onBookmarkConnect,
             onBookmarkReload,
+            serviceState.bookmarkContext(),
+            onBookmarkSaveFromConnection,
         ) { showBookmarks = false }
     }
     var showMicrophoneSettings by rememberSaveable { mutableStateOf(false) }

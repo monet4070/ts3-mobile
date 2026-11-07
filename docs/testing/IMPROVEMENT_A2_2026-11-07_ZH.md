@@ -47,6 +47,8 @@ Gradle测试结束会卸载测试应用，因此视觉检查另外安装刚构�
 
 ## 变更分类
 
+后续草稿[PR #9](https://github.com/monet4070/ts3-mobile/pull/9)的[固定提交CI](https://github.com/monet4070/ts3-mobile/actions/runs/42357799673)通过，head为`be2b74c`。报告产物已下载核对：应用253／协议129／音频194 JVM、应用65／音频11 Android，零失败／错误／跳过；原有Release探针及报告上传通过。云端应用选类65项与本机完整141项分别保留，不相加为一次测试数量。
+
 - 生产：新增偏好状态／存储／控制器与状态操作UI；Activity/Service/MainScreen/设置对话框窄接线。
 - 测试：新增12项JVM与2项Android生命周期回归，设置UI追加失败／重置2项，fixture增加保存状态与动作计数。
 - 配置：新偏好文件的备份排除；CI追加MicrophoneSettingsTest与MicrophonePreferenceLifecycleTest，并让目标为`codex/**`的阶段PR也执行同一门禁。

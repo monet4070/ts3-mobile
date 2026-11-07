@@ -15,6 +15,7 @@ import io.github.ts3mobile.app.ConnectionFormState
 import io.github.ts3mobile.app.bookmarks.BookmarkCodec
 import io.github.ts3mobile.app.bookmarks.BookmarkState
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
+import io.github.ts3mobile.app.bookmarks.bookmarkContext
 import io.github.ts3mobile.app.bookmarks.withSelectedBookmark
 import io.github.ts3mobile.app.chat.ChatBinding
 import io.github.ts3mobile.app.chat.ChatState
@@ -232,6 +233,13 @@ internal class UiFixture(connected: Boolean = false) {
                     },
                     bookmarks = bookmarks.value,
                     onBookmarkSave = saveBookmark,
+                    onBookmarkSaveFromConnection = { entry, selection ->
+                        if (state.value.bookmarkContext()?.accepts(entry, selection) == true) {
+                            saveBookmark(entry)
+                        } else {
+                            bookmarks.value = bookmarks.value.copy(failed = true, contextChanged = true)
+                        }
+                    },
                     onBookmarkRemove = {
                         bookmarks.value =
                             BookmarkState(

@@ -1,5 +1,6 @@
 package io.github.ts3mobile.app.service
 
+import io.github.ts3mobile.app.bookmarks.BookmarkConnection
 import io.github.ts3mobile.app.chat.ChatBinding
 import io.github.ts3mobile.app.chat.SessionChatController
 import io.github.ts3mobile.protocol.ConnectionFailureCategory
@@ -29,6 +30,7 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -256,6 +258,10 @@ internal class ConnectionCoordinator(
                 audioRouting = host.mutableState.value.audioRouting,
                 diagnostics = host.diagnosticsRecorder.snapshot(),
                 backgroundRuntime = host.mutableState.value.backgroundRuntime,
+                bookmarkConnection =
+                    BookmarkConnection(
+                        UUID.randomUUID().toString(), config.host.trim(), config.port, config.nickname.trim(),
+                    ),
             )
         // A session captured by an in-flight exit is already out of `session`, so
         // this never closes the socket that exit is still using.
@@ -361,9 +367,16 @@ internal class ConnectionCoordinator(
     fun joinChannel(
         channelId: Int,
         password: String,
+        expectedConnectionToken: String? = null,
     ) {
         val current = host.mutableState.value
         if (current.status.phase != ConnectionPhase.CONNECTED) return
+        if (expectedConnectionToken != null &&
+            (current.bookmarkConnection?.token != expectedConnectionToken || current.snapshot.channels.count { it.id == channelId } != 1)
+        ) {
+            host.mutableState.update { it.copy(channelError = UserMessage.ChannelTargetChanged) }
+            return
+        }
         if (current.switchingChannelId != null) return
         if (current.snapshot.currentChannelId == channelId) return
         val listener = activeListener ?: return

@@ -31,6 +31,14 @@ internal class BookmarkVault(
 
     override suspend fun save(entry: ServerBookmark) = mutate { BookmarkCodec.save(it, entry) }
 
+    override suspend fun saveValidated(
+        entry: ServerBookmark,
+        contextValid: () -> Boolean,
+    ) = mutate {
+        if (!contextValid()) throw BookmarkContextChanged()
+        BookmarkCodec.save(it, entry)
+    }
+
     override suspend fun remove(entry: ServerBookmark) = mutate { BookmarkCodec.remove(it, entry) }
 
     private suspend fun mutate(transform: (List<ServerBookmark>) -> List<ServerBookmark>): List<ServerBookmark> =

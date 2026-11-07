@@ -13,6 +13,7 @@ import io.github.ts3mobile.protocol.TextNotSentReason
 import io.github.ts3mobile.protocol.TextSendOutcome
 import io.github.ts3mobile.protocol.TextTarget
 import io.github.ts3mobile.protocol.TextTargetMode
+import io.github.ts3mobile.protocol.Ts3Channel
 import io.github.ts3mobile.protocol.Ts3Participant
 import io.github.ts3mobile.protocol.Ts3SessionClient
 import io.github.ts3mobile.protocol.Ts3SessionListener
@@ -85,6 +86,37 @@ class ConnectionCoordinatorTest {
         host.advance()
         coordinator.beginConnection(CONFIG)
         assertEquals(settings, host.state.value.microphoneSettings)
+    }
+
+    @Test fun liveBookmarkContextUsesTheActualConfigAndGetsANewTokenPerManualConnection() {
+        coordinator.beginConnection(CONFIG.copy(password = "fixture-secret"))
+        val first = host.state.value.bookmarkConnection!!
+        assertEquals(CONFIG.host, first.host)
+        assertEquals(CONFIG.port, first.port)
+        assertEquals(CONFIG.nickname, first.nickname)
+        assertFalse(first.toString().contains("fixture-secret"))
+        coordinator.beginConnection(CONFIG)
+        assertTrue(first.token != host.state.value.bookmarkConnection!!.token)
+    }
+
+    @Test fun staleConnectionTokenOrMissingChannelCannotJoinTheReplacement() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        val token = host.state.value.bookmarkConnection!!.token
+        host.mutableState.value =
+            host.state.value.copy(
+                snapshot = ownChannel(1).copy(channels = listOf(Ts3Channel(42, 0, 0, "Target", 0, false, false))),
+            )
+        coordinator.joinChannel(42, "", "previous-session")
+        host.advance()
+        assertEquals(UserMessage.ChannelTargetChanged, host.state.value.channelError)
+        assertTrue(host.session.joinedChannels.isEmpty())
+        coordinator.joinChannel(99, "", token)
+        assertTrue(host.session.joinedChannels.isEmpty())
+        coordinator.joinChannel(42, "", token)
+        host.advance()
+        assertEquals(listOf(42 to ""), host.session.joinedChannels)
     }
 
     @Test fun bookmarkDefaultChannelIsJoinedOnInitialConnectionAndPlainConnectionDoesNotInheritIt() {
