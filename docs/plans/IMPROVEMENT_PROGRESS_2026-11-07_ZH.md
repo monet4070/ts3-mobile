@@ -44,3 +44,6 @@ R2 已提交草稿 [PR #14](https://github.com/monet4070/ts3-mobile/pull/14)，�
 A5 [CI42366139680](https://github.com/monet4070/ts3-mobile/actions/runs/42366139680)与
 R2 [CI42366823505](https://github.com/monet4070/ts3-mobile/actions/runs/42366823505)通过且下载核对：
 两者282／129／204 JVM；A5 app107／audio14 Android，R2 app108／audio14 Android，全部零失败。
+
+C1 已提交草稿 [PR #15](https://github.com/monet4070/ts3-mobile/pull/15)，源码 `c844b9a`，
+[离线关卡](../testing/IMPROVEMENT_C1_2026-11-07_ZH.md)完成，云端CI待确认。C0继续旧Vault兼容收敛。
