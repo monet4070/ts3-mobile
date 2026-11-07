@@ -58,3 +58,6 @@ C0 已提交草稿 [PR #16](https://github.com/monet4070/ts3-mobile/pull/16)，�
 
 C0 [CI42371137285](https://github.com/monet4070/ts3-mobile/actions/runs/42371137285)通过并下载核对：
 299／132／204 JVM、app117／audio14 Android，全部零失败。C2.1正在完成事务与维护资格验收。
+
+C2.1 已提交草稿 [PR #17](https://github.com/monet4070/ts3-mobile/pull/17)，源码 `440dfcc`。
+[事务／维护验收](../testing/IMPROVEMENT_C21_2026-11-07_ZH.md)完成，云端CI待确认；继续C2.2。
