@@ -33,3 +33,6 @@ A3 最新[CI 42363545006](https://github.com/monet4070/ts3-mobile/actions/runs/4
 R1 最新[CI 42363547532](https://github.com/monet4070/ts3-mobile/actions/runs/42363547532)均通过，下载核对了263／129／194 JVM、81／11 Android。
 A4 测试修复至 `fac612b`，[CI 42364912604](https://github.com/monet4070/ts3-mobile/actions/runs/42364912604)通过，
 报告核对为282／129／194 JVM、96／11 Android，0失败。上述最新证据取代之前“待确认”状态。
+
+A5 已提交草稿 [PR #13](https://github.com/monet4070/ts3-mobile/pull/13)，生产与回归源码 `3adcbdb`，
+[离线／模拟器验收](../testing/IMPROVEMENT_A5_2026-11-07_ZH.md)完成，云端CI待确认。R2继续组合与覆盖升级验收。
