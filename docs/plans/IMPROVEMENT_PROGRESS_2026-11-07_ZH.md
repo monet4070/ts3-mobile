@@ -24,3 +24,6 @@ A3 草稿 [PR #10](https://github.com/monet4070/ts3-mobile/pull/10) 生产源码
 R1 草稿 [PR #11](https://github.com/monet4070/ts3-mobile/pull/11) 初始 `e7b4241`，
 [云端组合 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42362487981) 263／129／194 JVM、81／11 Android 通过且下载核对；
 后续仅同步上述频道测试修复至 `7eb183d`。所有 PR 仍为草稿，没有合并或公开发布。
+
+A4 已提交草稿 [PR #12](https://github.com/monet4070/ts3-mobile/pull/12)，生产及回归源码 `0ca3f1c`，
+[离线／模拟器验收](../testing/IMPROVEMENT_A4_2026-11-07_ZH.md)完成，云端 CI 待确认。下一阶段 A5。
