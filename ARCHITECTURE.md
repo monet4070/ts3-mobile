@@ -677,3 +677,24 @@ The legacy `IdentityVault.getOrCreate` signature is retained; identity read fail
 now use fixed `IdentityOperationException` categories without provider causes.
 See [ADR-0029](docs/decisions/0029-identity-maintenance-transactions.md) for that error
 migration, cancellation and Android rejected-foreground-start requirements.
+
+
+## Verified identity document export (C2.2)
+
+The main menu opens a non-exported `IdentityManagementActivity` with FLAG_SECURE.
+Its AndroidViewModel owns a small Main-thread `IdentityExportController`; only
+summaries/status/opaque picker request ids enter observable state. Password inputs
+use non-saveable Compose state and are cleared at submission. No SavedStateHandle,
+persisted URI grant or plaintext temporary file. Rotation retains the private
+operation; process recreation drops it and ignores orphan picker results.
+
+Export reads existing identity under the Application repository lease and encrypts
+on IO. A single picker slot remains reserved through cancelled/late callbacks.
+`PreparedIdentityBackup` owns private arrays through writing/closing/reopening,
+bounded read, GCM authentication and exact plaintext digest comparison. Only that
+success publishes VERIFIED; all provider/write/close/readback failures publish
+UNVERIFIED with no provider cause. A cancelled worker owns its cleanup until it
+actually returns. No arbitrary document deletion and no cloud durability claim.
+The test provider is Java in the separate Android instrumentation APK only and has
+no dependency on the target APK or its Kotlin runtime. See
+[ADR-0030](docs/decisions/0030-verified-document-backups.md).

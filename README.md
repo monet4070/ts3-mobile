@@ -61,7 +61,7 @@ and x86_64. Installability does not mean every device/version has been tested; s
 
 **Keep the existing app when upgrading.** An in-place update needs the same application ID and
 compatible signing. Do not fix a conflict by immediately uninstalling or clearing storage: that removes
-the local identity, bookmarks and encrypted form. There is no built-in identity export/restore. Separate
+the local identity, bookmarks and encrypted form. Encrypted identity export is available from More options → Identity and backups; import/restore is the next stage. Separate
 TS3 Mobile UI test packages have their own data and do not migrate into the release. See [installation
 and upgrades](docs/INSTALLATION.md) for checksums and certificates.
 
@@ -288,7 +288,7 @@ Up to 20 conversations share 500 messages / 2 MiB; older content may be evicted.
 retain received text. No ads, analytics or automatic project crash backend. Read [privacy](PRIVACY.md)
 for complete details.
 
-One active server. Whisper, file transfer, administration, identity import/export and
+One active server. Whisper, file transfer, administration, identity import and
 multi-server tabs are absent. Tested Bluetooth/background/acoustic coverage is recorded in
 [compatibility](docs/COMPATIBILITY.md).
 
@@ -332,3 +332,14 @@ failure and preserves existing data; it never silently creates a different ident
 The internal maintenance/recovery transactions are documented in
 [ADR-0029](docs/decisions/0029-identity-maintenance-transactions.md); the user-facing
 backup workflow is the next stage.
+
+
+Identity backups are encrypted `.ts3mbak` files in the TS3 Mobile format. In
+**More options → Identity and backups**, finish connection tasks, enter and confirm
+a 12–1,024-character passphrase, and choose a new file in the system picker.
+The page reports **Backup verified** only after closing, reopening, authenticating
+and checking the original identity. Unverified files may be incomplete: retry to
+a new file. Document providers control cloud synchronization. Keep the passphrase
+separately; it cannot be recovered. A local previous identity is not an external
+backup. Opening this page does not create an identity or connect to a server.
+Import/restore and desktop-client format compatibility are not yet available.
