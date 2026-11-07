@@ -343,4 +343,5 @@
     <string name="discovery_limit">Searches the current server snapshot; shows up to 50 channels and 50 users.</string>
     <string name="channel_unknown">Channel unavailable</string>
     <string name="bookmark_open">Choose a saved server</string>
+    <string name="status_identity_maintenance">Identity maintenance is in progress. Try connecting again when it finishes.</string>
 </resources>

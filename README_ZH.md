@@ -280,3 +280,7 @@ Windows 使用 `gradlew.bat`。更多见[开发约定](CONTRIBUTING.md)、[架�
 第三方组件遵循[各自许可证](THIRD_PARTY_NOTICES.md)。它与 TeamSpeak Systems GmbH 无隶属、认可或赞助关系。
 感谢 [@polleyr](https://github.com/polleyr) 的[服务器密码修复](https://github.com/monet4070/ts3-mobile/pull/1)
 和英文本地化帮助。参与协作请遵守[行为准则](CODE_OF_CONDUCT.md)。
+
+身份存储损坏或本机密钥丢失会明确报错并保留原数据，不会悄悄生成另一个身份。
+内部维护与恢复事务见[ADR-0029](docs/decisions/0029-identity-maintenance-transactions.md)，
+面向用户的备份流程将在下一阶段接入。

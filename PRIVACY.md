@@ -147,3 +147,10 @@ participants is outside the project's control.
 
 Privacy concerns that are not sensitive may be filed as repository issues.
 For sensitive reports, use the private process described in [SECURITY.md](SECURITY.md).
+
+Identity maintenance may retain one encrypted verified previous identity and one
+encrypted unreadable payload as recovery evidence in the same excluded local
+identity store. Pending verification stores a SHA-256 digest; no plaintext private
+key or passphrase is persisted. A local rollback shares the installation key and
+cannot recover a lost Keystore. Unreadable Preferences files are preserved and
+reported; they are never automatically cleared to create a replacement identity.

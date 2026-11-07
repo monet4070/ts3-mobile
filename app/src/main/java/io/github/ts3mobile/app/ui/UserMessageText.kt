@@ -18,6 +18,7 @@ import io.github.ts3mobile.protocol.ConnectionFailureCategory
  */
 fun UserMessage.resolve(context: Context): String =
     when (this) {
+        UserMessage.IdentityMaintenance -> context.getString(R.string.status_identity_maintenance)
         UserMessage.NotConnected -> context.getString(R.string.status_not_connected)
         UserMessage.SessionExpired -> context.getString(R.string.status_session_expired)
         UserMessage.WaitingForNetwork -> context.getString(R.string.status_waiting_for_network)

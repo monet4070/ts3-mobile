@@ -331,4 +331,5 @@
     <string name="discovery_limit">搜索当前服务器已加载的数据，每类最多显示 50 项。</string>
     <string name="channel_unknown">频道不可用</string>
     <string name="bookmark_open">选择收藏服务器</string>
+    <string name="status_identity_maintenance">正在维护身份，请完成后重新连接。</string>
 </resources>

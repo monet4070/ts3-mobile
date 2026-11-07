@@ -15,6 +15,8 @@ sealed interface UserMessage {
     /** A channel action was requested while no session was established. */
     data object NotConnected : UserMessage
 
+    data object IdentityMaintenance : UserMessage
+
     /** The session was replaced or invalidated before the action completed. */
     data object SessionExpired : UserMessage
 
