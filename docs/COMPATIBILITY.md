@@ -54,7 +54,7 @@
 - Android 通知权限、频道、勿扰和电池策略可能抑制提醒或中断后台连接。
 - 音量门控在安静时持续采集；设备 AEC 支持与实际声学效果因设备不同。
 - 聊天/戳一下记录与草稿只在服务内存；不提供永久历史、云同步或已读回执。
-- 身份导入导出、收藏跨包迁移、Whisper、文件传输、管理和多服务器标签页未实现。
+- 公开code14没有身份导入导出；本分支C2草稿候选支持自有加密格式，验证边界见下方。收藏跨包迁移、Whisper、文件传输、管理和多服务器标签页仍未实现。
 - 默认 APK 不包含 APM 实验库，不将开发实验结果宣传为默认能力。
 - ts3j 使用维护者 fork 的不可移动标签 `ts3mobile-1`，源码与原固定提交相同；
   JitPack 可用性仍是构建边界，见 [ADR-0004](decisions/0004-take-ownership-of-ts3j-dependency.md)。
@@ -101,3 +101,21 @@ device AEC quality remain system-dependent. Volume gate captures during silence.
 Chat/poke history is memory-only with no read receipts or cloud history. Identity
 export/transfer, Whisper, file transfer, administration, multi-server tabs and the
 optional APM experiment are outside the default release.
+
+
+## 身份改进候选范围 / Identity candidate scope
+
+C2候选在API35／arm64／4KiB独立模拟器验证自有备份的实际SAF导出、跨安装导入、明确确认、
+force-stop后精确身份材料和本地回退，含测试签名minified实际页面。具体SHA及source约束见
+[C2.2](testing/IMPROVEMENT_C22_2026-11-07_ZH.md)、[C2.3](testing/IMPROVEMENT_C23_2026-11-07_ZH.md)及
+[R3候选](testing/IMPROVEMENT_R3_2026-11-07_ZH.md)。公开1.0.0/code14尚未包含这些功能。
+测试没有使用生产签名私钥、真实个人身份、线上服务器或录音。API26运行时、低端物理设备、
+OEM／云文件提供方持久性、公开签名覆盖升级和独立安全审计仍未验收；构建minSdk26不是运行时证明。
+
+The unshipped identity candidate is verified on independent API35 arm64 4-KiB
+emulators, including actual SAF export/import, explicit confirmation, exact private
+material after force-stop, and local rollback in test-signed minified builds.
+Published code 14 does not include it. Source/APK fingerprints and limits are in
+the linked C2.2/C2.3/R3 records. No production key, personal identity, live server
+or recording was used. API26 runtime, low-end/OEM hardware, cloud-provider durability,
+published-signature upgrades and an independent security audit remain unverified.

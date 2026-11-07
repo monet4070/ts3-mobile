@@ -1,6 +1,8 @@
 package io.github.ts3mobile.app.service
 
 import io.github.ts3mobile.app.chat.SessionChatController
+import io.github.ts3mobile.app.identity.IdentityRepository
+import io.github.ts3mobile.app.identity.IdentityStoreFixture
 import io.github.ts3mobile.app.identity.IdentityUseGate
 import io.github.ts3mobile.app.identity.IdentityUseState
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
@@ -16,6 +18,7 @@ import io.github.ts3mobile.protocol.TextSendOutcome
 import io.github.ts3mobile.protocol.TextTarget
 import io.github.ts3mobile.protocol.TextTargetMode
 import io.github.ts3mobile.protocol.Ts3Channel
+import io.github.ts3mobile.protocol.Ts3IdentityCodec
 import io.github.ts3mobile.protocol.Ts3Participant
 import io.github.ts3mobile.protocol.Ts3SessionClient
 import io.github.ts3mobile.protocol.Ts3SessionListener
@@ -23,11 +26,13 @@ import io.github.ts3mobile.protocol.Ts3TextEvent
 import io.github.ts3mobile.protocol.VoiceFrame
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -75,6 +80,32 @@ class ConnectionCoordinatorTest {
         coordinator.close()
         host.scope.cancel()
     }
+
+    @Test fun nextManualConnectionUsesTheConfirmedReplacementAndThenTheConfirmedRollback() =
+        runBlocking {
+            val fixture = IdentityStoreFixture()
+            val repository = IdentityRepository(fixture.storage, identityGate, Dispatchers.Unconfined)
+            val original = Ts3IdentityCodec.generate(0)
+            val replacement = Ts3IdentityCodec.generate(0)
+            repository.replace(original, repository.snapshot().revision)
+            host.identityAction = repository::getOrCreateForConnection
+            connectEstablished()
+            assertEquals(original, host.session.connectedIdentity)
+            coordinator.requestDisconnect()
+            host.advance()
+            repository.replace(replacement, repository.snapshot().revision)
+            assertEquals(1, host.session.connectCalls)
+            coordinator.beginConnection(CONFIG)
+            host.advance()
+            assertEquals(replacement, host.session.connectedIdentity)
+            coordinator.requestDisconnect()
+            host.advance()
+            repository.rollback(repository.snapshot().revision)
+            assertEquals(2, host.session.connectCalls)
+            coordinator.beginConnection(CONFIG)
+            host.advance()
+            assertEquals(original, host.session.connectedIdentity)
+        }
 
     @Test fun maintenanceRejectsConnectionSynchronouslyWithoutChangingStateOrStartingWork() {
         val token = checkNotNull(identityGate.beginMaintenance())
@@ -1280,6 +1311,7 @@ class ConnectionCoordinatorTest {
         var connectCalls = 0
         var listener: Ts3SessionListener? = null
         var connectedConfig: ServerConfig? = null
+        var connectedIdentity: String? = null
         var closeCalls = 0
         var boundedDisconnectCalls = 0
         var boundedDisconnectBudgetMs = 0L
@@ -1310,6 +1342,7 @@ class ConnectionCoordinatorTest {
         ) {
             connectCalls++
             connectedConfig = config
+            connectedIdentity = identityMaterial
             this.listener = listener
             connectAction()
             emittedStatusOnConnect?.let { listener.onStatusChanged(it) }
