@@ -1,5 +1,6 @@
 package io.github.ts3mobile.app.service
 
+import io.github.ts3mobile.app.bookmarks.BookmarkConnection
 import io.github.ts3mobile.audio.opus.AudioRoutingState
 import io.github.ts3mobile.audio.opus.EchoCancellationState
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
@@ -33,6 +34,7 @@ data class TeamSpeakServiceState(
      * [ConnectionStatus.detail], which stays the protocol's technical detail.
      */
     val statusMessage: UserMessage? = null,
+    val bookmarkConnection: BookmarkConnection? = null,
 )
 
 val TeamSpeakServiceState.hasPlaybackFailure: Boolean

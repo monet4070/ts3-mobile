@@ -297,6 +297,16 @@
     <string name="bookmark_empty">No saved servers yet</string>
     <string name="bookmark_failed">Bookmark operation failed. Saved bookmarks were kept. Please try again.</string>
     <string name="bookmark_reload">Reload bookmarks</string>
+    <string name="bookmark_save_current">Save current connection</string>
+    <string name="bookmark_choose_channel">Choose default channel</string>
+    <string name="bookmark_channel_search">Search channel name or path</string>
+    <string name="bookmark_channel_result_limit">Shows up to 100 matches. Refine the search to find other channels.</string>
+    <string name="bookmark_channel_empty">No matching channels</string>
+    <string name="bookmark_use_current_channel">Use current channel</string>
+    <string name="bookmark_clear_channel">Clear default channel</string>
+    <string name="bookmark_context_changed">The connection or chosen channel changed. Your draft was kept. Choose again, or clear the default channel to edit manually.</string>
+    <string name="channel_join_named">Join channel %1$s</string>
+    <string name="channel_target_changed">The connection or channel changed. Choose the channel again.</string>
     <string name="presence_title">Away and status</string>
     <string name="presence_away">Away</string>
     <string name="presence_message">Away message (up to 256 UTF-8 bytes)</string>

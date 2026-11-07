@@ -75,6 +75,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveBookmark(entry: ServerBookmark) = bookmarkController.save(entry)
 
+    internal fun saveBookmarkValidated(
+        entry: ServerBookmark,
+        contextValid: () -> Boolean,
+    ) = bookmarkController.saveValidated(
+        entry,
+        contextValid,
+    )
+
     fun removeBookmark(entry: ServerBookmark) = bookmarkController.remove(entry)
 
     fun reloadBookmarks() = bookmarkController.reload()

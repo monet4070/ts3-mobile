@@ -9,9 +9,9 @@
 | P0 | 离线基线完成 | [本次基线](../testing/IMPROVEMENT_P0_2026-11-07_ZH.md)；物理设备和其他API验证按功能项安排 |
 | A1 | 离线实现与验收完成 | [4项旧实现失败、8项新增回归及137项完整套件](../testing/IMPROVEMENT_A1_Q1_2026-11-07_ZH.md) |
 | Q1 | 离线／云端验收完成 | [PR #8 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42348440916)通过；下载核对报告含导航8项与关键UI57项 |
-| A2 | 离线实现与验收完成，远端待确认 | [253 JVM／141 Android、真实Activity服务进程重启](../testing/IMPROVEMENT_A2_2026-11-07_ZH.md)；CI追加新类 |
-| A3a / A3b | 待实施 | 活动连接收藏／频道选择与可见加入 |
-| R1 | 待验收 | 第一批组合与升级 |
+| A2 | 离线／云端验收完成 | [253 JVM／141 Android、真实Activity服务进程重启](../testing/IMPROVEMENT_A2_2026-11-07_ZH.md)；[PR #9 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42357799673)通过并核对报告 |
+| A3a / A3b | 离线实现与验收完成，远端待确认 | [263 JVM／154 Android、事务guard和可见Join](../testing/IMPROVEMENT_A3_2026-11-07_ZH.md) |
+| R1 | 验收准备中 | 第一批组合已纳入完整套件；准备在新专用模拟器用旧基线与合成真实Vault数据覆盖升级 |
 | A4 / A5 / R2 | 待实施 | 私信通知与输入电平 |
 | C1 / C0 / C2 / R3 | 待实施 | 身份格式关卡、兼容加密、导入恢复 |
 | B1 / D1 / D2 / R4 | 待实施 | 静音量化关卡、主题与监测提取 |

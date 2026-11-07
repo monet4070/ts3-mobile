@@ -131,7 +131,7 @@ class MainActivity : ComponentActivity() {
                     onMicrophoneModeChanged = ::setMicrophoneMode,
                     onPushToTalkChanged = ::setPushToTalkPressed,
                     onJoinChannel = { channelId, password ->
-                        serviceBinder?.joinChannel(channelId, password)
+                        serviceBinder?.joinChannel(channelId, password, serviceState.bookmarkConnection?.token)
                     },
                     onCopyDiagnostics = ::copyDiagnostics,
                     onKeepCpuAwakeChanged = { serviceBinder?.setKeepCpuAwake(it) },
@@ -155,6 +155,9 @@ class MainActivity : ComponentActivity() {
                     bookmarks = bookmarks,
                     canUseBookmarkConnection = serviceBinder != null,
                     onBookmarkSave = viewModel::saveBookmark,
+                    onBookmarkSaveFromConnection = { entry, selection ->
+                        viewModel.saveBookmarkValidated(entry) { serviceBinder?.validateBookmarkSelection(entry, selection) == true }
+                    },
                     onBookmarkRemove = viewModel::removeBookmark,
                     onBookmarkSelect = viewModel::applyBookmark,
                     onBookmarkConnect = { entry ->

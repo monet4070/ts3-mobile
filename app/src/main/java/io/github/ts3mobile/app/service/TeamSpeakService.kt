@@ -9,6 +9,9 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import io.github.ts3mobile.app.bookmarks.BookmarkChannelSelection
+import io.github.ts3mobile.app.bookmarks.ServerBookmark
+import io.github.ts3mobile.app.bookmarks.bookmarkContext
 import io.github.ts3mobile.app.chat.ChatConversationKey
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.chat.PokeRecipient
@@ -441,6 +444,11 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     }
 
     inner class SessionBinder : Binder() {
+        fun validateBookmarkSelection(
+            entry: ServerBookmark,
+            selection: BookmarkChannelSelection,
+        ): Boolean = state.value.bookmarkContext()?.accepts(entry, selection) == true
+
         val microphonePreferenceState: StateFlow<MicrophonePreferenceState> get() = microphonePreferences.state
         val chatState: StateFlow<ChatState> get() = chatController.state
 
@@ -566,8 +574,9 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         fun joinChannel(
             channelId: Int,
             password: String = "",
+            expectedConnectionToken: String? = null,
         ) {
-            connectionCoordinator.joinChannel(channelId, password)
+            connectionCoordinator.joinChannel(channelId, password, expectedConnectionToken)
         }
 
         fun diagnosticSnapshot(): DiagnosticsSnapshot = diagnosticsRecorder.snapshot()

@@ -36,8 +36,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.bookmarks.BookmarkChannelSelection
+import io.github.ts3mobile.app.bookmarks.BookmarkConnectionContext
 import io.github.ts3mobile.app.bookmarks.BookmarkState
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
+import io.github.ts3mobile.app.bookmarks.bookmarkChannelChoices
 import io.github.ts3mobile.protocol.boundedText
 
 @Composable
@@ -45,15 +48,21 @@ internal fun BookmarkEditor(
     original: ServerBookmark,
     state: BookmarkState,
     onSave: (ServerBookmark) -> Unit,
+    context: BookmarkConnectionContext? = null,
+    initialSelection: BookmarkChannelSelection? = null,
+    onSaveFromConnection: (ServerBookmark, BookmarkChannelSelection) -> Unit = { entry, _ -> onSave(entry) },
     onDismiss: () -> Unit,
 ) {
     var entry by remember(original.id, original.revision) { mutableStateOf(original) }
     var port by remember(original.id, original.revision) { mutableStateOf(original.port.toString()) }
     var channel by remember(original.id, original.revision) { mutableStateOf(original.defaultChannelId?.toString().orEmpty()) }
     var expanded by remember(original.id) { mutableStateOf(original.defaultChannelId != null || original.rememberPasswords) }
-    var submitted by remember(original.id) { mutableStateOf(false) }
-    LaunchedEffect(state.entries) {
-        if (submitted && state.entries.any { it.id == original.id && it.revision > original.revision }) onDismiss()
+    var submitted by remember(original.id) { mutableStateOf<ServerBookmark?>(null) }
+    var selection by remember(original.id) { mutableStateOf(initialSelection) }
+    var choosingChannel by remember(original.id) { mutableStateOf(false) }
+    LaunchedEffect(state.entries, state.busy, state.failed, submitted) {
+        val expected = submitted?.forStorage()?.copy(revision = original.revision + 1)
+        if (expected != null && !state.busy && !state.failed && state.entries.any { it == expected }) onDismiss()
     }
     val validated =
         entry.copy(
@@ -62,6 +71,20 @@ internal fun BookmarkEditor(
         )
     val valid = runCatching { validated.validate() }.isSuccess
     val enabled = !state.busy && !state.loading
+    val matchingContext = context?.takeIf { it.connection.matches(validated) }
+    val staleContext = selection?.let { context?.accepts(validated, it) != true } ?: false
+    val chooseChannel: (Int) -> Unit = { id ->
+        matchingContext?.takeIf { live -> live.channels.count { it.id == id } == 1 }?.let { live ->
+            if (channel != id.toString()) entry = entry.copy(channelPassword = "")
+            channel = id.toString()
+            selection = BookmarkChannelSelection(live.connection.token, id)
+            choosingChannel = false
+        }
+    }
+    if (choosingChannel && matchingContext != null) {
+        BookmarkChannelPicker(matchingContext.channels, chooseChannel) { choosingChannel = false }
+        return
+    }
     InputDialog(
         onDismissRequest = { if (!state.busy) onDismiss() },
         title = { Text(stringResource(if (original.revision == 0L) R.string.bookmark_add else R.string.bookmark_edit_title)) },
@@ -70,7 +93,13 @@ internal fun BookmarkEditor(
                 Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (state.failed) Text(stringResource(R.string.bookmark_failed), color = MaterialTheme.colorScheme.error)
+                if (state.failed) {
+                    Text(
+                        stringResource(if (state.contextChanged) R.string.bookmark_context_changed else R.string.bookmark_failed),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                if (staleContext) Text(stringResource(R.string.bookmark_context_changed), color = MaterialTheme.colorScheme.error)
                 BookmarkField(R.string.bookmark_name, entry.name, enabled) { entry = entry.copy(name = it.take(80)) }
                 SectionLabel(stringResource(R.string.bookmark_connection_section))
                 BookmarkField(R.string.field_server_address, entry.host, enabled, KeyboardType.Uri) {
@@ -89,6 +118,30 @@ internal fun BookmarkEditor(
                         }
                     }
                 }
+                if (matchingContext != null) {
+                    TextButton(onClick = { choosingChannel = true }, enabled = enabled) {
+                        Text(stringResource(R.string.bookmark_choose_channel))
+                    }
+                    val current = matchingContext.currentChannelId
+                    TextButton(onClick = { current?.let(chooseChannel) }, enabled = enabled && current != null) {
+                        Text(stringResource(R.string.bookmark_use_current_channel))
+                    }
+                    val selected = validated.defaultChannelId
+                    val path =
+                        remember(matchingContext.channels, selected) {
+                            bookmarkChannelChoices(matchingContext.channels, "(#$selected)").firstOrNull { it.id == selected }?.path
+                        }
+                    if (path != null) Text(path, style = MaterialTheme.typography.bodySmall)
+                }
+                if (channel.isNotBlank() || selection != null) {
+                    TextButton(onClick = {
+                        channel = ""
+                        selection = null
+                        entry = entry.copy(channelPassword = "")
+                    }, enabled = enabled) {
+                        Text(stringResource(R.string.bookmark_clear_channel))
+                    }
+                }
                 HorizontalDivider(Modifier.padding(top = 4.dp))
                 TextButton(onClick = { expanded = !expanded }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.bookmark_more_settings), Modifier.weight(1f))
@@ -97,6 +150,7 @@ internal fun BookmarkEditor(
                 if (expanded) {
                     BookmarkField(R.string.bookmark_default_channel, channel, enabled, KeyboardType.Number) {
                         channel = it.filter(Char::isDigit).take(10)
+                        selection = null
                     }
                     Row(
                         Modifier.fillMaxWidth().toggleable(
@@ -136,9 +190,10 @@ internal fun BookmarkEditor(
         },
         confirmButton = {
             Button(onClick = {
-                submitted = true
-                onSave(validated)
-            }, enabled = valid && enabled) { Text(stringResource(R.string.bookmark_save)) }
+                submitted = validated
+                val captured = selection
+                if (captured == null) onSave(validated) else onSaveFromConnection(validated, captured)
+            }, enabled = valid && enabled && !staleContext) { Text(stringResource(R.string.bookmark_save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !state.busy) { Text(stringResource(R.string.action_cancel)) } },
     )

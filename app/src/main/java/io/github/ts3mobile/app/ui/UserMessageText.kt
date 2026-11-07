@@ -41,6 +41,7 @@ fun UserMessage.resolve(context: Context): String =
         is UserMessage.Reconnecting -> context.getString(R.string.status_reconnecting_attempt, attempt)
         UserMessage.ConnectionLimitWait -> context.connectionLimitGuidance()
         is UserMessage.ChannelJoinFailed -> context.getString(R.string.channel_join_failed, cause)
+        UserMessage.ChannelTargetChanged -> context.getString(R.string.channel_target_changed)
         is UserMessage.ChannelRestoreFailed -> context.getString(R.string.channel_restore_failed, cause)
         UserMessage.MicrophonePermissionForContinuous ->
             context.getString(R.string.microphone_permission_continuous)

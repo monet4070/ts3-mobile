@@ -14,6 +14,14 @@ internal interface BookmarkStore {
 
     suspend fun save(entry: ServerBookmark): List<ServerBookmark>
 
+    suspend fun saveValidated(
+        entry: ServerBookmark,
+        contextValid: () -> Boolean,
+    ): List<ServerBookmark> {
+        if (!contextValid()) throw BookmarkContextChanged()
+        return save(entry)
+    }
+
     suspend fun remove(entry: ServerBookmark): List<ServerBookmark>
 }
 
@@ -22,6 +30,7 @@ data class BookmarkState(
     val loading: Boolean = true,
     val busy: Boolean = false,
     val failed: Boolean = false,
+    val contextChanged: Boolean = false,
 )
 
 internal class BookmarkController(private val scope: CoroutineScope, private val store: BookmarkStore) {
@@ -37,17 +46,29 @@ internal class BookmarkController(private val scope: CoroutineScope, private val
 
     fun save(entry: ServerBookmark) = operation { store.save(entry) }
 
+    fun saveValidated(
+        entry: ServerBookmark,
+        contextValid: () -> Boolean,
+    ) = operation { store.saveValidated(entry, contextValid) }
+
     fun remove(entry: ServerBookmark) = operation { store.remove(entry) }
 
     private fun operation(action: suspend () -> List<ServerBookmark>) {
         scope.launch {
             mutex.withLock {
-                mutableState.update { it.copy(busy = true, failed = false) }
+                mutableState.update { it.copy(busy = true, failed = false, contextChanged = false) }
                 try {
                     mutableState.value = BookmarkState(action(), loading = false)
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
-                    mutableState.update { it.copy(loading = false, busy = false, failed = true) }
+                    mutableState.update {
+                        it.copy(
+                            loading = false,
+                            busy = false,
+                            failed = true,
+                            contextChanged = error is BookmarkContextChanged,
+                        )
+                    }
                 }
             }
         }

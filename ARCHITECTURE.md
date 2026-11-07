@@ -549,6 +549,17 @@ See [A4b traces, parameters and limits](docs/testing/AUDIO_A4B_2026-10-24.md).
 
 ## Bookmarks, presence and channel discovery
 
+The development branch adds a password-free `BookmarkConnection` context owned
+by the coordinator. Live channel selections capture its manual-connection token;
+the editor validates it and the real BookmarkVault checks it again inside its
+DataStore edit, alongside the existing revision rules. Endpoint matching does
+not resolve DNS aliases. The picker uses bounded local name/path results and
+keeps the existing defaultChannelId schema. Ordinary manual/offline edits retain
+their original behavior. Visible channel Join/accessibility actions share the
+existing password and join path; the binder forwards the captured connection
+token so stale UI cannot join a new server. See
+[ADR-0024](docs/decisions/0024-current-connection-channel-bookmarks.md).
+
 ADR-0017 fixes the current scope to recommendations 1/3/4. BookmarkVault has its
 own DataStore ciphertext and Keystore alias. BookmarkCodec bounds and validates
 schema/version/count/fields/IDs, strips passwords unless opted in, and compares

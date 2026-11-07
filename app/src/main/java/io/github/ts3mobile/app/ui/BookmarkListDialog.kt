@@ -39,6 +39,7 @@ internal fun BookmarkListDialog(
     onConnect: (ServerBookmark) -> Unit,
     onReload: () -> Unit,
     onDismiss: () -> Unit,
+    onSaveCurrent: (() -> Unit)? = null,
 ) {
     val available = !state.loading && !state.busy
     InputDialog(
@@ -60,6 +61,11 @@ internal fun BookmarkListDialog(
                 Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (onSaveCurrent != null) {
+                    OutlinedButton(onClick = onSaveCurrent, enabled = available && state.entries.size < BookmarkCodec.MAX_ENTRIES) {
+                        Text(stringResource(R.string.bookmark_save_current))
+                    }
+                }
                 if (state.failed) {
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.errorContainer) {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {
