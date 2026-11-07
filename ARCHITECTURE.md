@@ -641,3 +641,13 @@ UI is connected at this stage. A tested qualification model and a one-transactio
 active/rollback/pending recovery contract precede C2 wiring; they cannot rely on
 UI phase alone. See [ADR-0027](docs/decisions/0027-portable-identity-backup.md) and
 [format v1](docs/IDENTITY_BACKUP_FORMAT_V1.md).
+
+## Compatible local encrypted payloads
+
+Identity/form/bookmark Vaults retain their DataStore names, fields, aliases,
+serializers and transactions. `KeystorePayloadCipher` alone owns legacy v1 AES-GCM
+layout; `AndroidKeystoreKeys` separates lookup from new-data generation. Existing
+ciphertext reads fail on missing/unusable keys without creating an alias or
+rewriting data. Context/default constructor entry points remain available, with
+internal store/cipher injection for isolated tests. The portable password backup
+format is a different boundary. See [ADR-0028](docs/decisions/0028-compatible-keystore-envelopes.md).
