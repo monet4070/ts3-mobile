@@ -45,6 +45,12 @@ pwsh -NoProfile -File tools/check-repository-privacy.ps1
 
 真实服务器拒绝／密码语义复用现有join错误映射，尚未进行线上互通。R1的组合与同签名覆盖升级仍单列；单项UI通过不等于第一批已全部验收。
 
+## 远端CI后续：小窗口的惰性列表定位
+
+[首轮PR #10 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42359736168)在81项选定Android测试中发现1项失败：中文大字深色选择器的`bookmark_channel_3`尚未被LazyColumn实例化，测试直接`performScrollTo`无法找到它。原有产物上传成功，失败XML与日志已保存；不是模拟器启动失败，也不把它当成通过。
+
+仅修正测试：先限定到Dialog内的LazyColumn，再通过`performScrollToNode`实例化目标，然后保留可见性、关闭按钮与选择行为断言。没有修改生产逻辑、移除测试或放宽UI断言。将本机窗口设为与CI一致的320×640、density160后，CurrentConnectionBookmarkTest全部8项通过，`quality`通过；日志为`a3-ci-size-fixed.log`。更高窗口上的完整154项及生产代码结果保持原证据范围。修正提交另由远端CI验证。
+
 ## 变更分类
 
 - 生产：密码隔离的连接上下文、频道路径／校验策略、事务内保存guard、编辑器／选择器／当前连接入口、可见与无障碍Join、过期目标错误。

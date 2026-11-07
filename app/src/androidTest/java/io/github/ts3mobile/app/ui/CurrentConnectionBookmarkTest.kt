@@ -7,6 +7,9 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -14,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -170,6 +174,8 @@ class CurrentConnectionBookmarkTest {
         rule.onNodeWithText("服务器收藏").performClick()
         rule.onNodeWithText("保存当前连接").performClick()
         rule.onNodeWithText("选择默认频道").performScrollTo().performClick()
+        rule.onNode(hasScrollToIndexAction() and hasAnyAncestor(isDialog()))
+            .performScrollToNode(hasTestTag("bookmark_channel_3"))
         rule.onNodeWithTag("bookmark_channel_3").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("关闭").assertIsDisplayed()
         val bitmap = rule.onNode(isDialog()).captureToImage().asAndroidBitmap()
