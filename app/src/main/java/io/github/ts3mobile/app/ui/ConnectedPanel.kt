@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.chat.ChatConversationKey
+import io.github.ts3mobile.app.chat.ChatNotificationDestination
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.chat.PokeRecipient
 import io.github.ts3mobile.app.service.MicrophoneMode
@@ -57,9 +58,25 @@ internal fun ConnectedContent(
     onPoke: (PokeRecipient, String) -> Boolean = { _, _ -> false },
     onOpenSearch: () -> Unit = {},
     onOpenPresence: () -> Unit = {},
+    chatNotification: ChatNotificationDestination? = null,
+    onChatNotificationConsumed: (String) -> Unit = {},
+    onUserNavigation: () -> Unit = {},
 ) {
     ChatSessionState(chat) { conversations ->
         var selectedTab by rememberSaveable { mutableStateOf(SessionTab.CHANNELS) }
+        var notificationPicker by rememberSaveable { mutableStateOf(false) }
+        var notificationSelection by rememberSaveable { mutableStateOf<Long?>(null) }
+        ChatNotificationNavigationEffect(chatNotification, chat, onChatConversationSelected, { picker ->
+            onPushToTalkChanged(false)
+            selectedTab = SessionTab.CHAT
+            notificationPicker = picker
+        }, onChatNotificationConsumed)
+        LaunchedEffect(chat.selected, notificationSelection) {
+            if (notificationSelection != null && chat.active.id == notificationSelection) {
+                notificationPicker = false
+                notificationSelection = null
+            }
+        }
         val keyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
         val compactHeader = selectedTab == SessionTab.CHAT && LocalConfiguration.current.screenHeightDp < 700
         val recovering = state.status.phase != ConnectionPhase.CONNECTED
@@ -90,6 +107,9 @@ internal fun ConnectedContent(
             }
             if (!keyboardOpen || selectedTab != SessionTab.CHAT) {
                 NavigationTabs(selectedTab, {
+                    onUserNavigation()
+                    notificationPicker = false
+                    notificationSelection = null
                     onPushToTalkChanged(false)
                     selectedTab = it
                 }, chat.totalUnread)
@@ -115,20 +135,32 @@ internal fun ConnectedContent(
                                 ParticipantList(state, onParticipantMutedChange, onParticipantVolumeChange, {
                                     onPushToTalkChanged(false)
                                     onOpenPrivateChat(it)
+                                    onUserNavigation()
                                     selectedTab = SessionTab.CHAT
                                 }, openPoke)
                             }
                         SessionTab.CHAT ->
-                            ChatConversationContent(
-                                chat,
-                                conversations,
-                                onChatDraft,
-                                onChatSend,
-                                onChatVisible,
-                                { onPushToTalkChanged(false) },
-                                onChatConversationSelected,
-                                onChatConversationClosed,
-                            )
+                            if (notificationPicker) {
+                                ChatNotificationConversationList(chat) { id, key ->
+                                    onUserNavigation()
+                                    notificationSelection = id
+                                    onChatConversationSelected(key)
+                                }
+                            } else {
+                                ChatConversationContent(
+                                    chat,
+                                    conversations,
+                                    onChatDraft,
+                                    onChatSend,
+                                    onChatVisible,
+                                    { onPushToTalkChanged(false) },
+                                    {
+                                        onUserNavigation()
+                                        onChatConversationSelected(it)
+                                    },
+                                    onChatConversationClosed,
+                                )
+                            }
                     }
                 }
             }

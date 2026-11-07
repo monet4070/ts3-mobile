@@ -244,6 +244,10 @@
     <string name="poke_rejected">Poke was refused</string>
     <string name="poke_notification_channel">Poke alerts</string>
     <string name="poke_notification_received">Someone poked you</string>
+    <string name="private_message_notification_channel">Private message alerts</string>
+    <string name="private_message_notification_received">You have new private messages</string>
+    <string name="private_message_notification_settings">Private message notifications</string>
+    <string name="private_message_conversations">Choose a private conversation</string>
     <string name="microphone_settings">Microphone settings</string>
     <string name="microphone_settings_lifetime">Changes apply immediately and are kept on this device after saving finishes. Opening settings does not start recording.</string>
     <string name="microphone_preferences_loading">Loading saved tuning…</string>

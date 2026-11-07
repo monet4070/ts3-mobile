@@ -18,6 +18,7 @@ import io.github.ts3mobile.app.bookmarks.ServerBookmark
 import io.github.ts3mobile.app.bookmarks.bookmarkContext
 import io.github.ts3mobile.app.bookmarks.withSelectedBookmark
 import io.github.ts3mobile.app.chat.ChatBinding
+import io.github.ts3mobile.app.chat.ChatNotificationDestination
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.chat.ChatStore
 import io.github.ts3mobile.app.discovery.resolveParticipantChannel
@@ -48,6 +49,8 @@ internal class UiFixture(connected: Boolean = false) {
     val awayRequests = mutableListOf<Pair<Boolean, String>>()
     val chatStore = ChatStore()
     val chat = mutableStateOf(ChatState())
+    val chatNotification = mutableStateOf<ChatNotificationDestination?>(null)
+    var notificationSettings = 0
     val sentBodies = mutableListOf<String>()
     val sentTargets = mutableListOf<TextTarget>()
     val sentPokes = mutableListOf<Pair<TextTarget.Private, String>>()
@@ -192,6 +195,10 @@ internal class UiFixture(connected: Boolean = false) {
                     onBatterySettings = { batterySettings++ },
                     onAppSettings = { appSettings++ },
                     chatState = chat.value,
+                    chatNotification = chatNotification.value,
+                    onChatNotificationConsumed = { if (chatNotification.value?.requestId == it) chatNotification.value = null },
+                    onUserNavigation = { chatNotification.value = null },
+                    onNotificationSettings = { notificationSettings++ },
                     onChatDraft = {
                         chatStore.updateDraft(it)
                         refreshChat()

@@ -33,6 +33,7 @@ import io.github.ts3mobile.app.bookmarks.BookmarkState
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
 import io.github.ts3mobile.app.bookmarks.bookmarkContext
 import io.github.ts3mobile.app.chat.ChatConversationKey
+import io.github.ts3mobile.app.chat.ChatNotificationDestination
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.chat.PokeRecipient
 import io.github.ts3mobile.app.history.ServerHistoryEntry
@@ -103,6 +104,10 @@ fun MainScreen(
     onMicrophonePreferenceRetry: () -> Unit = {},
     onMicrophonePreferenceReset: () -> Unit = {},
     onBookmarkSaveFromConnection: (ServerBookmark, BookmarkChannelSelection) -> Unit = { entry, _ -> onBookmarkSave(entry) },
+    chatNotification: ChatNotificationDestination? = null,
+    onChatNotificationConsumed: (String) -> Unit = {},
+    onUserNavigation: () -> Unit = {},
+    onNotificationSettings: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     PokeFeedbackEffect(chatState, snackbar)
@@ -193,7 +198,10 @@ fun MainScreen(
                 MainScreenAppBar(
                     serviceState.status.phase,
                     largeText,
-                    { onPushToTalkChanged(false) },
+                    {
+                        onUserNavigation()
+                        onPushToTalkChanged(false)
+                    },
                     listOf(
                         MainMenuAction(
                             R.string.presence_title,
@@ -212,6 +220,7 @@ fun MainScreen(
                             showBackgroundRuntime = true
                         },
                         MainMenuAction(R.string.tab_diagnostics, UiIcon.Activity) { showDiagnostics = true },
+                        MainMenuAction(R.string.private_message_notification_settings, UiIcon.Chat, action = onNotificationSettings),
                         MainMenuAction(R.string.support_star, UiIcon.Star, startsGroup = true, action = onOpenRepository),
                     ),
                 )
@@ -265,6 +274,9 @@ fun MainScreen(
                     onPoke = onPoke,
                     onOpenSearch = { showSearch = true },
                     onOpenPresence = { showPresence = true },
+                    chatNotification = chatNotification,
+                    onChatNotificationConsumed = onChatNotificationConsumed,
+                    onUserNavigation = onUserNavigation,
                 )
             } else {
                 ConnectionForm(

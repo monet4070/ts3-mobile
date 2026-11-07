@@ -12,8 +12,18 @@
 | A2 | 离线／云端验收完成 | [253 JVM／141 Android、真实Activity服务进程重启](../testing/IMPROVEMENT_A2_2026-11-07_ZH.md)；[PR #9 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42357799673)通过并核对报告 |
 | A3a / A3b | 离线实现与验收完成，远端待确认 | [263 JVM／154 Android、事务guard和可见Join](../testing/IMPROVEMENT_A3_2026-11-07_ZH.md) |
 | R1 | 离线／模拟器验收完成 | [Debug及minified候选同开发证书覆盖升级、真实Vault及原密钥保全](../testing/IMPROVEMENT_R1_2026-11-07_ZH.md)；不包含生产签名／实体设备 |
-| A4 / A5 / R2 | 待实施 | 私信通知与输入电平 |
+| A4 | 离线／模拟器完成，云端待确认 | [282 JVM、完整 167 Android 通过／1 外部 fixture 默认跳过，真实系统开关两 fixture 通过](../testing/IMPROVEMENT_A4_2026-11-07_ZH.md) |
+| A5 / R2 | 待实施 | 输入电平、PTT 交互及第二批组合／覆盖升级验收 |
 | C1 / C0 / C2 / R3 | 待实施 | 身份格式关卡、兼容加密、导入恢复 |
 | B1 / D1 / D2 / R4 | 待实施 | 静音量化关卡、主题与监测提取 |
 
 P0/A1/Q1已经提交到草稿[PR #8](https://github.com/monet4070/ts3-mobile/pull/8)，固定源码`b1b44a9`；远端CI通过且报告已核对。A2是后续草稿[PR #9](https://github.com/monet4070/ts3-mobile/pull/9)，基于PR #8，源码`d3f481c`；为连续阶段PR补充`codex/**`目标分支CI触发。没有合并或公开发布，实际结果以各阶段记录及对应源码指纹为准。
+
+A3 草稿 [PR #10](https://github.com/monet4070/ts3-mobile/pull/10) 生产源码 `827f851`，
+追加小屏惰性列表及 IME 行为测试修复至 `5636d3d`；最新 CI 待确认。
+R1 草稿 [PR #11](https://github.com/monet4070/ts3-mobile/pull/11) 初始 `e7b4241`，
+[云端组合 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42362487981) 263／129／194 JVM、81／11 Android 通过且下载核对；
+后续仅同步上述频道测试修复至 `7eb183d`。所有 PR 仍为草稿，没有合并或公开发布。
+
+A4 已提交草稿 [PR #12](https://github.com/monet4070/ts3-mobile/pull/12)，生产及回归源码 `0ca3f1c`，
+[离线／模拟器验收](../testing/IMPROVEMENT_A4_2026-11-07_ZH.md)完成，云端 CI 待确认。下一阶段 A5。

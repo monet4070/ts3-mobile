@@ -596,3 +596,21 @@ trailing fields; all consumers rebuild together, without a precompiled ABI promi
 MainScreenAppBar now owns the shared toolbar/menu, keeping MainScreen below the
 preferred 300-line boundary. Bookmark, presence and discovery dialogs/controllers
 remain separate from the connection coordinator and the activity/service wiring.
+
+## Private message alert boundary
+
+Accepted ordinary private TEXT advances bounded global/per-conversation revisions,
+independent of message eviction and unread receipts. `PrivateMessageAlertObserver`
+starts at a high water mark, uses fixed two-second windows and a synchronous
+foreground barrier. Disconnect advances a generation even when StateFlow conflates
+its pause/rebind updates. The first background summary alerts; subsequent updates
+use onlyAlertOnce. `PrivateMessageNotifications` obeys permission/channel/DND policy.
+
+`ChatNotificationRegistry` issues at most 16 random one-shot capabilities with a
+five-minute monotonic expiry. Explicit immutable PendingIntent identity includes
+only that token. Consumption and Compose both validate the manual session,
+disconnect generation and conversation existence. A ViewModel-owned
+`ChatNotificationEntry` handles cold/warm Activity entry and at most one request
+before binding; explicit navigation supersedes it. Single-target selection settles
+before mounting chat; summaries mount a restorable conversation list without
+message geometry/read callbacks. See [ADR-0025](docs/decisions/0025-private-message-notifications.md).
