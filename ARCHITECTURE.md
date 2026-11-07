@@ -56,6 +56,16 @@ contains the concrete audio infrastructure and depends on protocol data types,
 not on Compose. The Android `app` module owns lifecycle, permissions,
 notifications, reconnection orchestration and user-visible error mapping.
 
+Microphone tuning persistence is app-owned: `MicrophonePreferenceController`
+merges field edits with delayed reads and serializes durable revisions through
+`MicrophonePreferenceDataStore`. Its separate Binder StateFlow reports save
+status without coupling it to connection-state resets. All applications are
+posted in order to the service main handler and use the existing microphone
+configuration entry; loading/resetting never requests capture or restores a
+capture mode. Unknown/corrupt preferences are not silently overwritten, and only
+an explicit tuning reset can replace an incompatible schema. See
+[ADR-0023](docs/decisions/0023-persistent-microphone-preferences.md).
+
 ## State and concurrency
 
 `TeamSpeakServiceState` is the single UI state model. The service publishes it

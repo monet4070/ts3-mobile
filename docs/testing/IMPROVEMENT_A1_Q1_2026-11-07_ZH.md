@@ -47,7 +47,9 @@ API35 / Android15 / arm64-v8a / 4KiB专用模拟器，1080×2340、density420；
 
 本机证据在忽略的`build/improvement-2026-11-07/`：`a1-before/`、`a1-reproduction.log`、`a1-full-accepted/`、`a1-q1-full-fixed.log`、`q1-accepted-{1,2,3}-results/`、对应日志及`a1-q1-source.sha256`。之前失败记录保留，不能混入最终通过汇总。
 
-GitHub云端运行和产物上传需由固定PR提交的CI结果确认，本机等价运行不代替该结论。第一批A2、A3与R1尚未完成，没有宣称整个第一批交付。
+后续[PR #8云端CI](https://github.com/monet4070/ts3-mobile/actions/runs/42348440916)已通过，包含新增报告上传。head为`b1b44a9`，GitHub测试合并提交为`282ad486d489bbf2b1b7e619a19e01dc2890a89f`。已下载并核对94,679字节报告产物：协议129／音频194／应用241 JVM、应用57／音频11 Android，均零失败／错误／跳过；其中新增导航8项存在于报告。云端音频只选原CI的3类，不能描述为本机完整32项。原有Release与codec探针也通过。
+
+第一批A3与R1仍需独立验收，没有宣称整个第一批交付；A2的后续证据单独记录。
 
 ## 变更分类
 

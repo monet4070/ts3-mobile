@@ -245,7 +245,15 @@
     <string name="poke_notification_channel">Poke alerts</string>
     <string name="poke_notification_received">Someone poked you</string>
     <string name="microphone_settings">Microphone settings</string>
-    <string name="microphone_settings_lifetime">Changes apply immediately and stay until the voice service stops. Opening settings does not start recording.</string>
+    <string name="microphone_settings_lifetime">Changes apply immediately and are kept on this device after saving finishes. Opening settings does not start recording.</string>
+    <string name="microphone_preferences_loading">Loading saved tuning…</string>
+    <string name="microphone_preferences_pending">Changes not yet saved</string>
+    <string name="microphone_preferences_saving">Saving tuning…</string>
+    <string name="microphone_preferences_saved">Tuning saved on this device</string>
+    <string name="microphone_preferences_read_failed">Saved tuning could not be loaded. Changes are not saved. Retry, or restore defaults to replace incompatible preferences.</string>
+    <string name="microphone_preferences_write_failed">Tuning could not be saved. Changes remain active for this service; retry to keep them.</string>
+    <string name="microphone_preferences_retry">Retry saving or loading</string>
+    <string name="microphone_preferences_reset">Restore tuning defaults</string>
     <string name="microphone_input_volume">Microphone input volume</string>
     <string name="microphone_volume_value">Input volume: %1$d%%</string>
     <string name="microphone_gain_hint" formatted="false">100% keeps the original level. Higher values can distort loud speech; reduce the volume if needed.</string>

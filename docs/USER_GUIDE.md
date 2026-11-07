@@ -32,8 +32,16 @@ resolve the current target again. Channel details and administration are absent.
 
 Capture needs microphone permission. A quiet gate is still listening; choose Off
 to stop capture. More options → Microphone settings controls input gain, RNNoise,
-device echo cancellation and the gate threshold. Settings reset when the service
-is recreated and cannot start capture by themselves.
+device echo cancellation and the gate threshold. In the development branch,
+these four tuning choices survive service/process restart after saving finishes.
+They cannot start capture, and a new service still starts in Hold mode.
+
+The dialog distinguishes loading, unsaved changes, saving, saved and failure.
+Slider release and closing settings request the latest save; edits interrupted
+before saving completes may be lost. Retry a failed load/save, or use Restore
+tuning defaults to replace the four stored choices. This never clears identity,
+bookmarks or connection memory. A failed reset remains visible rather than
+deleting unreadable storage. Public 1.0.0/code14 still uses service-memory tuning.
 
 Choose routes from those Android reports as available. Headset, Bluetooth and USB
 behavior depends on the device. AEC status reports Android's capability/activation,

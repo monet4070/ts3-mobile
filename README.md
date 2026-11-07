@@ -21,6 +21,11 @@ to register.
 
 ## Contents
 
+Development branch: chat reading position survives main-tab changes, and saved
+microphone tuning survives service/process restart. These additions are not in
+the public 1.0.0/code14 APK. Track delivery and offline validation in the
+[improvement progress](docs/plans/IMPROVEMENT_PROGRESS_2026-11-07_ZH.md).
+
 [Features](#features) · [Installation](#installation) · [First use](#first-use) ·
 [Interface tour](#interface-tour) · [Voice and audio](#voice-and-audio) ·
 [Channels and users](#channels-and-users) · [Chat and pokes](#chat-and-pokes) ·

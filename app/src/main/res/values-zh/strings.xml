@@ -233,7 +233,15 @@
     <string name="poke_notification_channel">戳一下提醒</string>
     <string name="poke_notification_received">有人戳了你</string>
     <string name="microphone_settings">麦克风设置</string>
-    <string name="microphone_settings_lifetime">修改立即生效，保留到语音服务停止。打开设置不会开始录音。</string>
+    <string name="microphone_settings_lifetime">修改立即生效，保存完成后会保留在本机。打开设置不会开始录音。</string>
+    <string name="microphone_preferences_loading">正在载入已保存的调音参数…</string>
+    <string name="microphone_preferences_pending">修改尚未保存</string>
+    <string name="microphone_preferences_saving">正在保存调音参数…</string>
+    <string name="microphone_preferences_saved">调音参数已保存在本机</string>
+    <string name="microphone_preferences_read_failed">无法载入已保存的调音参数，当前修改尚未保存。请重试，或恢复默认以替换不兼容的偏好设置。</string>
+    <string name="microphone_preferences_write_failed">调音参数保存失败，当前修改在本次服务中仍有效；请重试保存。</string>
+    <string name="microphone_preferences_retry">重试保存或载入</string>
+    <string name="microphone_preferences_reset">恢复调音默认值</string>
     <string name="microphone_input_volume">麦克风输入音量</string>
     <string name="microphone_volume_value">输入音量：%1$d%%</string>
     <string name="microphone_gain_hint" formatted="false">100% 保持原始音量。提高音量可能使大声说话失真，出现失真时请调低。</string>
