@@ -14,7 +14,7 @@
 | R1 | 离线／模拟器验收完成 | [Debug及minified候选同开发证书覆盖升级、真实Vault及原密钥保全](../testing/IMPROVEMENT_R1_2026-11-07_ZH.md)；不包含生产签名／实体设备 |
 | A4 | 离线／模拟器／云端完成 | [282 JVM、完整 167 Android 通过／1 外部 fixture 默认跳过，真实系统开关两 fixture 通过](../testing/IMPROVEMENT_A4_2026-11-07_ZH.md) |
 | A5 | 离线实现与模拟器验收完成 | [282 app／204 audio JVM、完整 177 Android 通过／1 外部 fixture 默认跳过及最终 27 项补验](../testing/IMPROVEMENT_A5_2026-11-07_ZH.md) |
-| R2 | 待实施 | 第二批组合／覆盖升级验收 |
+| R2 | 离线／模拟器验收完成 | [第一批→第二批Debug／minified覆盖升级、四调音参数／原密文／原密钥／UID保全与组合流程](../testing/IMPROVEMENT_R2_2026-11-07_ZH.md) |
 | C1 / C0 / C2 / R3 | 待实施 | 身份格式关卡、兼容加密、导入恢复 |
 | B1 / D1 / D2 / R4 | 待实施 | 静音量化关卡、主题与监测提取 |
 

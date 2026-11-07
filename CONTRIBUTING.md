@@ -200,6 +200,8 @@ make the check pass. Use a dedicated new AVD, not a personal session.
 
 ```sh
 python3 tools/check-upgrade-compat.py --device emulator-5558 --sdk "$ANDROID_HOME" --baseline-apk /path/to/baseline-debug.apk --candidate-apk /path/to/candidate.apk
+# For an A2+ baseline, also preserve four non-default microphone preferences:
+python3 tools/check-upgrade-compat.py --device emulator-5558 --sdk "$ANDROID_HOME" --baseline-apk /path/to/a2-or-later-debug.apk --candidate-apk /path/to/candidate.apk --include-tuning
 python3 -m unittest discover -s tools/tests -p 'test_*.py'
 ```
 

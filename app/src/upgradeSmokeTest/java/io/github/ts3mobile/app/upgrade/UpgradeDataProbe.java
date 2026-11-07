@@ -29,10 +29,12 @@ public final class UpgradeDataProbe extends Instrumentation {
     private static final String MARKER = "improvement_upgrade_fixture_v1";
     private String stage;
     private ClassLoader targetLoader;
+    private boolean includeTuning;
 
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
         stage = arguments.getString("stage", "verify");
+        includeTuning = Boolean.parseBoolean(arguments.getString("includeTuning", "false"));
         start();
     }
 
@@ -80,6 +82,7 @@ public final class UpgradeDataProbe extends Instrumentation {
                 require(marker.edit().putString("identity_digest", digest(identity)).putInt("uid", context.getApplicationInfo().uid).commit(),
                     "Fixture marker write failed");
                 recordRawStorage(context, marker);
+                if (includeTuning) seedTuning(context, marker);
                 result.putString("stream", "UPGRADE_REAL_VAULT_FIXTURE_SEEDED\n");
             } else if ("verify".equals(stage)) {
                 require(marker.contains("identity_digest"), "Missing seed marker");
@@ -99,6 +102,9 @@ public final class UpgradeDataProbe extends Instrumentation {
                 require("fixture-server-password".equals(value(entry, "getPassword")), "Encrypted server password changed");
                 require("fixture-channel-password".equals(value(entry, "getChannelPassword")), "Encrypted channel password changed");
                 verifyRawStorage(context, marker);
+                if (marker.contains("tuning_digest")) {
+                    require(expectedTuning().equals(suspendCall(tuningStore(context), "read")), "Microphone preferences changed");
+                }
                 result.putString("stream", "UPGRADE_REAL_IDENTITY_FORM_BOOKMARKS_UID_OK\n");
             } else {
                 throw new IllegalArgumentException("Unknown stage");
@@ -113,6 +119,24 @@ public final class UpgradeDataProbe extends Instrumentation {
 
     private Class<?> type(String suffix) throws ClassNotFoundException {
         return Class.forName(PACKAGE + suffix, true, targetLoader);
+    }
+
+    private Object tuningStore(Context context) throws Exception {
+        return type("settings.MicrophonePreferenceDataStoreKt")
+            .getMethod("microphonePreferenceStore", Context.class).invoke(null, context);
+    }
+
+    private Object expectedTuning() throws Exception {
+        return Class.forName("io.github.ts3mobile.audio.opus.MicrophoneSettings", true, targetLoader)
+            .getConstructor(int.class, boolean.class, boolean.class, int.class).newInstance(147, false, false, -28);
+    }
+
+    private void seedTuning(Context context, SharedPreferences marker) throws Exception {
+        require(!new File(context.getFilesDir(), "datastore/ts3_microphone_preferences.preferences_pb").exists(),
+            "Existing microphone preferences refused");
+        suspendCall(tuningStore(context), "write", expectedTuning(), false);
+        require(marker.edit().putString("tuning_digest", fileDigest(context, "ts3_microphone_preferences")).commit(),
+            "Microphone compatibility marker failed");
     }
 
     private Object value(Object target, String getter) throws Exception {
@@ -180,6 +204,10 @@ public final class UpgradeDataProbe extends Instrumentation {
 
     private void verifyRawStorage(Context context, SharedPreferences marker) throws Exception {
         require(marker.getInt("uid", -1) == context.getApplicationInfo().uid, "Application UID changed");
+        if (marker.contains("tuning_digest")) {
+            require(fileDigest(context, "ts3_microphone_preferences").equals(marker.getString("tuning_digest", "")),
+                "Microphone preference bytes changed");
+        }
         KeyStore keys = KeyStore.getInstance("AndroidKeyStore");
         keys.load(null);
         for (int i = 0; i < FILES.length; i++) {

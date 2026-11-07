@@ -6,12 +6,12 @@ import unittest
 
 
 class UpgradeDeviceSafetyTest(unittest.TestCase):
-    def reject_without_android_tools(self, serial):
+    def reject_without_android_tools(self, serial, *extra):
         script = Path(__file__).resolve().parents[1] / "check-upgrade-compat.py"
         with tempfile.TemporaryDirectory() as temporary:
             result = subprocess.run(
                 [sys.executable, str(script), "--device", serial, "--sdk", temporary,
-                 "--baseline-apk", str(Path(temporary) / "missing.apk")],
+                 "--baseline-apk", str(Path(temporary) / "missing.apk"), *extra],
                 capture_output=True, text=True,
             )
         self.assertEqual(2, result.returncode)
@@ -23,6 +23,9 @@ class UpgradeDeviceSafetyTest(unittest.TestCase):
 
     def test_malformed_emulator_serial_cannot_bypass_the_device_guard(self):
         self.reject_without_android_tools("emulator-not-a-port")
+
+    def test_tuning_fixture_keeps_physical_device_guard_before_any_apk_access(self):
+        self.reject_without_android_tools("synthetic-usb-device", "--include-tuning")
 
 
 if __name__ == "__main__":
