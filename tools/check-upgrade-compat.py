@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--device", required=True)
     parser.add_argument("--sdk", default=os.environ.get("ANDROID_HOME"))
     parser.add_argument("--baseline-apk", required=True, type=Path)
+    parser.add_argument("--include-tuning", action="store_true", help="Also seed and preserve A2+ microphone preferences")
     parser.add_argument("--candidate-apk", type=Path, default=repository / "app/build/outputs/apk/debug/app-debug.apk")
     arguments = parser.parse_args()
     if not arguments.sdk:
@@ -111,7 +112,8 @@ def main():
     component = probe_package + "/io.github.ts3mobile.app.upgrade.UpgradeDataProbe"
     run(serial + ["install", "-t", baseline])
     run(serial + ["install", "-t", probe])
-    seeded = run(serial + ["shell", "am", "instrument", "-w", "-e", "stage", "seed", component])
+    seed_arguments = ["-e", "includeTuning", "true"] if arguments.include_tuning else []
+    seeded = run(serial + ["shell", "am", "instrument", "-w", "-e", "stage", "seed", *seed_arguments, component])
     if "UPGRADE_REAL_VAULT_FIXTURE_SEEDED" not in seeded:
         raise RuntimeError("Baseline fixture creation failed; preserve the emulator and inspect local results")
     run(serial + ["install", "-r", "-t", candidate])
@@ -129,6 +131,8 @@ def main():
         "identityMaterialDigestVerifiedThroughVault": metadata[1]["debuggable"],
         "formAndBookmarkValuesVerifiedThroughVault": metadata[1]["debuggable"],
         "realUserDataAccessed": False, "serverConnected": False,
+        "microphonePreferenceFilePreserved": arguments.include_tuning,
+        "microphonePreferencesReadBack": arguments.include_tuning and metadata[1]["debuggable"],
     }
     (root / "result.json").write_text(json.dumps(evidence, indent=2) + "\n")
     print("Upgrade retained encrypted vault files, original keys and application UID; evidence: " + str(root))
