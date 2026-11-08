@@ -678,6 +678,90 @@ class ConnectionCoordinatorTest {
             generation = generation,
         )
 
+    @Test fun aNonCooperativeOldNetworkProbeCannotEndTheHealthyReplacementNetwork() {
+        val gate = CompletableDeferred<Unit>()
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.network.value = true
+        coordinator.onNetworkChanged(availableNetwork(1))
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        try {
+            host.session.livenessResult = false
+            host.session.livenessGate = { withContext(NonCancellable) { gate.await() } }
+            coordinator.onNetworkChanged(availableNetwork(2))
+            host.advance()
+            assertEquals(1, host.session.livenessCalls)
+            host.session.livenessGate = null
+            host.session.livenessResult = true
+            coordinator.onNetworkChanged(availableNetwork(3))
+            host.advance()
+            assertEquals(2, host.session.livenessCalls)
+            gate.complete(Unit)
+            host.advance()
+            assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+            assertEquals(1, host.session.connectCalls)
+            assertTrue(host.connectionFailures.isEmpty())
+        } finally {
+            gate.complete(Unit)
+        }
+    }
+
+    @Test fun aCancelledSwitchProbeRetainsIdentityOwnershipUntilItsRealCompletion() {
+        val gate = CompletableDeferred<Unit>()
+        host.network.value = true
+        coordinator.onNetworkChanged(availableNetwork(1))
+        connectEstablished()
+        try {
+            host.session.livenessGate = { withContext(NonCancellable) { gate.await() } }
+            coordinator.onNetworkChanged(availableNetwork(2))
+            host.advance()
+            assertEquals(1, host.session.livenessCalls)
+            coordinator.requestDisconnect()
+            host.advance()
+            assertEquals(IdentityUseState.CONNECTION, identityGate.state.value)
+            assertNull(identityGate.beginMaintenance())
+            gate.complete(Unit)
+            host.advance()
+            assertEquals(IdentityUseState.IDLE, identityGate.state.value)
+        } finally {
+            gate.complete(Unit)
+            host.advance()
+        }
+    }
+
+    @Test fun terminalCallbackDuringTransportObservationWinsWithoutRetryOrDuplicateLoss() {
+        connectEstablished()
+        host.session.transportConnected = false
+        host.session.transportReadAction = {
+            host.session.transportReadAction = {}
+            host.session.listener!!.onStatusChanged(ConnectionStatus(ConnectionPhase.DISCONNECTED, retryable = false))
+        }
+        host.testScope.advanceTimeBy(1001)
+        host.runPendingTeardowns()
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(1, host.session.connectCalls)
+        assertEquals(0, host.transportDisconnects)
+        assertEquals(1, host.connectionFailures.size)
+        assertFalse(host.connectionFailures.single().retryable)
+    }
+
+    @Test fun taskRemovalDuringClockObservationCannotRecordAStaleGapOrRestart() {
+        connectEstablished()
+        host.clockAction = {
+            host.clockAction = {}
+            coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        }
+        host.nowMs = 30000
+        host.testScope.advanceTimeBy(1001)
+        host.advance()
+        host.runPendingTeardowns()
+        assertTrue(host.watchGaps.isEmpty())
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(1, host.session.connectCalls)
+        assertEquals(0, host.transportDisconnects)
+        assertTrue(host.stopSelfRequested)
+    }
+
     @Test
     fun silentTransportCloseStartsRecoveryWithoutNetworkChange() {
         host.network.value = false // Keep recovery waiting so it cannot obscure the failure.

@@ -97,6 +97,15 @@ owns microphone permissions, push-to-talk intent, capture lifecycle and the
 separate transmit mutex; it updates the shared immutable service state through
 the application-layer state flow.
 
+`ConnectionMonitor` observes default-network transitions, a bounded post-switch
+probe and transport/watch ticks through the protocol port and monotonic clock.
+Facts carry the captured session, listener, epoch and (for probes) network
+generation. It owns no scope, service state or recovery action. The coordinator
+retains identity-lease job registration, validates facts, atomically claims the
+listener and applies existing terminal/reconnect/exit policy. Clock gaps are
+observations only; voice silence never triggers a probe. Watch/probe timing is
+unchanged. See [ADR-0034](docs/decisions/0034-session-bound-connection-monitoring.md).
+
 `SessionSnapshotStore` is the protocol adapter's synchronized mutable boundary.
 It converts ts3j events into immutable `SessionSnapshot` values before crossing
 the module boundary.

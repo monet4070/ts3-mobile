@@ -30,7 +30,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -215,9 +214,7 @@ internal class ConnectionCoordinator(
     @Volatile
     private var livenessJob: Job? = null
 
-    @Volatile
-    private var lastNetworkState = DefaultNetworkState.Unknown
-    private var lastAvailableNetworkGeneration: Long? = null
+    private val monitor = ConnectionMonitor(clockMs)
     private val reconnectEngine =
         ReconnectEngine(host, this) { block ->
             identityLease?.prepare(host.serviceScope, block)
@@ -460,17 +457,10 @@ internal class ConnectionCoordinator(
      * liveness check, never a blind reconnect.
      */
     fun onNetworkChanged(state: DefaultNetworkState) {
-        lastNetworkState = state
-        if (state.isPending && !state.isBlocked) return
-        if (!state.isAvailable) {
-            lastAvailableNetworkGeneration = null
-            onNetworkUnavailable()
-            return
-        }
-        val previousAvailableGeneration = lastAvailableNetworkGeneration
-        lastAvailableNetworkGeneration = state.generation
-        if (previousAvailableGeneration != null && previousAvailableGeneration != state.generation) {
-            verifySessionAfterNetworkSwitch(state.generation)
+        when (monitor.networkChanged(state)) {
+            NetworkTransition.PENDING, NetworkTransition.UNCHANGED -> Unit
+            NetworkTransition.UNAVAILABLE -> onNetworkUnavailable()
+            NetworkTransition.SWITCHED -> verifySessionAfterNetworkSwitch(state.generation)
         }
     }
 
@@ -480,7 +470,7 @@ internal class ConnectionCoordinator(
      * duplicate capability callback cannot be mistaken for a network switch.
      */
     fun onNetworkChanged(available: Boolean) {
-        val previous = lastNetworkState
+        val previous = monitor.networkState
         val generation =
             if (available && !previous.isAvailable) previous.generation + 1 else previous.generation
         onNetworkChanged(
@@ -530,29 +520,17 @@ internal class ConnectionCoordinator(
         val listener = activeListener?.takeIf { it.connected } ?: return
         if (host.mutableState.value.status.phase != ConnectionPhase.CONNECTED) return
         val probeSession = session ?: return
+        val binding = MonitoredSession(listener.epoch, probeSession, listener)
         livenessJob?.cancel()
         livenessJob =
             launchIdentityWork(listener.epoch) {
-                val alive =
-                    try {
-                        // withTimeoutOrNull bounds a suspend implementation; the
-                        // blocking socket call keeps its own protocol timeout.
-                        withTimeoutOrNull(ConnectionLivenessPolicy.PROBE_TIMEOUT_MS) {
-                            probeSession.verifyLiveness(ConnectionLivenessPolicy.PROBE_TIMEOUT_MS)
-                        } ?: false
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (_: Throwable) {
-                        false
-                    }
+                val observation = monitor.probe(binding, generation)
                 if (!isActive) return@launchIdentityWork
-                if (!isListenerActive(listener) || !listener.connected) return@launchIdentityWork
+                if (!isMonitoredSessionActive(observation.binding) || !listener.connected) return@launchIdentityWork
                 // A second switch (B -> C) must not let a stale B probe end a
                 // healthy C session.
-                if (session !== probeSession) return@launchIdentityWork
-                val current = lastNetworkState
-                if (current.generation != generation || current.isPending || !current.isAvailable) return@launchIdentityWork
-                if (!alive) {
+                if (!monitor.isCurrentNetwork(observation.networkGeneration)) return@launchIdentityWork
+                if (!observation.alive) {
                     onEstablishedSessionEnded(
                         listener,
                         ConnectionStatus(
@@ -979,44 +957,36 @@ internal class ConnectionCoordinator(
     }
 
     private fun startConnectedWatch(listener: SessionListener) {
+        val watchedSession = session ?: return
+        val binding = MonitoredSession(listener.epoch, watchedSession, listener)
         connectedWatchJob?.cancel()
         connectedWatchJob =
             launchIdentityWork(listener.epoch) {
-                var previousTickMs = clockMs()
-                while (isActive && isListenerActive(listener)) {
-                    // Forward progress of this watch is the only local evidence
-                    // that the process is still being scheduled. A gap is
-                    // reported as data and never inferred as a specific cause.
-                    val nowMs = clockMs()
-                    val gapMs = nowMs - previousTickMs
-                    previousTickMs = nowMs
-                    if (gapMs >= WATCH_EXECUTION_GAP_THRESHOLD_MS && isListenerActive(listener)) {
-                        host.onWatchExecutionGap(gapMs / MILLIS_PER_SECOND)
+                monitor.watch(binding, ::isMonitoredSessionActive) { observation ->
+                    if (isMonitoredSessionActive(observation.binding)) {
+                        when (observation) {
+                            is ConnectionWatchObservation.ExecutionGap -> host.onWatchExecutionGap(observation.seconds)
+                            is ConnectionWatchObservation.Tick -> host.refreshDiagnostics()
+                            is ConnectionWatchObservation.TransportClosed ->
+                                onEstablishedSessionEnded(
+                                    listener,
+                                    ConnectionStatus(
+                                        ConnectionPhase.ERROR,
+                                        ConnectionLivenessPolicy.TRANSPORT_LOST_DETAIL,
+                                        retryable = true,
+                                    ),
+                                    transportSession = observation.binding.session,
+                                )
+                        }
                     }
-                    // ts3j can silently transition to DISCONNECTED after its
-                    // PONG/ACK timeout. Observe that local state without sending
-                    // extra keepalives or treating channel silence as failure.
-                    val observedSession = session ?: return@launchIdentityWork
-                    if (observedSession.transportConnected == false &&
-                        session === observedSession && isListenerActive(listener)
-                    ) {
-                        // Ending the session cancels this watch. Keep this
-                        // transition synchronous; recovery has its own job.
-                        onEstablishedSessionEnded(
-                            listener,
-                            ConnectionStatus(
-                                ConnectionPhase.ERROR,
-                                ConnectionLivenessPolicy.TRANSPORT_LOST_DETAIL,
-                                retryable = true,
-                            ),
-                            transportSession = observedSession,
-                        )
-                        return@launchIdentityWork
-                    }
-                    host.refreshDiagnostics()
-                    delay(CONNECTED_WATCH_INTERVAL_MS)
                 }
             }
+    }
+
+    private fun isMonitoredSessionActive(binding: MonitoredSession): Boolean {
+        val listener = activeListener ?: return false
+        return listener === binding.listener && listener.epoch == binding.epoch &&
+            session === binding.session && isListenerActive(listener)
     }
 
     private fun restoreLastChannelIfNeeded(listener: SessionListener) {
@@ -1073,9 +1043,6 @@ internal class ConnectionCoordinator(
 
     private companion object {
         const val STABLE_CONNECTION_MS = 30_000L
-        const val CONNECTED_WATCH_INTERVAL_MS = 1_000L
-        const val WATCH_EXECUTION_GAP_THRESHOLD_MS = 10_000L
-        const val MILLIS_PER_SECOND = 1_000L
 
         /** Total budget for one exit: capture stop, mutex wait, protocol exit and release. */
         const val EXIT_BUDGET_MS = 2_000L
