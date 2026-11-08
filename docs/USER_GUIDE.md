@@ -61,6 +61,11 @@ behavior depends on the device. AEC status reports Android's capability/activati
 not a guarantee of acoustic quality. User actions provide per-user mute and volume.
 Listening mute is separate from turning your microphone off.
 
+Development builds preserve other participants' valid unmixed audio and decoders
+when one user is muted/unmuted. The shared output still retires, so an interruption
+is possible. This is not in the public code14 APK; physical listening/routing is
+not yet validated. See [offline evidence](testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
+
 Available Bluetooth communication headsets are selected at session start and when connected.
 Device removal or unexpected Bluetooth fallback mutes listening. Check the selected route and
 unmute manually; reconnecting a headset keeps the safety mute. This affects listening, not the

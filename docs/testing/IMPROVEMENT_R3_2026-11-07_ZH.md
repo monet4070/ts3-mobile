@@ -83,3 +83,8 @@ R3离线与模拟器关卡完成。生产签名覆盖升级、实体/OEM／低�
 改为共享证书解析器，兼容旧编号与新scheme标签、同证书多scheme重复报告；不同证书、第二编号签名者、
 仅source stamp、缺失或非法长度仍拒绝。升级runner同步使用唯一规则。新增6项解析回归，工具套件共18项。
 新格式采用实际下载的CI输出复核；不放宽app/test证书一致、fresh emulator或物理设备拒绝检查。
+
+修复后的[CI42397034160](https://github.com/monet4070/ts3-mobile/actions/runs/42397034160)通过并下载核对：
+356／133／204 JVM、app135／audio14 Android全零失败；实际外部进程runner的8个case
+`restartedVerificationPassed=true`，`defaultIdentityCreated=false`。
+证据位于`build/improvement-2026-11-07/r3-ci-42397034160/`，API35／x86_64。

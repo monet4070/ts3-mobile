@@ -96,6 +96,18 @@ internal class PlaybackStreams(
 
     fun advanceSilence(samples: Int) = mixer.advanceSilence(samples)
 
+    fun invalidateParticipants(clients: Set<Int>) {
+        clients.forEach { clientId ->
+            // An in-progress tick may already have ingested post-unmute media and reset its decoder.
+            // Retire only revoked state; never delete that new generation when this command arrives.
+            if (talkers[clientId]?.hasCurrentGeneration != true) talkers.remove(clientId)?.close()
+            mixer.forget(clientId)
+            discontinuityClients.remove(clientId)
+        }
+        mixer.resetOutputHistory()
+        oldestMixedArrival = null
+    }
+
     fun reset() {
         talkers.values.forEach(TalkerJitterPipeline::close)
         talkers.clear()

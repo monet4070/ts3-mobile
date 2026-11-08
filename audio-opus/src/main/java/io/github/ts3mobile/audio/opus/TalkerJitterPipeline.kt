@@ -33,6 +33,7 @@ internal class TalkerJitterPipeline(
         private set
     val nextTargetMs: Int get() = delay.targetMs
     val oldestReadArrival: Long? get() = pcm.oldestReadArrival
+    val hasCurrentGeneration: Boolean get() = token != null && budget.generation(clientId) == token
     var resetDroppedPcmSamples = 0L
         private set
     var lastArrivalNanos = 0L

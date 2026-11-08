@@ -58,12 +58,15 @@ internal object ParticipantMuteProbe {
         val aPackets = packets(1000)
         val bPackets = packets(500)
         val feeding = AtomicBoolean()
+        val feedingLock = Any()
         val feeder =
             Thread {
                 var sequence = 5
                 while (feeding.get() && sequence < bPackets.size) {
-                    player.submit(frame(B, sequence, bPackets[sequence]))
-                    sequence++
+                    synchronized(feedingLock) {
+                        player.submit(frame(B, sequence, bPackets[sequence]))
+                        sequence++
+                    }
                     try {
                         Thread.sleep(20)
                     } catch (_: InterruptedException) {
@@ -101,19 +104,24 @@ internal object ParticipantMuteProbe {
             feeder.start()
             assertTrue(second.entered.await(5, TimeUnit.SECONDS))
             val during = ParticipantMuteObservation.snapshot(player, B)
-            val beforeUnmute = ParticipantMuteObservation.budget(player, B)
             val retired = ParticipantMuteObservation.decoderClosed(before.decoder)
+            var beforeUnmute = 0
+            var afterUnmute = 0
             var unmuteAt = 0L
             var mainUnmute = 0L
             val secondWrites = second.writes.get()
-            instrumentation.runOnMainSync {
-                unmuteAt = System.nanoTime()
-                player.replaceParticipantGains(emptyMap())
-                mainUnmute = System.nanoTime() - unmuteAt
+            // Hold only the synthetic feeder, not the player/worker. Both snapshots have identical input.
+            synchronized(feedingLock) {
+                beforeUnmute = ParticipantMuteObservation.budget(player, B)
+                instrumentation.runOnMainSync {
+                    unmuteAt = System.nanoTime()
+                    player.replaceParticipantGains(emptyMap())
+                    mainUnmute = System.nanoTime() - unmuteAt
+                }
+                afterUnmute = ParticipantMuteObservation.budget(player, B)
             }
             assertTrue(second.release.count > 0)
             assertTrue(mainUnmute < TimeUnit.MILLISECONDS.toNanos(250))
-            val afterUnmute = ParticipantMuteObservation.budget(player, B)
             second.release.countDown()
             assertTrue(second.closed.await(5, TimeUnit.SECONDS))
             assertEquals("An unmute must not start another old mixed write", secondWrites, second.writes.get())

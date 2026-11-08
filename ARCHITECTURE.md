@@ -10,6 +10,16 @@ Stop invalidates first, interrupts the worker and joins only off the main thread
 Failed retirement keeps the old control reachable and blocks a new output until
 cleanup succeeds. Successful samples accumulate across short talkspurts to clear
 the failure streak, and idle wall time advances the limiter's release envelope.
+Participant mute transitions use `PlaybackAdmission` tickets and coalesced
+`PlaybackInvalidation` commands. Only the affected client's prepared/queued media
+is revoked; the worker preserves other valid unmixed leases and decoders. Late
+commands retain post-unmute generations that have already reset their decoder.
+Mixed PCM, render references and output still retire together, with a fresh
+timeline/head origin and shared limiter reset; other participants' gain envelopes
+remain. Global mute/focus/routes/stop retain global protection, and participant
+commands cannot shorten a retry deadline. See
+[ADR-0032](docs/decisions/0032-participant-playback-invalidation.md) and
+[offline measurement](docs/testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
 Playback failure guidance is shown only for an established connection. Retirement
 errors during intentional disconnect remain diagnostic events without prompting
 the user to reconnect. `MicrophoneController` owns capture/send serialization;

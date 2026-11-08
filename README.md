@@ -26,6 +26,9 @@ microphone tuning survives service/process restart, and bookmarks can select
 the current connection/channel by name with a visible channel Join action. These additions are not in
 the public 1.0.0/code14 APK. Track delivery and offline validation in the
 [improvement progress](docs/plans/IMPROVEMENT_PROGRESS_2026-11-07_ZH.md).
+The development playback path also preserves other participants' valid unmixed
+audio when one participant is muted. Output retirement can still cause a gap;
+see the [emulator evidence](docs/testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
 
 [Features](#features) · [Installation](#installation) · [First use](#first-use) ·
 [Interface tour](#interface-tour) · [Voice and audio](#voice-and-audio) ·

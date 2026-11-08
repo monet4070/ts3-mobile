@@ -52,5 +52,7 @@ class ParticipantMuteMeasurementTest {
                 put("traces", rows)
             }
         File(instrumentation.targetContext.getExternalFilesDir(null), "participant-mute-$label.json").writeText(report.toString(2))
+        // Small lines avoid logcat truncation; CI extracts only this synthetic report after uninstall.
+        report.toString(2).lineSequence().forEach { println("PARTICIPANT_MUTE_JSON=$it") }
     }
 }

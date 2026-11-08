@@ -97,6 +97,13 @@ seven days, including failed runs. These offline tests use synthetic data;
 never add live identities, messages or device dumps to artifact paths.
 Check both palettes, Chinese text and large text before changing shared UI tokens.
 
+Participant-mute regression uses the offline `ParticipantMuteMeasurementTest`
+and `ParticipantMuteIsolationTest` audio classes. They feed synthetic native Opus
+into a fake output, without recording or a server. CI preserves only the extracted
+synthetic measurement JSON, not full device logs. The production output still
+retires; these metrics do not establish audible HAL gaps. See
+[B1.2 evidence](docs/testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
+
 Changes to native audio or device interaction should also be tested on a
 physical device. Describe the tested device, Android version, audio route, and
 result without exposing private server details.
