@@ -91,3 +91,8 @@ R3签名解析工具修复 `452b7df` 的[云端复验](https://github.com/monet4
 R3上述云端复验已通过并下载核对：356／133／204 JVM、app135／audio14 Android全零失败，
 外部进程8个终止点重启验证全部通过，无默认身份创建。B1.1云端音频通过，首次组合任务仅在既有
 书签中文大字／IME测试点击更多设置后找不到频道字段，失败job已重试；不将其写成已通过。
+
+B1.2／B1.3已提交草稿 [PR #22](https://github.com/monet4070/ts3-mobile/pull/22)，
+生产／回归源码`cf212dc`；[有界隔离验收](../testing/IMPROVEMENT_B12_2026-11-07_ZH.md)完成。
+[云端CI42438416481](https://github.com/monet4070/ts3-mobile/actions/runs/42438416481)运行中，
+不能标作云端通过。下一阶段D1主题；全部仍为草稿，未合并／发布。
