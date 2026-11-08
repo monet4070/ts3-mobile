@@ -41,3 +41,12 @@ connectedWatchJob／livenessJob仍由原launchIdentityWork登记、启动与取�
 变更分类：生产为ConnectionMonitor与协调器接线；测试为4项真实协调器fake竞态与独立10项monitor；
 文档为ADR、本记录／架构／进度；配置无变化。回退可恢复原inline监测，不涉及数据迁移。
 本项收益为监测可独立理解／测试，未声称运行时更省电或必然更稳定。没有合并、发布或改版本。
+
+## 云端复核
+
+[CI42443547332](https://github.com/monet4070/ts3-mobile/actions/runs/42443547332)
+对应源码`417ebf1ed6614601bd7a0a1a1d61f97e1465f88d`，最终状态success。
+已下载报告，按模块实际XML核对384／133／219 JVM、选定app139／audio18 Android，全部零失败／错误；
+JVM类名及每类用例数与R4本地最终报告逐项一致。报告保存于
+`build/improvement-2026-11-07/d2-ci-42443547332/`。
+完整Android、fresh覆盖升级与进程终止的组合结果见[R4](IMPROVEMENT_R4_2026-11-07_ZH.md)。

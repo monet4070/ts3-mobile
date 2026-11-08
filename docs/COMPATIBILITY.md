@@ -119,3 +119,31 @@ Published code 14 does not include it. Source/APK fingerprints and limits are in
 the linked C2.2/C2.3/R3 records. No production key, personal identity, live server
 or recording was used. API26 runtime, low-end/OEM hardware, cloud-provider durability,
 published-signature upgrades and an independent security audit remain unverified.
+
+## 最终提升候选范围 / Final improvement candidate — 2026-11-08
+
+本节仅对应尚未发布的P0–R4组合候选，生产源码沿用D2 `417ebf1`，版本字段仍是1.0.0/code14。
+与上面的公开code14及code13历史证据分别记录，不表示公开包已具备候选功能。
+精确APK／源码摘要、原日志位置及回退边界见[R4](testing/IMPROVEMENT_R4_2026-11-07_ZH.md)。
+
+| 验证条件 | 本轮已通过 | 保留边界 |
+| --- | --- | --- |
+| JVM／工具 | app384、protocol133、audio219，共736；Python18 | 合成fixture，不连接线上服务 |
+| API35 ARM64，4 KiB | 完整app Android210通过／2外部fixture跳过；选定离线音频18通过；实际minified身份与Opus探针 | 不含录音／可选APM实验；不是所有API或机型证明 |
+| fresh API35 ARM64，4 KiB | B1→最终Debug和测试签名minified覆盖升级保全原三Vault／keys／UID／调音；D1主题→Debug→minified保全并从真实UI读回 | Debug通过真实Vault读值；minified升级严格核对原文件／原密钥／UID，不称真实Vault方法读回 |
+| fresh API35 ARM64，16 KiB | 八个身份事务边界真实进程终止恢复／保全；最终minified Opus往返 | 未运行完整16 KiB UI／音频套件 |
+| 单人静音 | 同一合成进料下其他人的有效未混音队列与decoder保留，最终六条native player轨迹复核 | 输出仍安全退役；无flush的50%声音缺口目标和实体听感未验 |
+
+未执行：实体OEM／锁屏通知／麦克风与物理音频路由、真实服务器组合、未测API、生产签名覆盖升级、
+云文件提供方持久性及独立安全审计。没有合并、公开发布或版本提升。
+
+This unshipped candidate retains production source `417ebf1` and version fields
+1.0.0/code14. It passed 736 JVM, 18 Python, 210 full-app Android and 18 selected
+offline-audio Android tests; two external-fixture app tests were skipped. The full
+Android suite ran on API35 ARM64 with 4-KiB pages. Fresh in-place Debug/minified
+upgrades preserved original storage, keys, UID, tuning and selected appearance.
+Debug read values through real vaults; minified upgrade checks preserve raw files
+and original keys and do not claim reflective vault readback. A separate fresh
+16-KiB emulator passed eight process-crash boundaries and the minified Opus probe,
+not the complete UI suite. Physical/OEM behavior, listening gaps, live servers,
+other APIs, production-signed upgrades and an independent audit remain unverified.

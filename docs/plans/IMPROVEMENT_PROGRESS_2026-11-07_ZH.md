@@ -4,6 +4,10 @@
 
 维护者随后明确：本轮只做离线与模拟器验收。实体设备、锁屏听感和物理路由验证留待后续；不会作为本轮已通过的证据，也不再阻止本轮离线阶段推进。
 
+2026-11-08最终状态：全部工作包在上述授权范围内完成，最终生产候选为D2 `417ebf1`，
+R4完成组合回归及四台fresh模拟器验收。最终提交／云端状态见文末；下方历史推进记录保留当时状态。
+所有交付仍为堆叠草稿PR，没有合并、发布或提高版本。[最终验收及剩余边界](../testing/IMPROVEMENT_R4_2026-11-07_ZH.md)。
+
 | 工作包 | 状态 | 证据／下一步 |
 | --- | --- | --- |
 | P0 | 离线基线完成 | [本次基线](../testing/IMPROVEMENT_P0_2026-11-07_ZH.md)；物理设备和其他API验证按功能项安排 |
@@ -24,8 +28,8 @@
 | B1.1 | 离线／模拟器量化关卡通过 | [12条真实player合成轨迹，A静音额外丢弃B有效未混音90ms并重建B decoder](../testing/IMPROVEMENT_B11_2026-11-07_ZH.md) |
 | B1.2 / B1.3 | 有界实现及离线／模拟器验收完成 | [12+12条同夹具对照、B有效未混音零额外丢弃／decoder保留、219音频JVM、18音频Android及206应用Android通过／2跳过](../testing/IMPROVEMENT_B12_2026-11-07_ZH.md)；输出仍退役，不flush的50%缺口与实体听感未验证 |
 | D1 | 离线／模拟器验收完成 | [370 app JVM、完整210 Android通过／2跳过、最终minified三模式／进程重启／系统切换及真实IME布局](../testing/IMPROVEMENT_D1_2026-11-07_ZH.md)；未设置保持浅色，独立存储，主题无service／采集依赖 |
-| D2 | 实现及定向验收完成 | [原实现71行为对照、384 app JVM、6个常量不变与2项真实服务／主题接线](../testing/IMPROVEMENT_D2_2026-11-07_ZH.md)；完整组合归R4 |
-| R4 | 待实施 | 最终组合、覆盖升级与精确候选核对 |
+| D2 | 离线／模拟器／云端验收完成 | [原实现71行为对照、384 app JVM、6个常量不变与2项真实服务／主题接线](../testing/IMPROVEMENT_D2_2026-11-07_ZH.md)；[CI42443547332](https://github.com/monet4070/ts3-mobile/actions/runs/42443547332)通过且报告核对 |
+| R4 | 最终离线／模拟器组合验收完成 | [736 JVM／228 Android通过、2外部夹具跳过、最终minified探针、四fresh模拟器覆盖升级／主题保留／16KiB八个进程终止点](../testing/IMPROVEMENT_R4_2026-11-07_ZH.md) |
 
 P0/A1/Q1已经提交到草稿[PR #8](https://github.com/monet4070/ts3-mobile/pull/8)，固定源码`b1b44a9`；远端CI通过且报告已核对。A2是后续草稿[PR #9](https://github.com/monet4070/ts3-mobile/pull/9)，基于PR #8，源码`d3f481c`；为连续阶段PR补充`codex/**`目标分支CI触发。没有合并或公开发布，实际结果以各阶段记录及对应源码指纹为准。
 
@@ -108,3 +112,7 @@ B1.2／B1.3文档更新触发的最新[CI42438462330](https://github.com/monet40
 D1已提交草稿 [PR #23](https://github.com/monet4070/ts3-mobile/pull/23)，生产／测试源码`2afbd81`；
 最终minified真实三模式／进程重启／系统切换／IME检查完成，完整app Android210通过／2跳过。
 云端CI待确认；继续D2与R4，未合并或发布。
+
+D1 [CI42442283536](https://github.com/monet4070/ts3-mobile/actions/runs/42442283536)通过并下载核对，
+最新实际报告见D1记录。D2已提交草稿 [PR #24](https://github.com/monet4070/ts3-mobile/pull/24)，
+源码`417ebf1`，云端CI待确认；继续R4最终组合。

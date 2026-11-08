@@ -64,3 +64,12 @@ unsigned minified `7a8ce219b637db9193b4acb802cab9e69f759c15f0b193b2bfeba802181f5
 测试为三份JVM及三份Android测试，窗口恢复采用有界等待，未放宽原颜色／所有权／边界断言；
 文档为本记录、ADR、架构、双语README／指南／隐私和贡献说明；
 配置为private Activity、双语文案、独立偏好备份排除与CI无录音测试选择。依赖和已有数据格式保持。
+
+## 云端复核
+
+[CI42442283536](https://github.com/monet4070/ts3-mobile/actions/runs/42442283536)
+对应源码`2afbd8128642ffa0575eaa7227a6b29136434d1e`，最终状态success。
+已下载报告并按各模块`build/test-results`及`androidTest-results`的实际XML核对：
+app／protocol／audio分别370／133／219 JVM，选定app139／audio18 Android，全部零失败／错误。
+该CI选择集不替代上面的本地完整212项app Android；报告保存于
+`build/improvement-2026-11-07/d1-ci-42442283536/`。

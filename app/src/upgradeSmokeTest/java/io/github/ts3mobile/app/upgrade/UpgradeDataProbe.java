@@ -44,6 +44,18 @@ public final class UpgradeDataProbe extends Instrumentation {
             Context context = getTargetContext();
             targetLoader = context.getClassLoader();
             SharedPreferences marker = context.getSharedPreferences(MARKER, Context.MODE_PRIVATE);
+            if ("record-appearance".equals(stage)) {
+                require(marker.contains("identity_digest"), "Missing synthetic seed marker");
+                require(!marker.contains("appearance_digest"), "Appearance baseline already recorded");
+                verifyRawStorage(context, marker);
+                File appearance = new File(context.getFilesDir(), "datastore/ts3_appearance.preferences_pb");
+                require(appearance.isFile() && appearance.length() > 0, "Appearance must first be saved through the UI");
+                require(marker.edit().putString("appearance_digest", fileDigest(context, "ts3_appearance")).commit(),
+                    "Appearance fixture marker write failed");
+                result.putString("stream", "UPGRADE_APPEARANCE_BASELINE_RECORDED\n");
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
             if ("verify-raw".equals(stage) || "verify-after-identity-maintenance".equals(stage)) {
                 boolean changedIdentity = "verify-after-identity-maintenance".equals(stage);
                 verifyRawStorage(context, marker, changedIdentity);
@@ -210,6 +222,10 @@ public final class UpgradeDataProbe extends Instrumentation {
 
     private void verifyRawStorage(Context context, SharedPreferences marker, boolean changedIdentity) throws Exception {
         require(marker.getInt("uid", -1) == context.getApplicationInfo().uid, "Application UID changed");
+        if (marker.contains("appearance_digest")) {
+            require(fileDigest(context, "ts3_appearance").equals(marker.getString("appearance_digest", "")),
+                "Appearance preference bytes changed");
+        }
         if (marker.contains("tuning_digest")) {
             require(fileDigest(context, "ts3_microphone_preferences").equals(marker.getString("tuning_digest", "")),
                 "Microphone preference bytes changed");

@@ -67,7 +67,9 @@ and x86_64. Installability does not mean every device/version has been tested; s
 
 **Keep the existing app when upgrading.** An in-place update needs the same application ID and
 compatible signing. Do not fix a conflict by immediately uninstalling or clearing storage: that removes
-the local identity, bookmarks and encrypted form. Encrypted identity export/import and local rollback are available from More options → Identity and backups. Separate
+the local identity, bookmarks and encrypted form. The development candidate adds encrypted identity
+export/import and local rollback under More options → Identity and backups; published **1.0.0 / code 14**
+does not include them. An identity backup does not include bookmarks or the connection form. Separate
 TS3 Mobile UI test packages have their own data and do not migrate into the release. See [installation
 and upgrades](docs/INSTALLATION.md) for checksums and certificates.
 
@@ -277,7 +279,9 @@ bans. Reopening does not connect automatically.
 | Give the project a Star | Open GitHub externally; starring remains your choice |
 
 The app currently defaults to the warm light interface. English or Simplified
-Chinese follows Android's system/app locale. There is no in-app language/theme switch.
+Chinese follows Android's system/app locale. The development candidate adds **More options → Appearance**
+with Light, Dark and System; an unset preference stays Light. Published code 14 has no theme selector.
+There is no in-app language switch.
 
 ## Data privacy and limits
 
@@ -333,11 +337,14 @@ by TeamSpeak Systems GmbH. Thanks to [@polleyr](https://github.com/polleyr) for
 [server-password authentication](https://github.com/monet4070/ts3-mobile/pull/1) and English
 localization. Follow the [Code of Conduct](CODE_OF_CONDUCT.md) when contributing.
 
-Identity storage corruption or a missing local key now reports a fixed recovery
+The following identity workflows describe the **unreleased development candidate**, not published code 14.
+Its offline/emulator acceptance and remaining limits are in the [final candidate record](docs/testing/IMPROVEMENT_R4_2026-11-07_ZH.md).
+
+Identity storage corruption or a missing local key reports a fixed recovery
 failure and preserves existing data; it never silently creates a different identity.
 The internal maintenance/recovery transactions are documented in
 [ADR-0029](docs/decisions/0029-identity-maintenance-transactions.md); the user-facing
-backup workflow is the next stage.
+backup and restore workflows follow below.
 
 
 Identity backups are encrypted `.ts3mbak` files in the TS3 Mobile format. In

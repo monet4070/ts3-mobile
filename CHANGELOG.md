@@ -5,6 +5,30 @@ used milestone naming. After 1.0.0, patch versions are intended for compatible f
 and minor versions for compatible features; Android versionCode increases for
 each distributed update.
 
+## Unreleased — improvement candidate
+
+These changes are in stacked draft PRs and are not part of published 1.0.0 / code 14.
+No version, release tag or production signature has changed.
+
+- Preserve each chat's reading position across tabs; remember microphone tuning;
+  save the current channel in bookmarks and offer an explicit channel Join action.
+- Add private-message notifications with stale-click protection and bounded live
+  microphone-level feedback during existing capture.
+- Add verified encrypted `.ts3mbak` identity backup, explicit import/replacement and
+  local rollback. Preserve existing encrypted storage and keys; desktop identity formats are unsupported.
+- Keep unrelated participants' valid unmixed audio and decoder state when muting
+  one participant. Output still retires safely; physical listening gaps remain unverified.
+- Add persistent Light/Dark/System appearance, keep Light when unset, and fix
+  dialog actions obscured by a settled software keyboard.
+- Extract session-bound connection monitoring while preserving existing timing,
+  reconnect policy and coordinator ownership. Expand offline CI regressions.
+
+Final local acceptance: 736 JVM and 228 Android passes, with two external-fixture
+tests skipped; four fresh API35 ARM64 emulator scenarios passed. See the
+[R4 record](docs/testing/IMPROVEMENT_R4_2026-11-07_ZH.md) for exact artifacts, upgrade
+and 16-KiB scope. Physical devices, live servers and production-signed upgrades
+were outside this round.
+
 ## 1.0.0 reissue — 2026-11-05
 
 The maintainer withdrew the original code 13 release after an audio regression and
