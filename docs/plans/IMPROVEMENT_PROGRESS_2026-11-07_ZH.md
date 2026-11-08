@@ -23,7 +23,8 @@
 | R3 | 离线／模拟器候选验收完成 | [356／133／204 JVM、206 app Android通过／2外部夹具默认跳过、14离线音频及8真实进程终止恢复／保全](../testing/IMPROVEMENT_R3_2026-11-07_ZH.md) |
 | B1.1 | 离线／模拟器量化关卡通过 | [12条真实player合成轨迹，A静音额外丢弃B有效未混音90ms并重建B decoder](../testing/IMPROVEMENT_B11_2026-11-07_ZH.md) |
 | B1.2 / B1.3 | 有界实现及离线／模拟器验收完成 | [12+12条同夹具对照、B有效未混音零额外丢弃／decoder保留、219音频JVM、18音频Android及206应用Android通过／2跳过](../testing/IMPROVEMENT_B12_2026-11-07_ZH.md)；输出仍退役，不flush的50%缺口与实体听感未验证 |
-| D1 / D2 / R4 | 待实施 | 主题、监测提取及最终验收 |
+| D1 | 离线／模拟器验收完成 | [370 app JVM、完整210 Android通过／2跳过、最终minified三模式／进程重启／系统切换及真实IME布局](../testing/IMPROVEMENT_D1_2026-11-07_ZH.md)；未设置保持浅色，独立存储，主题无service／采集依赖 |
+| D2 / R4 | 待实施 | 监测提取及最终验收 |
 
 P0/A1/Q1已经提交到草稿[PR #8](https://github.com/monet4070/ts3-mobile/pull/8)，固定源码`b1b44a9`；远端CI通过且报告已核对。A2是后续草稿[PR #9](https://github.com/monet4070/ts3-mobile/pull/9)，基于PR #8，源码`d3f481c`；为连续阶段PR补充`codex/**`目标分支CI触发。没有合并或公开发布，实际结果以各阶段记录及对应源码指纹为准。
 
@@ -96,3 +97,9 @@ B1.2／B1.3已提交草稿 [PR #22](https://github.com/monet4070/ts3-mobile/pull
 生产／回归源码`cf212dc`；[有界隔离验收](../testing/IMPROVEMENT_B12_2026-11-07_ZH.md)完成。
 [云端CI42438416481](https://github.com/monet4070/ts3-mobile/actions/runs/42438416481)运行中，
 不能标作云端通过。下一阶段D1主题；全部仍为草稿，未合并／发布。
+
+B1.1 [CI42397963225](https://github.com/monet4070/ts3-mobile/actions/runs/42397963225)失败job重试通过，
+下载核对第二次报告：356／133／204 JVM、app135／audio15 Android全零失败。
+B1.2／B1.3文档更新触发的最新[CI42438462330](https://github.com/monet4070/ts3-mobile/actions/runs/42438462330)
+通过并下载核对：356／133／219 JVM、app135／audio18 Android，全零失败；
+实际保存的6条合成JSON均为B有效未混音精确保留。此前42438416481因后续更新取消，不作为验收。

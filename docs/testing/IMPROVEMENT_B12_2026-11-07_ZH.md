@@ -99,3 +99,7 @@ unsigned minified `c6c7053446b265382346eb7b3ff0c90ca586bf5f327fd4359d445f52c74af
 - 配置：CI选择新增无录音类并保存提取的合成JSON；依赖、权限、数据格式、版本／签名配置不变。
 
 没有合并或发布。回退为B1.1保守全局失效路径，不涉及数据迁移。本轮不验收实体/OEM／蓝牙听感。
+
+[CI42438462330](https://github.com/monet4070/ts3-mobile/actions/runs/42438462330)通过且下载核对：
+356／133／219 JVM、app135／audio18 Android，全零失败。工作流实际保存的measurement.json
+含6条有效未混音精确保留轨迹；原始报告位于`build/improvement-2026-11-07/b12-ci-42438462330/`。

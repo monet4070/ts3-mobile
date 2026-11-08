@@ -33,7 +33,7 @@ import io.github.ts3mobile.app.service.TeamSpeakService
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.settings.MicrophonePreferenceState
 import io.github.ts3mobile.app.ui.MainScreen
-import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
+import io.github.ts3mobile.app.ui.theme.ApplicationTheme
 import io.github.ts3mobile.protocol.ServerConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -91,7 +91,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) viewModel.chatNotificationEntry.accept(PrivateMessageNotificationIntent.token(intent))
         enableEdgeToEdge()
         setContent {
-            Ts3MobileTheme {
+            ApplicationTheme {
                 val fallbackState = remember { MutableStateFlow(TeamSpeakServiceState()) }
                 val serviceState by (serviceBinder?.state ?: fallbackState)
                     .collectAsStateWithLifecycle()
@@ -184,6 +184,7 @@ class MainActivity : ComponentActivity() {
                             Intent(this, io.github.ts3mobile.app.identity.IdentityManagementActivity::class.java),
                         )
                     },
+                    onAppearance = { startActivity(Intent(this, io.github.ts3mobile.app.appearance.AppearanceActivity::class.java)) },
                     onOpenRepository = { openProjectRepository(this) },
                     chatNotification = chatNotification,
                     onChatNotificationConsumed = viewModel.chatNotificationEntry::consumed,

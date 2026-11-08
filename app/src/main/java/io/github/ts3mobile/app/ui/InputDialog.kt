@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +38,7 @@ internal fun InputDialog(
     dismissButton: @Composable () -> Unit = {},
 ) {
     Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val safeInsets = WindowInsets.safeDrawing.union(dialogVisibleBottomInsets())
         Box(Modifier.fillMaxSize()) {
             Box(
                 Modifier.matchParentSize().background(Color.Transparent).pointerInput(onDismissRequest) {
@@ -44,7 +46,7 @@ internal fun InputDialog(
                 },
             )
             Box(
-                Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp),
+                Modifier.fillMaxSize().windowInsetsPadding(safeInsets).padding(16.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Surface(

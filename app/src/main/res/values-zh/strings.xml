@@ -390,4 +390,15 @@
     <string name="identity_replaced">身份已保存并验证。准备好后可手动连接。</string>
     <string name="identity_import_cancelled">导入已取消。若已确认的保存正在进行，请刷新查看完成后的状态。</string>
     <string name="identity_cancelling">正在安全结束当前操作，请等待结算后再开始其他操作。</string>
+    <string name="appearance_title">外观</string>
+    <string name="appearance_explanation">可选择浅色、深色或跟随系统；默认使用浅色。</string>
+    <string name="appearance_light">浅色</string>
+    <string name="appearance_dark">深色</string>
+    <string name="appearance_system">跟随系统</string>
+    <string name="appearance_loading">正在读取外观设置…</string>
+    <string name="appearance_saving">正在保存外观设置…</string>
+    <string name="appearance_saved">外观设置已保存在本机。</string>
+    <string name="appearance_read_failed">无法读取外观设置，暂时使用浅色。可重试或重置外观。</string>
+    <string name="appearance_write_failed">无法保存外观设置。当前选择已生效，请重试以便重启后保留。</string>
+    <string name="appearance_reset">重置外观为浅色</string>
 </resources>

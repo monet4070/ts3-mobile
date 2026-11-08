@@ -29,6 +29,9 @@ the public 1.0.0/code14 APK. Track delivery and offline validation in the
 The development playback path also preserves other participants' valid unmixed
 audio when one participant is muted. Output retirement can still cause a gap;
 see the [emulator evidence](docs/testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
+Development builds offer **More options → Appearance** with saved Light, Dark
+and Follow system choices. Unset stays Light. This is also unreleased; see
+[appearance checks](docs/testing/IMPROVEMENT_D1_2026-11-07_ZH.md).
 
 [Features](#features) · [Installation](#installation) · [First use](#first-use) ·
 [Interface tour](#interface-tour) · [Voice and audio](#voice-and-audio) ·

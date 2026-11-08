@@ -104,6 +104,12 @@ synthetic measurement JSON, not full device logs. The production output still
 retires; these metrics do not establish audible HAL gaps. See
 [B1.2 evidence](docs/testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
 
+Appearance regressions use `AppearanceScreenTest` and `AppearanceActivityTest`.
+`InputDialogImeTest` enables the emulator software keyboard temporarily, waits
+for stable insets and checks actions against the actual visible window frame;
+it restores the prior keyboard preference. It records no audio and uses no server.
+See [D1 checks](docs/testing/IMPROVEMENT_D1_2026-11-07_ZH.md).
+
 Changes to native audio or device interaction should also be tested on a
 physical device. Describe the tested device, Android version, audio route, and
 result without exposing private server details.

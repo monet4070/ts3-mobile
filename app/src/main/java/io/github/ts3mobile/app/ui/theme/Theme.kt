@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -16,11 +17,16 @@ fun Ts3MobileTheme(
     content: @Composable () -> Unit,
 ) {
     val view = LocalView.current
+    val colors = tailSyncColors(darkTheme)
 
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as? Activity)?.window
             if (window != null) {
+                @Suppress("DEPRECATION")
+                window.statusBarColor = colors.background.toArgb()
+                @Suppress("DEPRECATION")
+                window.navigationBarColor = colors.background.toArgb()
                 WindowCompat.getInsetsController(window, view).apply {
                     isAppearanceLightStatusBars = !darkTheme
                     isAppearanceLightNavigationBars = !darkTheme
@@ -30,7 +36,7 @@ fun Ts3MobileTheme(
     }
 
     MaterialTheme(
-        colorScheme = tailSyncColors(darkTheme),
+        colorScheme = colors,
         typography = TailSyncTypography,
         shapes =
             Shapes(

@@ -133,6 +133,13 @@ Restore completion also refreshes chat's switching state, including on refusal.
 
 The Compose layer follows TailSync's warm Canvas palette, with a cream light
 default, coordinated warm dark preview tokens and restrained 4/6/10 dp geometry.
+The app-owned `ThemePreferenceController` serializes a separate appearance
+DataStore and publishes selection/save status. `ApplicationTheme` wraps the three
+Activity roots; unset remains Light and only System follows configuration.
+Appearance has no service/audio port and updates Compose/bar contrast without
+recreating components. Unsupported/corrupt preferences remain visible errors;
+explicit appearance reset never touches identity or microphone settings. See
+[ADR-0033](docs/decisions/0033-persistent-appearance.md).
 `ui/theme` owns colors, typography and shapes; `UiComponents` owns shared panels
 and icon tiles. `AppIcon` renders
 bundled Lucide 0.468.0 vector drawables without a runtime icon dependency.

@@ -402,4 +402,15 @@
     <string name="identity_replaced">Identity saved and verified. You can connect manually when ready.</string>
     <string name="identity_import_cancelled">Import cancelled. If a confirmed save was already underway, refresh to check its completed state.</string>
     <string name="identity_cancelling">Ending the current operation safely. Wait before starting another operation.</string>
+    <string name="appearance_title">Appearance</string>
+    <string name="appearance_explanation">Choose Light, Dark, or follow your device. Light is the default.</string>
+    <string name="appearance_light">Light</string>
+    <string name="appearance_dark">Dark</string>
+    <string name="appearance_system">Follow system</string>
+    <string name="appearance_loading">Loading appearance…</string>
+    <string name="appearance_saving">Saving appearance…</string>
+    <string name="appearance_saved">Appearance saved on this device.</string>
+    <string name="appearance_read_failed">Could not read appearance. Light is in use. Retry or reset appearance.</string>
+    <string name="appearance_write_failed">Could not save appearance. Your choice applies for now; retry to keep it after restart.</string>
+    <string name="appearance_reset">Reset appearance to Light</string>
 </resources>

@@ -8,6 +8,12 @@ operate an intermediary service for those connections.
 
 ## Data handled on the device
 
+Development builds store only the selected appearance mode (Light, Dark or System)
+and its schema version in a separate local preferences file, excluded from cloud
+backup and device transfer. It contains no session or audio data. Unset remains
+Light; selection does not start capture or contact a server. Reset affects only
+appearance. This preference is not in the public 1.0.0/code14 APK.
+
 - The development branch stores input gain, noise-suppression preference,
   device-AEC preference and gate threshold in a separate versioned local
   preferences file, excluded from cloud backup/device transfer. It contains no

@@ -61,6 +61,13 @@ behavior depends on the device. AEC status reports Android's capability/activati
 not a guarantee of acoustic quality. User actions provide per-user mute and volume.
 Listening mute is separate from turning your microphone off.
 
+Development builds add **More options → Appearance**: Light (the unset default),
+Dark, or Follow system. The choice is saved locally and applies to the main,
+identity and appearance pages. System changes affect the palette only in Follow
+system. A save error means the visible choice may not survive restart; use Retry.
+If reading fails, retry or explicitly reset appearance. An unreadable file is
+preserved and reset may still fail. Appearance does not start the microphone.
+
 Development builds preserve other participants' valid unmixed audio and decoders
 when one user is muted/unmuted. The shared output still retires, so an interruption
 is possible. This is not in the public code14 APK; physical listening/routing is

@@ -15,7 +15,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import io.github.ts3mobile.app.Ts3MobileApplication
 import io.github.ts3mobile.app.identity.documents.AndroidBackupDocument
-import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
+import io.github.ts3mobile.app.ui.theme.ApplicationTheme
 
 /** Private in-memory operation survives rotation, never process death or SavedStateHandle. */
 internal class IdentityManagementViewModel(application: Application) : AndroidViewModel(application) {
@@ -72,7 +72,7 @@ class IdentityManagementActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
         setContent {
-            Ts3MobileTheme {
+            ApplicationTheme {
                 val state by model.exports.state.collectAsStateWithLifecycle()
                 val useState by model.useState.collectAsStateWithLifecycle()
                 val restore by model.restores.state.collectAsStateWithLifecycle()
