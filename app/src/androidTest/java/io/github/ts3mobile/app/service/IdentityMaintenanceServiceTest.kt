@@ -51,10 +51,16 @@ class IdentityMaintenanceServiceTest {
                 assertNull(state.serverLabel)
                 assertFalse(state.identityReady)
                 assertFalse(state.isCapturing)
-                assertFalse(context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == 4103 })
+                val notifications = context.getSystemService(NotificationManager::class.java)
+                // stopForeground returns before NotificationManager publishes the removal.
+                withTimeout(5_000) {
+                    while (notifications.activeNotifications.any { it.id == 4103 }) delay(20)
+                }
+                assertFalse(notifications.activeNotifications.any { it.id == 4103 })
                 // Beyond Android's foreground promotion deadline: stopped start must not crash the process.
                 delay(12_000)
                 assertEquals(ConnectionPhase.DISCONNECTED, binder.state.value.status.phase)
+                assertFalse(notifications.activeNotifications.any { it.id == 4103 })
             } finally {
                 identities.gate.finishMaintenance(token)
                 if (bound) context.unbindService(connection)

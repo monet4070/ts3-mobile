@@ -143,7 +143,8 @@ UI／主题／监测可按独立提交回退；新增偏好由旧版忽略，不
 B1可回退保守全局失效实现，保留测量回归。C0保留旧格式／alias；身份替换不能随APK回退自动恢复，
 须用已验证的本地回退或外部备份，损坏／缺钥材料保全而不承诺可解密。正式用户回退需递增code重发，不能要求卸载清数据。
 
-变更分类：生产代码无新增修改；测试仅UpgradeDataProbe记录／校验appearance的16行；
+变更分类：生产代码无新增修改；测试为UpgradeDataProbe记录／校验appearance的16行，
+以及下述IdentityMaintenanceServiceTest通知移除同步修正；
 文档为R4、进度／执行计划、D1／D2云端结果、双语README、CHANGELOG与兼容矩阵；配置／权限／依赖／版本无变化。
 
 ## 未验证范围
@@ -168,4 +169,28 @@ R4最终云端状态与对应报告以最终草稿PR的Checks及按提交命名�
 
 R4测试／验收源码`e477164348e3e2beee23916cd91ffe1fe3cb3396`，
 已提交堆叠草稿[PR #25](https://github.com/monet4070/ts3-mobile/pull/25)，base为D2 `codex/session-monitoring`。
-后续文档提交不改变上述572个输入或本地APK，最终HEAD的Android CI及下载报告另在该PR更新。
+仅补PR链接的`ec4589f`不改变上述572个输入或本地APK；其后测试修正边界见下文，最终HEAD的Android CI及下载报告另在该PR更新。
+
+### 最终CI发现的通知移除测试竞态
+
+`ec4589f`的[首次最终CI42445471798](https://github.com/monet4070/ts3-mobile/actions/runs/42445471798)
+失败并保留报告：384／133／219 JVM、audio18 Android与八个进程终止点通过，
+app139项中138通过，只有IdentityMaintenanceServiceTest第54行立即查询activeNotifications的断言失败。
+该用例仅运行0.032秒；Service先执行真实维护提示的前台提升及`stopForeground(REMOVE)`，再发布维护状态，
+而Android通知服务的移除结果异步可见。原断言错误地把状态发布等同于系统通知列表已经收敛。
+
+只修测试：保留原Disconnected／serverLabel空／identityReady=false／isCapturing=false断言，
+最多5秒等待通知4103移除，仍需原assertFalse成立；保留12秒进程存活检查，并再次断言通知没有残留。
+没有修改Service／SessionNotifications、放宽结果或延长生产超时。
+同类Poke／私信通知测试已有有界等待，使用一致的系统异步边界。
+修正后真实Appearance接线＋维护服务两项通过，quality通过，原XML保存于
+`r4-notification-removal-fix-results/`，日志`r4-notification-removal-fix.log`。
+两次额外独立服务仪器调用均通过12秒存活／无通知残留复核，另存`r4-notification-removal-repeat-{1,2}.log`；
+不能把首次失败写成重试后原提交通过。原主模拟器再次停机保留；四台fresh验收AVD未重启或改数据。
+
+原`r4-source-sha256.json`及四份APK作为前述完整／fresh验收证据保持不变。
+测试修正后另冻结572输入`r4-validation-source-sha256.json`，相对D2仅升级probe与本项Android测试变化，
+清单SHA256为`69db46f1c2a7a01b70c9ee0bbb6e7159bdb055aa3ae36a8bb754b99ef552a552`。
+最终测试APK为`r4-app-test-final.apk`，SHA256
+`872c6a1b8a10eeae18fdf81914dc8bc3fd5c06320b5571cac42bd474cdac6a8e`；
+原Debug／unsigned minified／test-signed minified产物保持上表摘要，全部生产输入保持D2一致。
