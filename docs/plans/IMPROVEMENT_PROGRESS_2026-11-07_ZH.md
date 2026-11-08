@@ -116,3 +116,10 @@ D1已提交草稿 [PR #23](https://github.com/monet4070/ts3-mobile/pull/23)，�
 D1 [CI42442283536](https://github.com/monet4070/ts3-mobile/actions/runs/42442283536)通过并下载核对，
 最新实际报告见D1记录。D2已提交草稿 [PR #24](https://github.com/monet4070/ts3-mobile/pull/24)，
 源码`417ebf1`，云端CI待确认；继续R4最终组合。
+
+D2 [CI42443547332](https://github.com/monet4070/ts3-mobile/actions/runs/42443547332)已通过并下载核对：
+384／133／219 JVM、app139／audio18 Android，全部零失败／错误，取代前述待确认状态。
+R4最终组合验收已提交堆叠草稿[PR #25](https://github.com/monet4070/ts3-mobile/pull/25)，
+测试／验收源码`e477164`，生产沿用D2；最终HEAD云端结果及下载报告在该PR跟进。
+全部计划工作包在本轮离线／模拟器范围内完成；完整证据及保留边界见[R4](../testing/IMPROVEMENT_R4_2026-11-07_ZH.md)。
+所有PR仍为草稿，没有合并、发布或提高版本。

@@ -165,3 +165,7 @@ D2[CI42443547332](https://github.com/monet4070/ts3-mobile/actions/runs/424435473
 分别核对370／133／219及384／133／219 JVM，均app139／audio18 Android，零失败／错误。
 R4最终云端状态与对应报告以最终草稿PR的Checks及按提交命名的artifact为准，
 不把D1／D2的旧CI当作R4新提交通过证明。云端x86_64选定套件不代替本地ARM64完整套件或上述fresh验收。
+
+R4测试／验收源码`e477164348e3e2beee23916cd91ffe1fe3cb3396`，
+已提交堆叠草稿[PR #25](https://github.com/monet4070/ts3-mobile/pull/25)，base为D2 `codex/session-monitoring`。
+后续文档提交不改变上述572个输入或本地APK，最终HEAD的Android CI及下载报告另在该PR更新。
