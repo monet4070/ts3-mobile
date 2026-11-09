@@ -4,7 +4,7 @@ Thanks for helping improve TS3 Mobile. This is a community-maintained client;
 changes should preserve connection stability, bounded audio latency, and user
 control over microphone transmission.
 
-The first stable release is 1.0.0 (2026-11-04). User documentation starts
+The current stable line is 1.1.0 (2026-11-09); 1.0.0 was the first stable release. User documentation starts
 at the [README](README.md); release roles, artifact/signature requirements and
 open acceptance items are in the [release pack](docs/release/README.md).
 Do not mark a release or a device-matrix row passed merely because docs are ready.
@@ -105,6 +105,9 @@ retires; these metrics do not establish audible HAL gaps. See
 [B1.2 evidence](docs/testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
 
 Appearance regressions use `AppearanceScreenTest` and `AppearanceActivityTest`.
+`GateControlLayoutTest`, `ChatBubbleLayoutTest` and `SearchResultLayoutTest`
+check the shared gate scale (including RTL), message alignment and search-row
+hierarchy with synthetic inputs. CI includes all three; screenshots remain local.
 `InputDialogImeTest` enables the emulator software keyboard temporarily, waits
 for stable insets and checks actions against the actual visible window frame;
 it restores the prior keyboard preference. It records no audio and uses no server.
@@ -243,3 +246,13 @@ all passed. Physical-device evidence is required for audio routing, microphone,
 foreground-service, and native codec behavior.
 
 All contributors must follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+
+### Offline audio diagnostic regressions
+
+Follow [ADR 0035](docs/decisions/0035-offline-audio-diagnostics.md). Keep observation callbacks free
+of disk/network I/O, retain report/v2 fields, and validate bounded append/recovery and clipboard size.
+The offline emulator gate includes `PlaybackDiagnosticsTest`, `OfflineAudioDiagnosticsTest` and
+`OfflineDiagnosticsUiTest`; all use synthetic media/fake output or no frames and no live server.
+Never run install/connected-test commands against a user's production package to bypass signatures.
+Field listening results remain separate from telemetry and offline verification.

@@ -45,4 +45,16 @@ class BluetoothPlaybackGuardTest {
         assertEquals(PlaybackRouteDecision.WAIT_FOR_BLUETOOTH, guard.evaluate(AudioRouteKind.BLUETOOTH, oldRevision))
         assertEquals(PlaybackRouteDecision.ALLOW, guard.evaluate(AudioRouteKind.SPEAKER))
     }
+
+    @Test fun aFreshBluetoothAttemptWaitsWithoutReusingTheRetiredOutputsConfirmation() {
+        guard.select(7, true)
+        guard.evaluate(AudioRouteKind.BLUETOOTH)
+        val retiredRevision = guard.revision()
+        guard.beginBluetoothAttempt()
+        assertEquals(PlaybackRouteDecision.WAIT_FOR_BLUETOOTH, guard.evaluate(AudioRouteKind.BLUETOOTH, retiredRevision))
+        assertEquals(PlaybackRouteDecision.WAIT_FOR_BLUETOOTH, guard.evaluate(AudioRouteKind.EARPIECE))
+        assertEquals(PlaybackRouteDecision.WAIT_FOR_BLUETOOTH, guard.evaluate(AudioRouteKind.SPEAKER))
+        assertEquals(PlaybackRouteDecision.ALLOW, guard.evaluate(AudioRouteKind.BLUETOOTH))
+        assertEquals(PlaybackRouteDecision.MUTE, guard.evaluate(AudioRouteKind.SPEAKER))
+    }
 }

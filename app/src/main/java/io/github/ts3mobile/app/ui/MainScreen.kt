@@ -98,6 +98,8 @@ fun MainScreen(
     onPresenceRetry: () -> Unit = {},
     onResolveUserChannel: (Int, String) -> Int? = { _, _ -> null },
     onOpenRepository: () -> Unit = {},
+    onSaveDiagnostics: () -> Unit = {},
+    onMarkAudioIssue: () -> Unit = {},
     microphonePreferenceStatus: MicrophonePreferenceStatus = MicrophonePreferenceStatus.SAVED,
     onMicrophonePreferenceEdit: (
         MicrophonePreferenceField,
@@ -114,6 +116,7 @@ fun MainScreen(
     microphoneLevels: Flow<MicrophoneLevel?> = emptyFlow(),
     onIdentityManagement: () -> Unit = {},
     onAppearance: () -> Unit = {},
+    onCheckUpdates: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     PokeFeedbackEffect(chatState, snackbar)
@@ -181,7 +184,17 @@ fun MainScreen(
         AlertDialog(
             onDismissRequest = { showDiagnostics = false },
             title = { Text(stringResource(R.string.tab_diagnostics)) },
-            text = { Box(Modifier.heightIn(max = 420.dp)) { DiagnosticsPanel(serviceState.diagnostics, onCopyDiagnostics) } },
+            text = {
+                Box(Modifier.heightIn(max = 420.dp)) {
+                    DiagnosticsPanel(
+                        serviceState.diagnostics,
+                        onCopyDiagnostics,
+                        serviceState.audioDiagnostics,
+                        onSaveDiagnostics,
+                        onMarkAudioIssue,
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = { showDiagnostics = false }) { Text(stringResource(R.string.action_close)) }
             },
@@ -232,7 +245,8 @@ fun MainScreen(
                         },
                         MainMenuAction(R.string.tab_diagnostics, UiIcon.Activity) { showDiagnostics = true },
                         MainMenuAction(R.string.private_message_notification_settings, UiIcon.Chat, action = onNotificationSettings),
-                        MainMenuAction(R.string.support_star, UiIcon.Star, startsGroup = true, action = onOpenRepository),
+                        MainMenuAction(R.string.updates_title, UiIcon.Info, startsGroup = true, action = onCheckUpdates),
+                        MainMenuAction(R.string.support_star, UiIcon.Star, action = onOpenRepository),
                     ),
                 )
             }

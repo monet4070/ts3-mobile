@@ -28,6 +28,7 @@ import io.github.ts3mobile.audio.opus.AudioDeviceRouter
 import io.github.ts3mobile.audio.opus.AudioRoutingState
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.audio.opus.OpusAudioPlayer
+import io.github.ts3mobile.audio.opus.PlaybackStatus
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ServerConfig
 import io.github.ts3mobile.protocol.SessionSnapshot
@@ -68,6 +69,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     private lateinit var microphonePreferences: MicrophonePreferenceController
     private lateinit var audioRouter: AudioDeviceRouter
     private lateinit var historyStore: SuccessServerHistoryStore
+    private lateinit var audioDiagnostics: ServiceAudioDiagnostics
     private lateinit var sessionDiagnostics: SessionDiagnostics
     private lateinit var backgroundRuntime: BackgroundRuntimeController
     private lateinit var notifications: SessionNotifications
@@ -101,9 +103,16 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 ::updateNotification,
             )
         audioPlayer =
-            OpusAudioPlayer(applicationContext, { microphoneController.invalidateRouting() }, playbackStatus::update) {
-                audioRouter.onBluetoothRouteLost()
-            }
+            OpusAudioPlayer(
+                applicationContext,
+                { microphoneController.invalidateRouting() },
+                { status ->
+                    audioRouter.setPlaybackActive(status == PlaybackStatus.PLAYING)
+                    playbackStatus.update(status)
+                },
+                { audioRouter.onBluetoothRouteLost() },
+                { audioRouter.prepareForPlayback() },
+            )
         microphoneController =
             MicrophoneController(
                 context = applicationContext,
@@ -154,6 +163,10 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 { kind, code -> sessionDiagnostics.record(kind, code) },
             )
         backgroundRuntime.start()
+        audioDiagnostics =
+            ServiceAudioDiagnostics(
+                (application as Ts3MobileApplication).audioDiagnostics, serviceScope, mutableState, networkMonitor.state, audioPlayer,
+            )
         notifications.createChannel()
         val pokeNotifications = PokeNotifications(applicationContext)
         pokeAlerts = PokeAlertObserver(serviceScope, chatController.state, pokeNotifications::show, pokeNotifications::clear)
@@ -220,6 +233,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         val teardownOwner = identities.gate.beginConnection()
         connectionCoordinator.close()
         backgroundRuntime.close()
+        audioDiagnostics.close()
         sessionDiagnostics.close()
         networkMonitor.close()
         sessionControls.close()
@@ -317,6 +331,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
     override fun startPlayback() {
         audioPlayer.start()
+        audioDiagnostics.sampleNow()
     }
 
     override fun stopPlayback() {
@@ -610,7 +625,9 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
         fun diagnosticSnapshot(): DiagnosticsSnapshot = diagnosticsRecorder.snapshot()
 
-        fun redactedDiagnosticsJson(): String = sessionDiagnostics.export(diagnosticSnapshot())
+        fun redactedDiagnosticsJson(): String = sessionDiagnostics.export(diagnosticSnapshot(), audioDiagnostics.export())
+
+        fun markAudioIssue(): Boolean = audioDiagnostics.mark()
 
         fun reportMicrophonePermissionDenied() {
             microphoneController.reportPermissionDenied()

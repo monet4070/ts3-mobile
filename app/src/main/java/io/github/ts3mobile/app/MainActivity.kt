@@ -1,8 +1,6 @@
 package io.github.ts3mobile.app
 
 import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -13,7 +11,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -41,6 +38,7 @@ import kotlinx.coroutines.flow.emptyFlow
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MainViewModel>()
     private var serviceBinder by mutableStateOf<TeamSpeakService.SessionBinder?>(null)
+    private val diagnosticReports = DiagnosticReportActions(this) { serviceBinder?.redactedDiagnosticsJson() }
     private var isBound = false
     private var pushToTalkPressed = false
     private var activityVisible = false
@@ -139,7 +137,9 @@ class MainActivity : ComponentActivity() {
                     onJoinChannel = { channelId, password ->
                         serviceBinder?.joinChannel(channelId, password, serviceState.bookmarkConnection?.token)
                     },
-                    onCopyDiagnostics = ::copyDiagnostics,
+                    onCopyDiagnostics = diagnosticReports::copy,
+                    onSaveDiagnostics = diagnosticReports::save,
+                    onMarkAudioIssue = { diagnosticReports.mark { serviceBinder?.markAudioIssue() == true } },
                     onKeepCpuAwakeChanged = { serviceBinder?.setKeepCpuAwake(it) },
                     onRefreshBackgroundRuntime = { serviceBinder?.refreshBackgroundRuntime() },
                     onBatterySettings = ::openBatterySettings,
@@ -186,6 +186,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onAppearance = { startActivity(Intent(this, io.github.ts3mobile.app.appearance.AppearanceActivity::class.java)) },
                     onOpenRepository = { openProjectRepository(this) },
+                    onCheckUpdates = { startActivity(Intent(this, io.github.ts3mobile.app.updates.UpdatesActivity::class.java)) },
                     chatNotification = chatNotification,
                     onChatNotificationConsumed = viewModel.chatNotificationEntry::consumed,
                     onUserNavigation = viewModel.chatNotificationEntry::cancel,
@@ -337,13 +338,5 @@ class MainActivity : ComponentActivity() {
             viewModel.pendingMicrophoneMode = null
             serviceBinder?.setMicrophoneMode(mode)
         }
-    }
-
-    private fun copyDiagnostics() {
-        val export = serviceBinder?.redactedDiagnosticsJson() ?: return
-        getSystemService(ClipboardManager::class.java).setPrimaryClip(
-            ClipData.newPlainText("TS3 Mobile diagnostics", export),
-        )
-        Toast.makeText(this, getString(R.string.diagnostics_copied), Toast.LENGTH_SHORT).show()
     }
 }

@@ -1,5 +1,7 @@
 package io.github.ts3mobile.app.service
 
+enum class DiagnosticNetwork { UNKNOWN, CELLULAR, WIFI, ETHERNET, VPN, OTHER }
+
 /**
  * Identity-aware snapshot of Android's default network.
  *
@@ -24,6 +26,7 @@ data class DefaultNetworkState(
     val isPending: Boolean = false,
     val networkKey: String? = null,
     val generation: Long = 0L,
+    val transport: DiagnosticNetwork = DiagnosticNetwork.UNKNOWN,
 ) {
     companion object {
         val Unknown = DefaultNetworkState()
@@ -45,6 +48,7 @@ internal class DefaultNetworkStateTracker {
     private var currentKey: String? = null
     private var internetCapability: Boolean? = null
     private var blocked = false
+    private var transport = DiagnosticNetwork.UNKNOWN
 
     val current: DefaultNetworkState
         get() = snapshot()
@@ -56,6 +60,7 @@ internal class DefaultNetworkStateTracker {
             // Unknown until onCapabilitiesChanged arrives. The state is pending,
             // not usable and not a loss.
             internetCapability = null
+            transport = DiagnosticNetwork.UNKNOWN
             blocked = false
         }
         return snapshot()
@@ -64,9 +69,11 @@ internal class DefaultNetworkStateTracker {
     fun onCapabilitiesChanged(
         key: String,
         hasInternet: Boolean,
+        transport: DiagnosticNetwork = DiagnosticNetwork.UNKNOWN,
     ): DefaultNetworkState {
         if (key != currentKey) return snapshot()
         internetCapability = hasInternet
+        this.transport = transport
         return snapshot()
     }
 
@@ -93,6 +100,7 @@ internal class DefaultNetworkStateTracker {
     private fun clear() {
         currentKey = null
         internetCapability = null
+        transport = DiagnosticNetwork.UNKNOWN
         blocked = false
     }
 
@@ -105,6 +113,7 @@ internal class DefaultNetworkStateTracker {
             isPending = pending,
             networkKey = key,
             generation = generation,
+            transport = transport,
         )
     }
 }

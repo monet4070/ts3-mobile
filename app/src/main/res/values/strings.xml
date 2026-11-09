@@ -1,5 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="updates_title">Check for updates</string>
+    <string name="updates_current">Installed: %1$s (%2$d)</string>
+    <string name="updates_include_prereleases">Include prereleases</string>
+    <string name="updates_channel_title">Update channel</string>
+    <string name="updates_prerelease_hint">Also offer public test releases. They may contain unfinished changes.</string>
+    <string name="updates_loading_choice">Loading update preference…</string>
+    <string name="updates_preference_failed">Could not load or save your update preference. Retry before checking.</string>
+    <string name="updates_checking">Checking GitHub Releases…</string>
+    <string name="updates_check_again">Check again</string>
+    <string name="updates_available">An update is available</string>
+    <string name="updates_current_or_newer">Your installed version is current or newer</string>
+    <string name="updates_release_version">Latest: %1$s (%2$d)</string>
+    <string name="updates_stable">Stable release</string>
+    <string name="updates_prerelease">Prerelease</string>
+    <string name="updates_published">Published: %1$s</string>
+    <string name="updates_release_notes">Release notes</string>
+    <string name="updates_expand_notes">Show full notes</string>
+    <string name="updates_collapse_notes">Show less</string>
+    <string name="updates_download">Download APK</string>
+    <string name="updates_release_page">View release details</string>
+    <string name="updates_all_releases">Browse all releases</string>
+    <string name="updates_no_release">No published release is available for this channel.</string>
+    <string name="updates_network_failed">Could not reach GitHub. Check your connection and try again.</string>
+    <string name="updates_timeout">The update check timed out. Try again when your connection improves.</string>
+    <string name="updates_rate_limited">GitHub is limiting update requests. Please try again later.</string>
+    <string name="updates_server_failed">GitHub could not complete the update check. Please try again later.</string>
+    <string name="updates_invalid_release">This release has incomplete or inconsistent update information. View its release page for details.</string>
+    <string name="updates_android_too_old">This release requires a newer Android version. It cannot be installed on this device.</string>
+    <string name="updates_different_install">This release uses a different app ID or signing certificate. An in-place upgrade may be refused. Do not uninstall or clear app data to resolve this.</string>
+    <string name="updates_manual_hint">Checks run when you open this page, change the channel or check again. Downloads open in your browser. Disconnect from the server before installing an update.</string>
+    <string name="updates_browser_failed">No browser is available to open this download or release page.</string>
     <string name="playback_failed">Audio playback stopped. Try changing the audio output or reconnecting.</string>
     <string name="action_more">More options</string>
     <string name="connection_memory_failed">Could not save or restore connection details securely. Re-enter them if needed; connection is still available.</string>
@@ -148,7 +179,7 @@
     <string name="diagnostics_failed_connections">Failed connections</string>
     <string name="diagnostics_retryable_failures">Retryable failures</string>
     <string name="diagnostics_voice_frames_received">Voice frames received</string>
-    <string name="diagnostics_voice_frames_dropped">Voice frames dropped</string>
+    <string name="diagnostics_voice_frames_dropped">Frames rejected before playback</string>
     <string name="diagnostics_microphone_errors">Microphone errors</string>
     <string name="diagnostics_channel_join_attempts">Channel switch attempts</string>
     <string name="diagnostics_channel_join_failures">Channel switch failures</string>
@@ -279,8 +310,6 @@
     <string name="microphone_echo_failed">The device could not apply echo cancellation. Capture can continue; try headphones.</string>
     <string name="microphone_gate_threshold">Volume gate threshold</string>
     <string name="microphone_gate_value">Volume gate threshold: %1$d dBFS</string>
-    <string name="microphone_gate_hint">Select Gate in the microphone modes to use this threshold. Lower values open the gate for quieter sounds. Measured after noise suppression and input volume; 40 ms attack, 300 ms hold, 120 ms onset buffer.</string>
-    <string name="microphone_gate_privacy">Gate mode keeps listening to the microphone during silence. Only activated audio is sent. Off stops capture and clears the buffer.</string>
     <string name="microphone_mode_gate">Gate</string>
     <string name="microphone_state_listening">Listening · below gate threshold</string>
     <string name="notification_microphone_listening">Volume gate is listening · microphone active</string>
@@ -413,4 +442,21 @@
     <string name="appearance_read_failed">Could not read appearance. Light is in use. Retry or reset appearance.</string>
     <string name="appearance_write_failed">Could not save appearance. Your choice applies for now; retry to keep it after restart.</string>
     <string name="appearance_reset">Reset appearance to Light</string>
+    <string name="discovery_protected">Password required</string>
+    <string name="microphone_gate_visual_hint">Drag the threshold marker on the live level bar. This threshold applies in Gate mode; quiet listening still uses the microphone.</string>
+    <string name="microphone_processing_title">Sound processing</string>
+    <string name="diagnostics_save">Save file</string>
+    <string name="diagnostics_saved">Diagnostics file saved</string>
+    <string name="diagnostics_export_failed">Could not export diagnostics. Please try again.</string>
+    <string name="diagnostics_audio_title">Local audio history</string>
+    <string name="diagnostics_audio_retention">Retains the latest 3 sessions with about 10 minutes of samples each. Available after reopening. No audio is recorded. Abrupt exits may lose the final interval.</string>
+    <string name="diagnostics_audio_sessions">Retained sessions</string>
+    <string name="diagnostics_audio_samples">Samples captured</string>
+    <string name="diagnostics_audio_last_saved">Last saved on device</string>
+    <string name="diagnostics_audio_storage_error">History may be incomplete. Write failures: %1$d; invalid records: %2$d</string>
+    <string name="diagnostics_audio_mark">Mark an audio interruption</string>
+    <string name="diagnostics_audio_marks">Interruption marks retained: %1$d</string>
+    <string name="diagnostics_marked">Time marked. Export diagnostics after testing.</string>
+    <string name="diagnostics_no_audio_session">No audio session to mark yet</string>
+    <string name="diagnostics_copy_too_large">This report is too large to copy. Use Save file instead.</string>
 </resources>

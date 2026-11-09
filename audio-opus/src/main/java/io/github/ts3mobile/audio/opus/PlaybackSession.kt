@@ -75,7 +75,12 @@ internal class PlaybackSession(
                     return
                 }
                 focusDenials = 0
-                val currentOutput = output ?: createOutput().also { output = it }
+                val currentOutput =
+                    output ?: createOutput().also {
+                        output = it
+                        stats.count(AudioReceiveCounter.OUTPUTS_CREATED)
+                        stats.observer?.onEvent(AudioDiagnosticEventKind.OUTPUT_CREATED)
+                    }
                 if (!canWrite()) return
                 currentOutput.start()
                 if (!currentOutput.routeReady || !canWrite()) {

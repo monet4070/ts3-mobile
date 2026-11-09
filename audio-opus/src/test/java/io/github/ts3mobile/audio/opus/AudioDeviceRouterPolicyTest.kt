@@ -75,6 +75,80 @@ class AudioDeviceRouterPolicyTest {
         }
     }
 
+    @Test fun idleScoSuspensionWaitsForFocusedPlaybackBeforeRetryingOnce() {
+        val platform = Platform(listOf(speaker, bluetooth))
+        val changes = mutableListOf<AudioRoutingState>()
+        AudioDeviceRouter(platform, changes::add).use { router ->
+            router.start()
+            changes.clear()
+            platform.suspended()
+            platform.suspended()
+            platform.changed()
+            assertFalse(router.state.safetyMuted)
+            assertEquals(null, router.state.error)
+            assertEquals(listOf(true, false, false), changes.map { it.switching })
+            assertEquals(listOf(bluetooth.id), platform.selections)
+            router.prepareForPlayback()
+            router.prepareForPlayback()
+            assertEquals(listOf(bluetooth.id, bluetooth.id), platform.selections)
+            assertFalse(router.state.safetyMuted)
+        }
+    }
+
+    @Test fun communicationLossDuringPlaybackStillLatchesMute() {
+        val platform = Platform(listOf(speaker, bluetooth))
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.start()
+            router.setPlaybackActive(true)
+            platform.suspended()
+            router.prepareForPlayback()
+            assertTrue(router.state.safetyMuted)
+            assertEquals(AudioRoutingErrorKind.BLUETOOTH_ROUTE_LOST, router.state.error?.kind)
+            assertEquals(listOf(bluetooth.id), platform.selections)
+        }
+    }
+
+    @Test fun aMissingHeadsetCannotBeTreatedAsIdleSuspension() {
+        val platform = Platform(listOf(speaker, bluetooth))
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.start()
+            platform.available = listOf(speaker)
+            platform.suspended()
+            assertTrue(router.state.safetyMuted)
+            assertEquals(AudioRoutingErrorKind.BLUETOOTH_ROUTE_LOST, router.state.error?.kind)
+        }
+    }
+
+    @Test fun aDeniedIdleRecoveryStillRequiresManualAcknowledgement() {
+        val platform = Platform(listOf(speaker, bluetooth))
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.start()
+            platform.suspended()
+            platform.accept = false
+            router.prepareForPlayback()
+            assertTrue(router.state.safetyMuted)
+            assertEquals(AudioRoutingErrorKind.SWITCH_DENIED, router.state.error?.kind)
+            platform.accept = true
+            router.prepareForPlayback()
+            assertTrue(router.state.safetyMuted)
+            assertEquals(2, platform.selections.size)
+        }
+    }
+
+    @Test fun explicitSpeakerSelectionCancelsIdleRecoveryAndRejectsLateSuspension() {
+        val platform = Platform(listOf(speaker, bluetooth))
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.start()
+            platform.suspended()
+            router.selectRoute(speaker.id)
+            platform.suspended()
+            router.prepareForPlayback()
+            assertEquals(speaker.id, router.state.selectedRouteId)
+            assertEquals(listOf(bluetooth.id, speaker.id), platform.selections)
+            assertFalse(router.state.safetyMuted)
+        }
+    }
+
     @Test fun selectingAStaleDisconnectedDeviceMutesBeforeItsDelayedRemovalCallback() {
         val platform = Platform(listOf(speaker, bluetooth))
         AudioDeviceRouter(platform) {}.use { router ->
@@ -136,6 +210,7 @@ class AudioDeviceRouterPolicyTest {
         router.start()
         router.stop()
         platform.lost()
+        platform.suspended()
         platform.changed()
         assertEquals(AudioRoutingState.Default, router.state)
         router.start()
@@ -146,6 +221,7 @@ class AudioDeviceRouterPolicyTest {
     private class Platform(var available: List<AudioRouteOption>) : AudioRoutePlatform {
         var changed: () -> Unit = {}
         var lost: () -> Unit = {}
+        var suspended: () -> Unit = {}
         var beforeSelect: () -> Unit = {}
         var accept = true
         var failure: RuntimeException? = null
@@ -156,9 +232,11 @@ class AudioDeviceRouterPolicyTest {
         override fun start(
             onDevicesChanged: () -> Unit,
             onBluetoothLost: () -> Unit,
+            onBluetoothSuspended: () -> Unit,
         ) {
             changed = onDevicesChanged
             lost = onBluetoothLost
+            suspended = onBluetoothSuspended
         }
 
         override fun select(routeId: Int): Boolean {

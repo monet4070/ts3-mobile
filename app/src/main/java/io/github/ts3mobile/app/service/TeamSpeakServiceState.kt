@@ -28,6 +28,7 @@ data class TeamSpeakServiceState(
     val channelError: UserMessage? = null,
     val audioRouting: AudioRoutingState = AudioRoutingState.Default,
     val diagnostics: DiagnosticsSnapshot = DiagnosticsSnapshot.Empty,
+    val audioDiagnostics: AudioDiagnosticStatus = AudioDiagnosticStatus(),
     val backgroundRuntime: BackgroundRuntimeState = BackgroundRuntimeState(),
     /**
      * App-generated text for the current [status]. Takes precedence over

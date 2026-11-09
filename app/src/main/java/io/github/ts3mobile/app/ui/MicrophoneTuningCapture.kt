@@ -1,10 +1,12 @@
 package io.github.ts3mobile.app.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
@@ -18,10 +20,19 @@ internal fun MicrophoneTuningCapture(
     levels: Flow<MicrophoneLevel?>,
     onPushToTalkChanged: (Boolean) -> Unit,
     onMicrophoneModeChanged: (MicrophoneMode) -> Unit,
+    onThresholdChange: (Int) -> Unit = {},
+    onThresholdCommit: () -> Unit = {},
 ) {
     ReleasePushToTalkEffect(onPushToTalkChanged)
-    Column {
-        MicrophoneLevelIndicator(levels, state.isCapturing, state.isTransmitting)
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        MicrophoneLevelIndicator(
+            levels,
+            state.isCapturing,
+            state.isTransmitting,
+            state.microphoneSettings.gateThresholdDb,
+            onThresholdChange,
+            onThresholdCommit,
+        )
         if (state.status.phase == ConnectionPhase.CONNECTED && state.microphoneMode == MicrophoneMode.PUSH_TO_TALK) {
             Text(stringResource(R.string.microphone_tuning_send_warning))
             PushToTalkButton(state.isTransmitting, onPushToTalkChanged)

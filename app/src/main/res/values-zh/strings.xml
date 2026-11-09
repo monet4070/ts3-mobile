@@ -1,5 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="updates_title">检查更新</string>
+    <string name="updates_current">当前安装：%1$s（%2$d）</string>
+    <string name="updates_include_prereleases">包含测试版</string>
+    <string name="updates_channel_title">更新渠道</string>
+    <string name="updates_prerelease_hint">同时检查公开的预发布版本，其中可能包含尚未完成验证的改动。</string>
+    <string name="updates_loading_choice">正在读取更新偏好…</string>
+    <string name="updates_preference_failed">无法读取或保存更新偏好，请重试后再检查。</string>
+    <string name="updates_checking">正在检查 GitHub Releases…</string>
+    <string name="updates_check_again">重新检查</string>
+    <string name="updates_available">发现新版本</string>
+    <string name="updates_current_or_newer">当前安装版本已是最新或更新</string>
+    <string name="updates_release_version">渠道最新：%1$s（%2$d）</string>
+    <string name="updates_stable">正式版</string>
+    <string name="updates_prerelease">测试版</string>
+    <string name="updates_published">发布时间：%1$s</string>
+    <string name="updates_release_notes">更新说明</string>
+    <string name="updates_expand_notes">展开更新说明</string>
+    <string name="updates_collapse_notes">收起更新说明</string>
+    <string name="updates_download">下载 APK</string>
+    <string name="updates_release_page">查看发布详情</string>
+    <string name="updates_all_releases">浏览全部版本</string>
+    <string name="updates_no_release">当前渠道暂无已发布版本。</string>
+    <string name="updates_network_failed">无法连接 GitHub，请检查网络后重试。</string>
+    <string name="updates_timeout">检查更新超时，请在网络状况改善后重试。</string>
+    <string name="updates_rate_limited">GitHub 暂时限制了更新请求，请稍后重试。</string>
+    <string name="updates_server_failed">GitHub 暂时无法完成更新检查，请稍后重试。</string>
+    <string name="updates_invalid_release">该版本的更新信息不完整或不一致，请查看发布详情。</string>
+    <string name="updates_android_too_old">此版本需要更高版本的 Android，当前设备无法安装。</string>
+    <string name="updates_different_install">此版本与当前安装的包名或签名不同，系统可能拒绝直接覆盖。请勿通过卸载或清除数据解决。</string>
+    <string name="updates_manual_hint">仅在打开此页面、切换渠道或重新检查时联网。下载将在浏览器中打开，安装更新前请先断开服务器。</string>
+    <string name="updates_browser_failed">没有可用于打开下载或发布页面的浏览器。</string>
     <string name="playback_failed">音频播放已停止。请尝试切换音频输出或重新连接。</string>
     <string name="action_more">更多选项</string>
     <string name="connection_memory_failed">无法安全保存或恢复连接信息，请按需重新填写；仍可继续连接。</string>
@@ -139,7 +170,7 @@
     <string name="diagnostics_failed_connections">连接失败</string>
     <string name="diagnostics_retryable_failures">可重试失败</string>
     <string name="diagnostics_voice_frames_received">收到语音帧</string>
-    <string name="diagnostics_voice_frames_dropped">丢弃语音帧</string>
+    <string name="diagnostics_voice_frames_dropped">会话入口拒收帧</string>
     <string name="diagnostics_microphone_errors">麦克风错误</string>
     <string name="diagnostics_channel_join_attempts">频道切换尝试</string>
     <string name="diagnostics_channel_join_failures">频道切换失败</string>
@@ -267,8 +298,6 @@
     <string name="microphone_echo_failed">设备未能应用回声消除。可继续采集，建议尝试耳机。</string>
     <string name="microphone_gate_threshold">音量门控阈值</string>
     <string name="microphone_gate_value">音量门控阈值：%1$d dBFS</string>
-    <string name="microphone_gate_hint">在麦克风模式中选择“音量门控”后使用此阈值。数值越低，越轻的声音也能触发。在降噪与输入音量调整后测量；40 毫秒触发、300 毫秒收尾、120 毫秒起声缓存。</string>
-    <string name="microphone_gate_privacy">音量门控在安静时仍使用麦克风监听，触发后才发送音频。“关闭”会停止采集并清空缓存。</string>
     <string name="microphone_mode_gate">音量门控</string>
     <string name="microphone_state_listening">正在监听 · 低于门控阈值</string>
     <string name="notification_microphone_listening">音量门控正在监听 · 麦克风使用中</string>
@@ -401,4 +430,21 @@
     <string name="appearance_read_failed">无法读取外观设置，暂时使用浅色。可重试或重置外观。</string>
     <string name="appearance_write_failed">无法保存外观设置。当前选择已生效，请重试以便重启后保留。</string>
     <string name="appearance_reset">重置外观为浅色</string>
+    <string name="discovery_protected">需要频道密码</string>
+    <string name="microphone_gate_visual_hint">在实时声条上拖动门限。门限仅在音量门控模式生效；安静监听时仍使用麦克风。</string>
+    <string name="microphone_processing_title">声音处理</string>
+    <string name="diagnostics_save">保存文件</string>
+    <string name="diagnostics_saved">诊断文件已保存</string>
+    <string name="diagnostics_export_failed">诊断导出失败，请重试</string>
+    <string name="diagnostics_audio_title">本地音频记录</string>
+    <string name="diagnostics_audio_retention">保留最近 3 次会话，每次约 10 分钟的分时数据。重开应用仍可导出；不记录声音。突然退出可能丢失末尾数据。</string>
+    <string name="diagnostics_audio_sessions">已保留会话</string>
+    <string name="diagnostics_audio_samples">已采样记录</string>
+    <string name="diagnostics_audio_last_saved">最近写入手机</string>
+    <string name="diagnostics_audio_storage_error">记录不完整：写入失败 %1$d 次，读取异常 %2$d 条</string>
+    <string name="diagnostics_audio_mark">标记刚才断音</string>
+    <string name="diagnostics_audio_marks">已保留 %1$d 次断音标记</string>
+    <string name="diagnostics_marked">已标记当前时间，请在测试后导出诊断</string>
+    <string name="diagnostics_no_audio_session">还没有可标记的音频会话</string>
+    <string name="diagnostics_copy_too_large">报告较大，请使用“保存文件”导出。</string>
 </resources>

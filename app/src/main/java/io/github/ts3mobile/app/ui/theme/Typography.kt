@@ -10,15 +10,15 @@ internal val TailSyncTypography =
     Typography(
         headlineSmall =
             TextStyle(
-                fontFamily = FontFamily.Serif,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 26.sp,
-                lineHeight = 34.sp,
-                letterSpacing = (-0.6).sp,
+                fontSize = 22.sp,
+                lineHeight = 30.sp,
+                letterSpacing = (-0.3).sp,
             ),
         titleLarge =
             TextStyle(
-                fontFamily = FontFamily.Serif,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 20.sp,
                 lineHeight = 28.sp,

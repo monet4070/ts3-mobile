@@ -22,6 +22,7 @@ internal class BluetoothRouteMonitor(
     @Volatile private var scoConnected = false
     private var registered = false
     private var onLost: () -> Unit = {}
+    private var onSuspended: () -> Unit = {}
     private var communicationListener: AudioManager.OnCommunicationDeviceChangedListener? = null
     private val timeout =
         Runnable {
@@ -51,8 +52,12 @@ internal class BluetoothRouteMonitor(
             }
         }
 
-    fun start(onLost: () -> Unit) {
+    fun start(
+        onLost: () -> Unit,
+        onSuspended: () -> Unit,
+    ) {
         this.onLost = onLost
+        this.onSuspended = onSuspended
         val filter = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY).apply { addAction(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(receiver, filter, null, handler, Context.RECEIVER_NOT_EXPORTED)
@@ -63,7 +68,7 @@ internal class BluetoothRouteMonitor(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val listener =
                 AudioManager.OnCommunicationDeviceChangedListener { device ->
-                    // Preserve a brief route-loss event even if Bluetooth has already reconnected.
+                    // The router distinguishes idle SCO suspension from loss during playback.
                     observe(isBluetooth(device))
                 }
             manager.addOnCommunicationDeviceChangedListener({ handler.post(it) }, listener)
@@ -105,7 +110,7 @@ internal class BluetoothRouteMonitor(
         if (bluetooth) {
             handler.removeCallbacks(timeout)
         } else if (wasConfirmed) {
-            onLost()
+            onSuspended()
         }
     }
 

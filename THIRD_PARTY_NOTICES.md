@@ -59,6 +59,16 @@ The Apache License 2.0 text is included in this repository as [LICENSE](LICENSE)
 - Visual theme reference: [TailSync](https://github.com/monet4070/TailSync),
   warm Canvas palette; no TailSync artwork is bundled.
 
+## Release-note Markdown
+
+- Project: [Markwon](https://github.com/noties/Markwon), version 4.6.2
+- Modules: core, tables, task lists and strikethrough; Apache License 2.0
+  (license text: [LICENSE](LICENSE)). No HTML, image-loader or WebView plugin is included.
+- Parser: [commonmark-java](https://github.com/atlassian/commonmark-java), version 0.13.0,
+  including its GFM tables and strikethrough extensions; BSD 2-Clause.
+- Parser license: [app/src/main/assets/licenses/commonmark.txt](app/src/main/assets/licenses/commonmark.txt).
+- Exact resolved dependencies remain pinned in `app/gradle.lockfile`.
+
 ## First-party artwork and documentation
 
 The project's original poke, away and add icons are first-party artwork under

@@ -80,8 +80,12 @@ internal class SessionDiagnostics(
         )
     }
 
-    fun export(snapshot: DiagnosticsSnapshot): String =
-        "{\"schema\":\"ts3-mobile-report/v2\",\"session\":${snapshot.toRedactedJson()},\"history\":${journal.toRedactedJson()}}"
+    fun export(
+        snapshot: DiagnosticsSnapshot,
+        audio: String? = null,
+    ): String =
+        "{\"schema\":\"ts3-mobile-report/v2\",\"session\":${snapshot.toRedactedJson()},\"history\":${journal.toRedactedJson()}" +
+            (audio?.let { ",\"audio\":$it" } ?: "") + "}"
 
     fun close() {
         stateJob?.cancel()

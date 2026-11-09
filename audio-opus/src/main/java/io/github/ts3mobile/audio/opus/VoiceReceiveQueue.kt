@@ -4,6 +4,7 @@ internal class VoiceReceiveQueue(
     private val inspect: (ByteArray) -> OpusPacketInfo = NativeOpusInfo::inspect,
     val budget: ReceiveMediaBudget = ReceiveMediaBudget(),
 ) {
+    private val arrivals = linkedMapOf<Int, Long>()
     private val frames = ArrayDeque<QueuedFrame>()
     private val recent = linkedMapOf<Int, ArrayDeque<Int>>()
     val size: Int get() = synchronized(this) { frames.size }
@@ -37,6 +38,12 @@ internal class VoiceReceiveQueue(
         now: Long = prepared.queued.arrivalNanos,
     ): Boolean {
         val queued = prepared.queued
+        arrivals.put(queued.frame.clientId, queued.arrivalNanos)?.let { previous ->
+            val gap = (queued.arrivalNanos - previous).coerceAtLeast(0)
+            budget.stats.peak(AudioReceivePeak.ARRIVAL_GAP_NS, gap)
+            if (gap > 60_000_000L) budget.stats.count(AudioReceiveCounter.ARRIVAL_GAPS_OVER_60_MS)
+        }
+        if (arrivals.size > ReceivePolicy.MAX_TRACKED_CLIENTS) arrivals.remove(arrivals.keys.first())
         prune(now)
         if (isExpired(queued, now)) {
             budget.stats.stalePackets.incrementAndGet()
@@ -72,6 +79,8 @@ internal class VoiceReceiveQueue(
         history.addLast(queued.frame.packetId and 0xffff)
         frames.removeAll { it.lease?.valid != true }
         frames.addLast(queued.copy(lease = lease))
+        budget.stats.count(AudioReceiveCounter.ACCEPTED)
+        budget.stats.peak(AudioReceivePeak.INPUT_QUEUE_PACKETS, frames.size.toLong())
         return true
     }
 
@@ -85,12 +94,15 @@ internal class VoiceReceiveQueue(
     @Synchronized fun removeClient(clientId: Int) {
         budget.invalidate(clientId)
         recent.remove(clientId)
+        arrivals.remove(clientId)
         frames.removeAll { it.frame.clientId == clientId }
     }
 
     @Synchronized fun clear() {
+        budget.stats.count(AudioReceiveCounter.INPUT_CLEARED, frames.size.toLong())
         frames.clear()
         recent.clear()
+        arrivals.clear()
         budget.clear()
     }
 

@@ -102,7 +102,10 @@ internal class UiFixture(connected: Boolean = false) {
     var connects = 0
     var disconnects = 0
     var copies = 0
+    var diagnosticSaves = 0
+    var audioMarks = 0
     var repositoryOpens = 0
+    var updateChecks = 0
     val microphonePreferenceStatus = mutableStateOf(MicrophonePreferenceStatus.SAVED)
     var microphonePreferenceRetries = 0
     var microphonePreferenceCommits = 0
@@ -150,6 +153,7 @@ internal class UiFixture(connected: Boolean = false) {
         ) {
             Ts3MobileTheme(darkTheme = dark) {
                 MainScreen(
+                    onCheckUpdates = { updateChecks++ },
                     form = form.value,
                     history = history.value,
                     historyError = historyError.value,
@@ -190,6 +194,8 @@ internal class UiFixture(connected: Boolean = false) {
                     onPushToTalkChanged = { transmission += it },
                     onJoinChannel = { id, password -> joins += id to password },
                     onCopyDiagnostics = { copies++ },
+                    onSaveDiagnostics = { diagnosticSaves++ },
+                    onMarkAudioIssue = { audioMarks++ },
                     onKeepCpuAwakeChanged = {
                         keepCpuAwakeRequests += it
                         state.value = state.value.copy(backgroundRuntime = state.value.backgroundRuntime.copy(keepCpuAwake = it))

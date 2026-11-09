@@ -110,7 +110,7 @@ class MicrophoneSettingsTest {
         rule.setContent { fixture.Render() }
         openSettings()
         rule.onNodeWithText("Tuning could not be saved. Changes remain active for this service; retry to keep them.")
-            .performScrollTo().assertIsDisplayed()
+            .assertIsDisplayed()
         rule.onNodeWithText("Tuning saved on this device").assertDoesNotExist()
         rule.onNodeWithText("Retry saving or loading").performScrollTo().performClick()
         rule.runOnIdle { assertEquals(1, fixture.microphonePreferenceRetries) }

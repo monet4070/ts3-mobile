@@ -44,6 +44,10 @@
             android:name=".appearance.AppearanceActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".updates.UpdatesActivity"
+            android:exported="false" />
+
         <service
             android:name=".service.TeamSpeakService"
             android:exported="false"

@@ -2,15 +2,16 @@ package io.github.ts3mobile.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -18,17 +19,24 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.service.AudioDiagnosticStatus
 import io.github.ts3mobile.app.service.DiagnosticsSnapshot
+import java.text.DateFormat
+import java.util.Date
 
 @Composable
 internal fun DiagnosticsPanel(
     diagnostics: DiagnosticsSnapshot,
     onCopyDiagnostics: () -> Unit,
+    audio: AudioDiagnosticStatus = AudioDiagnosticStatus(),
+    onSaveDiagnostics: () -> Unit = {},
+    onMarkAudioIssue: () -> Unit = {},
 ) {
     Column(
         modifier =
@@ -38,32 +46,47 @@ internal fun DiagnosticsPanel(
                 .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(
+        FilledTonalButton(
+            onClick = onMarkAudioIssue,
+            enabled = audio.sessions > 0,
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+        ) { Text(stringResource(R.string.diagnostics_audio_mark)) }
+        DiagnosticExportButtons(onCopyDiagnostics, onSaveDiagnostics)
+        SettingsSection(stringResource(R.string.diagnostics_audio_title), UiIcon.Activity) {
+            Text(stringResource(R.string.diagnostics_audio_retention), style = MaterialTheme.typography.bodySmall)
+            DiagnosticMetric(stringResource(R.string.diagnostics_audio_sessions), audio.sessions.toString())
+            DiagnosticMetric(stringResource(R.string.diagnostics_audio_samples), audio.savedSamples.toString())
+            DiagnosticMetric(
+                stringResource(R.string.diagnostics_audio_last_saved),
+                if (audio.lastPersistedTimeMs > 0) {
+                    DateFormat.getTimeInstance(DateFormat.MEDIUM).format(Date(audio.lastPersistedTimeMs))
+                } else {
+                    stringResource(R.string.diagnostics_none)
+                },
+            )
+            if (audio.failedWrites > 0 || audio.invalidRecords > 0) {
                 Text(
-                    text = stringResource(R.string.diagnostics_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = stringResource(R.string.diagnostics_privacy_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    stringResource(R.string.diagnostics_audio_storage_error, audio.failedWrites, audio.invalidRecords),
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            OutlinedButton(onClick = onCopyDiagnostics, shape = MaterialTheme.shapes.small) {
-                AppIcon(UiIcon.Copy, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.action_copy))
+            if (audio.marks > 0) {
+                Text(
+                    stringResource(R.string.diagnostics_audio_marks, audio.marks),
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
 
         Spacer(Modifier.heightIn(min = 2.dp))
         HorizontalDivider()
+        Text(stringResource(R.string.diagnostics_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            stringResource(R.string.diagnostics_privacy_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         DiagnosticMetric(stringResource(R.string.diagnostics_uptime), formatDuration(diagnostics.uptimeMs))
         DiagnosticMetric(stringResource(R.string.diagnostics_connection_attempts), diagnostics.connectionAttempts.toString())
@@ -81,6 +104,37 @@ internal fun DiagnosticsPanel(
             diagnostics.lastFailure?.name ?: stringResource(R.string.diagnostics_none),
         )
     }
+}
+
+@Composable
+private fun DiagnosticExportButtons(
+    onCopy: () -> Unit,
+    onSave: () -> Unit,
+) {
+    if (LocalDensity.current.fontScale > 1.3f) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DiagnosticExportButton(R.string.action_copy, onCopy, Modifier.fillMaxWidth())
+            DiagnosticExportButton(R.string.diagnostics_save, onSave, Modifier.fillMaxWidth())
+        }
+    } else {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DiagnosticExportButton(R.string.action_copy, onCopy, Modifier.weight(1f))
+            DiagnosticExportButton(R.string.diagnostics_save, onSave, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticExportButton(
+    label: Int,
+    action: () -> Unit,
+    modifier: Modifier,
+) {
+    OutlinedButton(
+        onClick = action,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+    ) { Text(stringResource(label)) }
 }
 
 @Composable

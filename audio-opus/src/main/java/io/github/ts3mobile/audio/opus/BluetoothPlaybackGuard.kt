@@ -17,6 +17,14 @@ internal class BluetoothPlaybackGuard {
         if (!required) bluetoothSeen = false
     }
 
+    /** A new, explicitly requested Bluetooth attempt must not inherit the retired track's route. */
+    @Synchronized
+    fun beginBluetoothAttempt() {
+        if (!required) return
+        bluetoothSeen = false
+        generation++
+    }
+
     @Synchronized
     fun select(
         routeId: Int,

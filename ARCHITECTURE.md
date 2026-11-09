@@ -1,5 +1,34 @@
 # Architecture
 
+The independent `updates` page checks public GitHub Releases only when the user opens
+it, changes the remembered prerelease choice, or explicitly retries. `UpdateController`
+owns page state and rejects canceled/stale results; its mutex serializes blocking
+metadata requests. `GitHubHttpClient` bounds HTTPS redirects, time and response size,
+and `GitHubReleaseJson` binds release assets to their `BUILDINFO.json`. Android version
+codes decide update availability; app ID, certificate and Android compatibility are
+reported separately. Browser intents perform explicit downloads. No update work is
+started by the connection service or application startup, and no installer permission
+is added. The fixed page header owns close; the full release-note reader has its
+own scroll body and a fixed collapse action, restoring the summary scroll position.
+Markwon renders bounded Markdown to native text, including GFM tables/tasks and
+strikethrough; Compose supplies text scale and theme colors. Description links and
+images render labels/alt text without navigation or fetching. Explicit official
+release/download buttons retain navigation ownership. No HTML/image-loading plugin
+or WebView is used. See [ADR 0034](docs/decisions/0034-manual-update-checks.md).
+
+Offline audio diagnostics retain numeric receive/playback evidence without USB.
+`PlaybackDiagnostics` exposes per-generation counters and interval peaks; the service
+samples them on IO and observes only coarse route/focus/network categories.
+The application-owned `AudioDiagnosticRepository` appends bounded checkpoints and
+survives service replacement, retaining three audio generations with 120 samples
+and 64 events each. Normal retirement supplies a final snapshot; an abrupt exit
+recovers only successful checkpoints and marks the earlier generation interrupted.
+`audio` extends report/v2 without removing `session`/`history`. `counterKeys` and
+`peakKeys` label compact numeric arrays; counters are not network-loss percentages.
+No voice, endpoint, identity, client/device name or payload is stored. Formatting,
+clipboard preparation and document writes stay off the audio/UI threads. See
+[ADR 0035](docs/decisions/0035-offline-audio-diagnostics.md).
+
 The audio review follow-up is specified in
 [the repair plan](docs/plans/AUDIO_REVIEW_FIXES_2026-10-24_ZH.md).
 `OpusAudioPlayer` owns Android focus, routing and its worker; the serialized,
@@ -28,7 +57,7 @@ the user to reconnect. `MicrophoneController` owns capture/send serialization;
 An output that cannot be released blocks replacement. A failed session exposes
 `PlaybackStatus.FAILED`, consumed by service state, UI, notifications and a fixed
 diagnostic event; aggregate receive/recovery counters are emitted once on
-close without media or participant data. `MicrophoneVoiceSource` invalidates the
+close without media or participant data, and are retained in the offline archive. `MicrophoneVoiceSource` invalidates the
 send generation synchronously, while capture stop/close runs on the controller's
 IO dispatcher under its transmit mutex. Capture routing revisions invalidate
 queued audio, partial input and DSP history before new-route samples are encoded.
@@ -128,6 +157,10 @@ observes communication-device changes and legacy SCO/noisy broadcasts. `Bluetoot
 checks actual `AudioTrack` routes across output lifetimes; waiting routes discard stale voice and
 unexpected fallback silences output. Service state publishes the safety mute through the existing
 listening control. Only a manual unmute clears it; reconnecting a headset cannot resume playback.
+Idle SCO suspension while the selected headset remains available instead arms a pending Bluetooth
+attempt. The next playback obtains focus before requesting the route; a fresh guard generation
+keeps speaker/earpiece writes blocked during setup. Active loss, physical removal, timeout and
+denied recovery still latch mute. No idle SCO keepalive or repeated recovery timer is added.
 See [ADR 0020](docs/decisions/0020-bluetooth-playback-protection.md) for boundaries and verification.
 
 `ChannelRestorePolicy` keeps the last channel target, including its password,
@@ -139,6 +172,15 @@ dispatch; completion and cleanup recheck those identities under the session epoc
 Restore completion also refreshes chat's switching state, including on refusal.
 
 ## Visual presentation
+
+The November 8 presentation refinement uses sans-serif heading roles and separates
+dialog headers, scrollable content and actions. Search result rows own their icon,
+name, channel context and join affordance. Microphone settings group gate, gain and
+processing; only the level indicator collects live samples. Its Slider track shares
+the threshold's -60..-15 dBFS coordinate space, including RTL, while the numeric
+readout retains the actual RMS. Values outside that visible range clamp the fill,
+not the measurement. Chat renders incoming/outgoing bubbles and centered system
+notes without changing message storage, visibility/read tracking or send outcomes.
 
 The Compose layer follows TailSync's warm Canvas palette, with a cream light
 default, coordinated warm dark preview tokens and restrained 4/6/10 dp geometry.

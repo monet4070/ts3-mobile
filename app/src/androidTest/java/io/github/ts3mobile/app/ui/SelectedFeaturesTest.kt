@@ -133,7 +133,7 @@ class SelectedFeaturesTest {
         openMenu("Find channels and users")
         rule.onNodeWithText("Channel, topic or nickname").performTextInput("MORGAN")
         rule.onNodeWithText("Channel, topic or nickname").performImeAction()
-        rule.onNodeWithText("Join this user’s channel").performClick()
+        rule.onNodeWithContentDescription("Join this user’s channel").performClick()
         rule.runOnIdle { assertEquals(listOf(2 to ""), fixture.joins) }
         openMenu("Find channels and users")
         rule.onNodeWithText("Channel, topic or nickname").performTextInput("Private")

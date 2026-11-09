@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: 2026-11-07 · [简体中文](PRIVACY_ZH.md)
+Last updated: 2026-11-09 · [简体中文](PRIVACY_ZH.md)
 
 TS3 Mobile is an unofficial client that connects directly from the Android
 device to TeamSpeak servers selected by the user. The maintainers do not
@@ -8,18 +8,17 @@ operate an intermediary service for those connections.
 
 ## Data handled on the device
 
-Development builds store only the selected appearance mode (Light, Dark or System)
+The app stores only the selected appearance mode (Light, Dark or System)
 and its schema version in a separate local preferences file, excluded from cloud
 backup and device transfer. It contains no session or audio data. Unset remains
 Light; selection does not start capture or contact a server. Reset affects only
-appearance. This preference is not in the public 1.0.0/code14 APK.
+appearance.
 
-- The development branch stores input gain, noise-suppression preference,
+- The app stores input gain, noise-suppression preference,
   device-AEC preference and gate threshold in a separate versioned local
   preferences file, excluded from cloud backup/device transfer. It contains no
   audio, identity, endpoint, PTT state or capture mode. Restore defaults affects
-  only this tuning file; loading/saving does not start recording. Public
-  1.0.0/code14 retains these tuning choices only in service memory.
+  only this tuning file; loading/saving does not start recording.
 
 - The ten most recent successfully connected server addresses and ports are
   saved in app-private local storage for connection-page prefill and selection.
@@ -56,15 +55,29 @@ appearance. This preference is not in the public 1.0.0/code14 APK.
   mode sends activated audio plus a bounded 120 ms onset buffer and 300 ms tail
   directly to the connected server. Off stops capture and discards buffered audio.
   The microphone foreground-service type remains active during gate listening.
-  Gain, suppression, echo and gate parameters stay in service memory and reset
-  when the service is recreated; they cannot start capture by themselves.
+  Gain, suppression, echo and gate parameters are restored from saved tuning
+  preferences; microphone mode and PTT state are not persisted and cannot start capture by themselves.
 - Incoming voice traffic is decoded and played locally. The app does not record
   or archive voice traffic.
 - A local journal retains at most 128 service, network, power, microphone and
   reconnect events. It stores timestamps, fixed categories, numeric system
   flags and Android process-exit reason codes, without addresses, identities,
   exception text or audio. Diagnostics leave the app only when the user chooses
-  to copy and share them. The CPU-awake preference is also stored locally.
+  to copy, save or share them. The CPU-awake preference is also stored locally.
+- The app additionally retains bounded numeric audio diagnostics
+  in app-private, backup-excluded storage: the last three playback generations,
+  up to 120 samples and 64 fixed events each, in a capped 1 MiB log. It includes
+  timing, receive/playback counters, coarse route/network kinds and user time marks;
+  no audio, payloads, participant/device names or IDs, endpoints or exception text.
+  Records survive reopening until rotated or app data is removed. A sudden exit
+  may lose the latest unpersisted interval. No diagnostic upload is automatic.
+  An explicit Save file action writes JSON to the Android document provider chosen
+  by the user, without an extra storage permission. One already-redacted pending
+  report (at most 512,000 bytes) is prepared in backup-excluded private storage
+  before opening the picker, survives recreation, and is cleared after saving or
+  cancellation; an interrupted flow can leave it until the next export. No URI
+  grant is persisted. Such saved reports are managed
+  by that provider and are not deleted when this app is uninstalled.
 - Per-user mute and volume settings stay in foreground-service memory, keyed by
   the participant's stable TeamSpeak identity when available; they are not saved
   across service process recreation.

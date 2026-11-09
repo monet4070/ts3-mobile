@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
@@ -52,14 +53,18 @@ internal fun InputDialog(
                 Surface(
                     Modifier.widthIn(max = 560.dp).fillMaxWidth(),
                     shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = MaterialTheme.colorScheme.surface,
                 ) {
-                    Column(Modifier.padding(24.dp)) {
-                        ProvideTextStyle(MaterialTheme.typography.headlineSmall, title)
-                        Box(Modifier.weight(1f, fill = false).padding(vertical = 16.dp)) {
+                    Column(Modifier.padding(20.dp)) {
+                        ProvideTextStyle(MaterialTheme.typography.titleLarge, title)
+                        Box(Modifier.weight(1f, fill = false).padding(top = 20.dp, bottom = 16.dp)) {
                             ProvideTextStyle(MaterialTheme.typography.bodyMedium, text)
                         }
-                        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        FlowRow(
+                            Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        ) {
                             dismissButton()
                             confirmButton()
                         }
