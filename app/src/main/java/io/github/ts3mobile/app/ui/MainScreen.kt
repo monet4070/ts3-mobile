@@ -28,9 +28,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.ConnectionFormState
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.bookmarks.BookmarkChannelSelection
 import io.github.ts3mobile.app.bookmarks.BookmarkState
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
+import io.github.ts3mobile.app.bookmarks.bookmarkContext
 import io.github.ts3mobile.app.chat.ChatConversationKey
+import io.github.ts3mobile.app.chat.ChatNotificationDestination
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.chat.PokeRecipient
 import io.github.ts3mobile.app.history.ServerHistoryEntry
@@ -38,9 +41,14 @@ import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.service.UserMessage
 import io.github.ts3mobile.app.service.hasPlaybackFailure
+import io.github.ts3mobile.app.settings.MicrophonePreferenceField
+import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
+import io.github.ts3mobile.audio.opus.MicrophoneLevel
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.Ts3Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,13 +98,32 @@ fun MainScreen(
     onPresenceRetry: () -> Unit = {},
     onResolveUserChannel: (Int, String) -> Int? = { _, _ -> null },
     onOpenRepository: () -> Unit = {},
+    onSaveDiagnostics: () -> Unit = {},
+    onMarkAudioIssue: () -> Unit = {},
+    microphonePreferenceStatus: MicrophonePreferenceStatus = MicrophonePreferenceStatus.SAVED,
+    onMicrophonePreferenceEdit: (
+        MicrophonePreferenceField,
+        MicrophoneSettings,
+    ) -> Unit = { _, value -> onMicrophoneSettingsChanged(value) },
+    onMicrophonePreferenceCommit: () -> Unit = {},
+    onMicrophonePreferenceRetry: () -> Unit = {},
+    onMicrophonePreferenceReset: () -> Unit = {},
+    onBookmarkSaveFromConnection: (ServerBookmark, BookmarkChannelSelection) -> Unit = { entry, _ -> onBookmarkSave(entry) },
+    chatNotification: ChatNotificationDestination? = null,
+    onChatNotificationConsumed: (String) -> Unit = {},
+    onUserNavigation: () -> Unit = {},
+    onNotificationSettings: () -> Unit = {},
+    microphoneLevels: Flow<MicrophoneLevel?> = emptyFlow(),
+    onIdentityManagement: () -> Unit = {},
+    onAppearance: () -> Unit = {},
+    onCheckUpdates: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     PokeFeedbackEffect(chatState, snackbar)
     chatState.pokeNotice?.let { PokeNoticeDialog(it, onPokeDismiss) { onPushToTalkChanged(false) } }
     var showPresence by rememberSaveable { mutableStateOf(false) }
     var showSearch by rememberSaveable { mutableStateOf(false) }
-    var joinTarget by androidx.compose.runtime.remember { mutableStateOf<Ts3Channel?>(null) }
+    var joinTarget by androidx.compose.runtime.remember(serviceState.bookmarkConnection?.token) { mutableStateOf<Ts3Channel?>(null) }
     LaunchedEffect(serviceState.status.phase) {
         if (serviceState.status.phase != ConnectionPhase.CONNECTED) {
             showPresence = false
@@ -132,11 +159,24 @@ fun MainScreen(
             onBookmarkSelect,
             onBookmarkConnect,
             onBookmarkReload,
+            serviceState.bookmarkContext(),
+            onBookmarkSaveFromConnection,
         ) { showBookmarks = false }
     }
     var showMicrophoneSettings by rememberSaveable { mutableStateOf(false) }
     if (showMicrophoneSettings) {
-        MicrophoneSettingsDialog(serviceState, onMicrophoneSettingsChanged) { showMicrophoneSettings = false }
+        MicrophoneSettingsDialog(
+            serviceState,
+            onMicrophonePreferenceEdit,
+            { showMicrophoneSettings = false },
+            microphonePreferenceStatus,
+            onMicrophonePreferenceCommit,
+            onMicrophonePreferenceRetry,
+            onMicrophonePreferenceReset,
+            microphoneLevels,
+            onPushToTalkChanged,
+            onMicrophoneModeChanged,
+        )
     }
     var showBackgroundRuntime by rememberSaveable { mutableStateOf(false) }
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
@@ -144,7 +184,17 @@ fun MainScreen(
         AlertDialog(
             onDismissRequest = { showDiagnostics = false },
             title = { Text(stringResource(R.string.tab_diagnostics)) },
-            text = { Box(Modifier.heightIn(max = 420.dp)) { DiagnosticsPanel(serviceState.diagnostics, onCopyDiagnostics) } },
+            text = {
+                Box(Modifier.heightIn(max = 420.dp)) {
+                    DiagnosticsPanel(
+                        serviceState.diagnostics,
+                        onCopyDiagnostics,
+                        serviceState.audioDiagnostics,
+                        onSaveDiagnostics,
+                        onMarkAudioIssue,
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = { showDiagnostics = false }) { Text(stringResource(R.string.action_close)) }
             },
@@ -170,7 +220,10 @@ fun MainScreen(
                 MainScreenAppBar(
                     serviceState.status.phase,
                     largeText,
-                    { onPushToTalkChanged(false) },
+                    {
+                        onUserNavigation()
+                        onPushToTalkChanged(false)
+                    },
                     listOf(
                         MainMenuAction(
                             R.string.presence_title,
@@ -183,13 +236,17 @@ fun MainScreen(
                             serviceState.status.phase == ConnectionPhase.CONNECTED,
                         ) { showSearch = true },
                         MainMenuAction(R.string.bookmarks_title, UiIcon.Bookmark) { showBookmarks = true },
+                        MainMenuAction(R.string.identity_title, UiIcon.Shield, action = onIdentityManagement),
+                        MainMenuAction(R.string.appearance_title, UiIcon.Sliders, action = onAppearance),
                         MainMenuAction(R.string.microphone_settings, UiIcon.Mic, startsGroup = true) { showMicrophoneSettings = true },
                         MainMenuAction(R.string.background_runtime_title, UiIcon.Battery) {
                             onRefreshBackgroundRuntime()
                             showBackgroundRuntime = true
                         },
                         MainMenuAction(R.string.tab_diagnostics, UiIcon.Activity) { showDiagnostics = true },
-                        MainMenuAction(R.string.support_star, UiIcon.Star, startsGroup = true, action = onOpenRepository),
+                        MainMenuAction(R.string.private_message_notification_settings, UiIcon.Chat, action = onNotificationSettings),
+                        MainMenuAction(R.string.updates_title, UiIcon.Info, startsGroup = true, action = onCheckUpdates),
+                        MainMenuAction(R.string.support_star, UiIcon.Star, action = onOpenRepository),
                     ),
                 )
             }
@@ -242,6 +299,9 @@ fun MainScreen(
                     onPoke = onPoke,
                     onOpenSearch = { showSearch = true },
                     onOpenPresence = { showPresence = true },
+                    chatNotification = chatNotification,
+                    onChatNotificationConsumed = onChatNotificationConsumed,
+                    onUserNavigation = onUserNavigation,
                 )
             } else {
                 ConnectionForm(

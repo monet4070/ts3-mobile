@@ -1,6 +1,10 @@
 package io.github.ts3mobile.app.service
 
 import io.github.ts3mobile.app.chat.SessionChatController
+import io.github.ts3mobile.app.identity.IdentityRepository
+import io.github.ts3mobile.app.identity.IdentityStoreFixture
+import io.github.ts3mobile.app.identity.IdentityUseGate
+import io.github.ts3mobile.app.identity.IdentityUseState
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionFailureCategory
 import io.github.ts3mobile.protocol.ConnectionPhase
@@ -13,6 +17,8 @@ import io.github.ts3mobile.protocol.TextNotSentReason
 import io.github.ts3mobile.protocol.TextSendOutcome
 import io.github.ts3mobile.protocol.TextTarget
 import io.github.ts3mobile.protocol.TextTargetMode
+import io.github.ts3mobile.protocol.Ts3Channel
+import io.github.ts3mobile.protocol.Ts3IdentityCodec
 import io.github.ts3mobile.protocol.Ts3Participant
 import io.github.ts3mobile.protocol.Ts3SessionClient
 import io.github.ts3mobile.protocol.Ts3SessionListener
@@ -20,13 +26,17 @@ import io.github.ts3mobile.protocol.Ts3TextEvent
 import io.github.ts3mobile.protocol.VoiceFrame
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -47,17 +57,20 @@ class ConnectionCoordinatorTest {
     private lateinit var host: FakeHost
     private lateinit var coordinator: ConnectionCoordinator
     private lateinit var chat: SessionChatController
+    private lateinit var identityGate: IdentityUseGate
 
     @Before
     fun setUp() {
         host = FakeHost()
         chat = SessionChatController(host.scope)
+        identityGate = IdentityUseGate()
         coordinator =
             ConnectionCoordinator(
                 host,
                 clockMs = host::readClockMs,
                 sessionFactory = { host.session },
                 chat = chat,
+                identityGate = identityGate,
             )
         host.latestExitCheck = { coordinator.isLatestExit(it) }
     }
@@ -66,6 +79,119 @@ class ConnectionCoordinatorTest {
     fun tearDown() {
         coordinator.close()
         host.scope.cancel()
+    }
+
+    @Test fun nextManualConnectionUsesTheConfirmedReplacementAndThenTheConfirmedRollback() =
+        runBlocking {
+            val fixture = IdentityStoreFixture()
+            val repository = IdentityRepository(fixture.storage, identityGate, Dispatchers.Unconfined)
+            val original = Ts3IdentityCodec.generate(0)
+            val replacement = Ts3IdentityCodec.generate(0)
+            repository.replace(original, repository.snapshot().revision)
+            host.identityAction = repository::getOrCreateForConnection
+            connectEstablished()
+            assertEquals(original, host.session.connectedIdentity)
+            coordinator.requestDisconnect()
+            host.advance()
+            repository.replace(replacement, repository.snapshot().revision)
+            assertEquals(1, host.session.connectCalls)
+            coordinator.beginConnection(CONFIG)
+            host.advance()
+            assertEquals(replacement, host.session.connectedIdentity)
+            coordinator.requestDisconnect()
+            host.advance()
+            repository.rollback(repository.snapshot().revision)
+            assertEquals(2, host.session.connectCalls)
+            coordinator.beginConnection(CONFIG)
+            host.advance()
+            assertEquals(original, host.session.connectedIdentity)
+        }
+
+    @Test fun maintenanceRejectsConnectionSynchronouslyWithoutChangingStateOrStartingWork() {
+        val token = checkNotNull(identityGate.beginMaintenance())
+        val original = host.state.value
+        assertFalse(coordinator.beginConnection(CONFIG))
+        host.advance()
+        assertEquals(original, host.state.value)
+        assertEquals(0, host.manualSessionStarts)
+        assertEquals(0, host.identityCalls)
+        identityGate.finishMaintenance(token)
+        assertTrue(coordinator.beginConnection(CONFIG))
+    }
+
+    @Test fun disconnectAndDestructionRetainOwnershipUntilCancelledIdentityActuallyReturns() {
+        val finish = CompletableDeferred<Unit>()
+        host.identityAction = {
+            withContext(NonCancellable) {
+                finish.await()
+                "identity"
+            }
+        }
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        coordinator.requestDisconnect()
+        coordinator.close()
+        host.advance()
+        assertNull(identityGate.beginMaintenance())
+        finish.complete(Unit)
+        host.advance()
+        assertEquals(IdentityUseState.IDLE, identityGate.state.value)
+    }
+
+    @Test fun newCoordinatorSharingProcessGateCannotMaintainBeforeOldServiceWorkSettles() {
+        val finish = CompletableDeferred<Unit>()
+        host.identityAction = {
+            withContext(NonCancellable) {
+                finish.await()
+                "identity"
+            }
+        }
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        coordinator.close()
+        val replacement = ConnectionCoordinator(host, identityGate = identityGate) { host.session }
+        replacement.beginConnection(CONFIG)
+        replacement.close()
+        host.advance()
+        assertNull(identityGate.beginMaintenance())
+        finish.complete(Unit)
+        host.advance()
+        assertEquals(IdentityUseState.IDLE, identityGate.state.value)
+    }
+
+    @Test fun completedTerminalFailureAllowsMaintenanceAndLateNetworkEventsCannotReconnect() {
+        host.identityAction = { throw IOException("fixture") }
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        assertEquals(IdentityUseState.IDLE, identityGate.state.value)
+        val token = checkNotNull(identityGate.beginMaintenance())
+        coordinator.onNetworkChanged(true)
+        host.advance()
+        assertEquals(1, host.identityCalls)
+        assertFalse(coordinator.beginConnection(CONFIG))
+        identityGate.finishMaintenance(token)
+    }
+
+    @Test fun automaticRecoveryRetainsOwnershipWhileWaitingForNetworkAndThroughExit() {
+        connectEstablished()
+        host.network.value = false
+        host.session.listener!!.onStatusChanged(ConnectionStatus(ConnectionPhase.ERROR, retryable = true))
+        host.advance()
+        assertEquals(ConnectionPhase.RECONNECTING, host.state.value.status.phase)
+        assertNull(identityGate.beginMaintenance())
+        coordinator.requestDisconnect()
+        host.advance()
+        assertEquals(IdentityUseState.IDLE, identityGate.state.value)
+    }
+
+    @Test fun repeatedExitCannotLeakAnExtraConnectionOwner() {
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        coordinator.requestDisconnect()
+        coordinator.requestDisconnect()
+        host.advance()
+        assertEquals(IdentityUseState.IDLE, identityGate.state.value)
     }
 
     @Test fun manualConnectionPreservesMicrophoneParametersWithoutCopyingActiveCaptureFlags() {
@@ -85,6 +211,37 @@ class ConnectionCoordinatorTest {
         host.advance()
         coordinator.beginConnection(CONFIG)
         assertEquals(settings, host.state.value.microphoneSettings)
+    }
+
+    @Test fun liveBookmarkContextUsesTheActualConfigAndGetsANewTokenPerManualConnection() {
+        coordinator.beginConnection(CONFIG.copy(password = "fixture-secret"))
+        val first = host.state.value.bookmarkConnection!!
+        assertEquals(CONFIG.host, first.host)
+        assertEquals(CONFIG.port, first.port)
+        assertEquals(CONFIG.nickname, first.nickname)
+        assertFalse(first.toString().contains("fixture-secret"))
+        coordinator.beginConnection(CONFIG)
+        assertTrue(first.token != host.state.value.bookmarkConnection!!.token)
+    }
+
+    @Test fun staleConnectionTokenOrMissingChannelCannotJoinTheReplacement() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        val token = host.state.value.bookmarkConnection!!.token
+        host.mutableState.value =
+            host.state.value.copy(
+                snapshot = ownChannel(1).copy(channels = listOf(Ts3Channel(42, 0, 0, "Target", 0, false, false))),
+            )
+        coordinator.joinChannel(42, "", "previous-session")
+        host.advance()
+        assertEquals(UserMessage.ChannelTargetChanged, host.state.value.channelError)
+        assertTrue(host.session.joinedChannels.isEmpty())
+        coordinator.joinChannel(99, "", token)
+        assertTrue(host.session.joinedChannels.isEmpty())
+        coordinator.joinChannel(42, "", token)
+        host.advance()
+        assertEquals(listOf(42 to ""), host.session.joinedChannels)
     }
 
     @Test fun bookmarkDefaultChannelIsJoinedOnInitialConnectionAndPlainConnectionDoesNotInheritIt() {
@@ -520,6 +677,90 @@ class ConnectionCoordinatorTest {
             networkKey = "network-$generation",
             generation = generation,
         )
+
+    @Test fun aNonCooperativeOldNetworkProbeCannotEndTheHealthyReplacementNetwork() {
+        val gate = CompletableDeferred<Unit>()
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.network.value = true
+        coordinator.onNetworkChanged(availableNetwork(1))
+        coordinator.beginConnection(CONFIG)
+        host.advance()
+        try {
+            host.session.livenessResult = false
+            host.session.livenessGate = { withContext(NonCancellable) { gate.await() } }
+            coordinator.onNetworkChanged(availableNetwork(2))
+            host.advance()
+            assertEquals(1, host.session.livenessCalls)
+            host.session.livenessGate = null
+            host.session.livenessResult = true
+            coordinator.onNetworkChanged(availableNetwork(3))
+            host.advance()
+            assertEquals(2, host.session.livenessCalls)
+            gate.complete(Unit)
+            host.advance()
+            assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+            assertEquals(1, host.session.connectCalls)
+            assertTrue(host.connectionFailures.isEmpty())
+        } finally {
+            gate.complete(Unit)
+        }
+    }
+
+    @Test fun aCancelledSwitchProbeRetainsIdentityOwnershipUntilItsRealCompletion() {
+        val gate = CompletableDeferred<Unit>()
+        host.network.value = true
+        coordinator.onNetworkChanged(availableNetwork(1))
+        connectEstablished()
+        try {
+            host.session.livenessGate = { withContext(NonCancellable) { gate.await() } }
+            coordinator.onNetworkChanged(availableNetwork(2))
+            host.advance()
+            assertEquals(1, host.session.livenessCalls)
+            coordinator.requestDisconnect()
+            host.advance()
+            assertEquals(IdentityUseState.CONNECTION, identityGate.state.value)
+            assertNull(identityGate.beginMaintenance())
+            gate.complete(Unit)
+            host.advance()
+            assertEquals(IdentityUseState.IDLE, identityGate.state.value)
+        } finally {
+            gate.complete(Unit)
+            host.advance()
+        }
+    }
+
+    @Test fun terminalCallbackDuringTransportObservationWinsWithoutRetryOrDuplicateLoss() {
+        connectEstablished()
+        host.session.transportConnected = false
+        host.session.transportReadAction = {
+            host.session.transportReadAction = {}
+            host.session.listener!!.onStatusChanged(ConnectionStatus(ConnectionPhase.DISCONNECTED, retryable = false))
+        }
+        host.testScope.advanceTimeBy(1001)
+        host.runPendingTeardowns()
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(1, host.session.connectCalls)
+        assertEquals(0, host.transportDisconnects)
+        assertEquals(1, host.connectionFailures.size)
+        assertFalse(host.connectionFailures.single().retryable)
+    }
+
+    @Test fun taskRemovalDuringClockObservationCannotRecordAStaleGapOrRestart() {
+        connectEstablished()
+        host.clockAction = {
+            host.clockAction = {}
+            coordinator.requestExit(ExitTrigger.TASK_REMOVED)
+        }
+        host.nowMs = 30000
+        host.testScope.advanceTimeBy(1001)
+        host.advance()
+        host.runPendingTeardowns()
+        assertTrue(host.watchGaps.isEmpty())
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(1, host.session.connectCalls)
+        assertEquals(0, host.transportDisconnects)
+        assertTrue(host.stopSelfRequested)
+    }
 
     @Test
     fun silentTransportCloseStartsRecoveryWithoutNetworkChange() {
@@ -1154,6 +1395,7 @@ class ConnectionCoordinatorTest {
         var connectCalls = 0
         var listener: Ts3SessionListener? = null
         var connectedConfig: ServerConfig? = null
+        var connectedIdentity: String? = null
         var closeCalls = 0
         var boundedDisconnectCalls = 0
         var boundedDisconnectBudgetMs = 0L
@@ -1184,6 +1426,7 @@ class ConnectionCoordinatorTest {
         ) {
             connectCalls++
             connectedConfig = config
+            connectedIdentity = identityMaterial
             this.listener = listener
             connectAction()
             emittedStatusOnConnect?.let { listener.onStatusChanged(it) }
@@ -1289,10 +1532,11 @@ class ConnectionCoordinatorTest {
         }
 
         var identityCalls = 0
+        var identityAction: suspend () -> String = { "identity" }
 
         override suspend fun createIdentity(): String {
             identityCalls++
-            return "identity"
+            return identityAction()
         }
 
         override fun startAudioRouting() = Unit

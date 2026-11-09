@@ -10,7 +10,7 @@ on:
       - 'NOTICE'
       - '.github/ISSUE_TEMPLATE/**'
   pull_request:
-    branches: [main]
+    branches: [main, 'codex/**']
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
@@ -62,6 +62,11 @@ jobs:
       - name: Verify Opus source compatibility
         run: python3 tools/check-opus-compat.py --sdk "$ANDROID_HOME"
 
+      - name: Verify independent identity backup vectors
+        run: |
+          node tools/check-identity-backup-vector.mjs > "$RUNNER_TEMP/identity-backup-v1.properties"
+          cmp app/src/testFixtures/resources/identity-backup/v1.properties "$RUNNER_TEMP/identity-backup-v1.properties"
+
       - name: Test, lint, and assemble
         run: >-
           ./gradlew
@@ -78,7 +83,7 @@ jobs:
           --no-build-cache
           --stacktrace
 
-      - name: Verify release probes and audio lifecycle regressions
+      - name: Verify release probes, audio lifecycle, and core UI regressions
         timeout-minutes: 12
         shell: bash
         run: |
@@ -134,6 +139,42 @@ jobs:
           fi
           pwsh -NoProfile -File ./tools/check-release-identity.ps1 -DeviceSerial emulator-5554 -SdkRoot "$ANDROID_HOME"
           python3 tools/check-release-codec.py --device emulator-5554 --sdk "$ANDROID_HOME"
-          python3 -m unittest discover -s tools/tests -p 'test_audio_build_config.py'
-          ./gradlew :audio-opus:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.audio.opus.OpusAudioPlayerFocusTest,io.github.ts3mobile.audio.opus.NativeAudioLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackLifecycleTest --max-workers=2
-          ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.app.service.MicrophoneControllerTest,io.github.ts3mobile.app.ui.PlaybackFailureTest --max-workers=2
+          python3 -m unittest discover -s tools/tests -p 'test_*.py'
+          ./gradlew :audio-opus:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.audio.opus.OpusAudioPlayerFocusTest,io.github.ts3mobile.audio.opus.NativeAudioLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackRoutePreparationTest,io.github.ts3mobile.audio.opus.PlaybackDiagnosticsTest,io.github.ts3mobile.audio.opus.MicrophonePipelineTest,io.github.ts3mobile.audio.opus.ParticipantMuteMeasurementTest,io.github.ts3mobile.audio.opus.ParticipantMuteIsolationTest --max-workers=2
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          logs = list(Path('audio-opus/build/outputs/androidTest-results/connected').rglob('logcat-*ParticipantMuteMeasurementTest-*.txt'))
+          if len(logs) != 1:
+              raise RuntimeError('Expected one synthetic participant-mute measurement log')
+          payload = '\n'.join(line.split('PARTICIPANT_MUTE_JSON=', 1)[1] for line in logs[0].read_text().splitlines() if 'PARTICIPANT_MUTE_JSON=' in line)
+          report = json.loads(payload)
+          if report.get('fakeOutputOnly') is not True or len(report.get('traces', [])) != 6:
+              raise RuntimeError('Incomplete synthetic participant-mute report')
+          target = Path('build/participant-mute/measurement.json')
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(json.dumps(report, indent=2) + '\n')
+          PY
+          ./gradlew :app:assembleDebugAndroidTest --max-workers=2
+          python3 tools/check-identity-crash.py --device emulator-5554 --sdk "$ANDROID_HOME"
+          ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.app.service.MicrophoneControllerTest,io.github.ts3mobile.app.ui.PlaybackFailureTest,io.github.ts3mobile.app.service.OfflineAudioDiagnosticsTest,io.github.ts3mobile.app.ui.OfflineDiagnosticsUiTest,io.github.ts3mobile.app.ui.ChatNavigationStateTest,io.github.ts3mobile.app.ui.ChatPanelTest,io.github.ts3mobile.app.ui.PrivateChatPanelTest,io.github.ts3mobile.app.ui.BookmarkEditorTest,io.github.ts3mobile.app.ui.BookmarkListTest,io.github.ts3mobile.app.ui.MicrophoneSettingsTest,io.github.ts3mobile.app.settings.MicrophonePreferenceLifecycleTest,io.github.ts3mobile.app.ui.CurrentConnectionBookmarkTest,io.github.ts3mobile.app.ui.ChannelJoinActionTest,io.github.ts3mobile.app.bookmarks.BookmarkVaultTest,io.github.ts3mobile.app.service.PrivateMessageNotificationsTest,io.github.ts3mobile.app.service.ChatNotificationActivityTest,io.github.ts3mobile.app.ui.ChatNotificationNavigationTest,io.github.ts3mobile.app.service.PokeNotificationsTest,io.github.ts3mobile.app.ui.MicrophoneLevelTest,io.github.ts3mobile.app.service.MicrophoneLevelObserverTest,io.github.ts3mobile.app.ui.SecondBatchExperienceTest,io.github.ts3mobile.app.identity.backup.IdentityBackupFormatTest,io.github.ts3mobile.app.crypto.LegacyVaultCipherTest,io.github.ts3mobile.app.crypto.AndroidKeystoreKeysTest,io.github.ts3mobile.app.identity.IdentityTransactionTest,io.github.ts3mobile.app.service.IdentityMaintenanceServiceTest,io.github.ts3mobile.app.identity.documents.BackupDocumentTest,io.github.ts3mobile.app.identity.IdentityManagementScreenTest,io.github.ts3mobile.app.identity.IdentityActivityTest,io.github.ts3mobile.app.identity.IdentityMenuTest,io.github.ts3mobile.app.identity.IdentitySystemPickerTest,io.github.ts3mobile.app.identity.IndependentIdentityRestoreTest,io.github.ts3mobile.app.identity.IdentityRestoreSectionTest,io.github.ts3mobile.app.identity.IdentityRestorePickerTest,io.github.ts3mobile.app.appearance.AppearanceScreenTest,io.github.ts3mobile.app.updates.GitHubReleaseJsonTest,io.github.ts3mobile.app.updates.UpdatesScreenTest,io.github.ts3mobile.app.updates.ReleaseNotesMarkdownTest,io.github.ts3mobile.app.updates.UpdateEntryTest,io.github.ts3mobile.app.appearance.AppearanceActivityTest,io.github.ts3mobile.app.ui.InputDialogImeTest,io.github.ts3mobile.app.ui.GateControlLayoutTest,io.github.ts3mobile.app.ui.ChatBubbleLayoutTest,io.github.ts3mobile.app.ui.SearchResultLayoutTest --max-workers=2
+
+      - name: Preserve test and lint reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: android-reports-${{ github.sha }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ts3-protocol/build/test-results/test/*.xml
+            audio-opus/build/test-results/testDebugUnitTest/*.xml
+            app/build/test-results/testDebugUnitTest/*.xml
+            audio-opus/build/outputs/androidTest-results/connected/**/*.xml
+            app/build/outputs/androidTest-results/connected/**/*.xml
+            audio-opus/build/reports/lint-results-*.xml
+            app/build/reports/lint-results-*.xml
+            build/identity-crash/**/*.json
+            build/identity-crash/**/*.log
+            build/participant-mute/*.json
+            ${{ runner.temp }}/release-identity-emulator.log

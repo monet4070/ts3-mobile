@@ -12,6 +12,7 @@ import io.github.ts3mobile.protocol.Ts3TextEvent
 import io.github.ts3mobile.protocol.boundedText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.UUID
 
 /** Service memory only; directory and retention have separate, deterministic responsibilities. */
 class ChatStore(
@@ -38,7 +39,7 @@ class ChatStore(
         activeAttempt = null
         latestAttempt = Long.MIN_VALUE
         sequence = 0
-        mutable.value = ChatState(scope = scope)
+        mutable.value = ChatState(scope = scope, sessionToken = UUID.randomUUID().toString())
     }
 
     @Synchronized fun clear(scope: Long? = mutable.value.scope) {
@@ -58,7 +59,10 @@ class ChatStore(
         var previous = mutable.value
         if (previous.scope != scope || attempt < latestAttempt) return false
         val ownClientId = binding?.ownClientId ?: previous.ownClientId.takeIf { activeAttempt == attempt }
-        if (activeAttempt != attempt) previous = previous.withoutAttemptTargets()
+        if (activeAttempt != attempt) {
+            previous = previous.withoutAttemptTargets()
+            if (activeAttempt != null) previous = previous.invalidateMessageNotifications()
+        }
         latestAttempt = attempt
         activeAttempt = attempt
         directory.update(attempt, participants, ownClientId)
@@ -93,7 +97,7 @@ class ChatStore(
         if (mutable.value.scope != scope || activeAttempt != attempt) return false
         activeAttempt = null
         directory.clear()
-        mutable.value = mutable.value.withoutAttemptTargets().copy(connected = false, switching = false)
+        mutable.value = mutable.value.withoutAttemptTargets().invalidateMessageNotifications().copy(connected = false, switching = false)
         return true
     }
 
@@ -249,8 +253,13 @@ class ChatStore(
                 bounded,
             )
                 .copy(truncated = event.issue == TextEventIssue.TRUNCATED || bounded.length != event.body.length, type = type)
-        mutable.value = retention.append(mutable.value, key, incoming)
-        if (type == ChatMessageType.POKE) mutable.value = mutable.value.copy(pokeNoticeId = incoming.id)
+        val appended = retention.append(mutable.value, key, incoming)
+        mutable.value =
+            when {
+                type == ChatMessageType.POKE -> appended.copy(pokeNoticeId = incoming.id)
+                event.mode == TextTargetMode.PRIVATE -> appended.withPrivateMessageActivity(key)
+                else -> appended
+            }
     }
 
     @Synchronized fun receivePoke(

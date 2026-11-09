@@ -20,14 +20,35 @@ connects. A2DP-only media endpoints are not added to the duplex communication li
 
 Latch listening mute before clearing a removed selected route. Switch refusal or
 exception, a five-second Bluetooth confirmation timeout, and loss of an established
-Bluetooth communication route also latch mute. Android 12+ communication-device
+Bluetooth communication route during playback also latch mute. Android 12+ communication-device
 callbacks and older SCO/noisy broadcasts supply early loss signals. Communication
-callbacks use the reported transition so a brief loss followed by a fast reconnect
-still latches mute; rereading only the latest device could miss that loss. The playback
+callbacks preserve the reported transition so a brief loss during playback followed
+by a fast reconnect still latches mute; the router separately classifies idle suspension.
+The playback
 output checks the actual `AudioTrack` route before writes and on route callbacks;
 Bluetooth-to-speaker/earpiece/other fallback silences the output and requests the
 same safety mute. The guard survives output recreation between talkspurts, including
 Bluetooth reached through the system route.
+
+### Idle SCO suspension correction (2026-11-08)
+
+Xiaomi 14 system history and a diagnostic build reproduced SCO being released
+after about 60 seconds while the selected headset remained available and playback
+was idle. Treating every communication-route release as a disconnect latched mute
+on a normally connected headset. This behavior was already present in v1.0.0.
+
+An idle release with the selected Bluetooth device still available now retires old
+PCM and arms a fresh Bluetooth-only attempt without latching user mute. It does
+not keep SCO alive or retry while idle. Fresh playback first obtains audio focus,
+then requests the same Bluetooth route. A new attempt revokes the retired track's
+confirmation and cannot write to the speaker/earpiece while Bluetooth settles.
+Removal, noisy broadcasts, setup timeout, refused recovery and loss during active
+playback retain the manual-acknowledgement protection. Manual route selection
+cancels the pending recovery. Public constructors remain available; the additional
+output-preparation callback is additive and does not change persisted formats.
+
+See [the mobile RX audit](../testing/MOBILE_RX_AUDIT_2026-11-08_ZH.md) for evidence,
+regression tests and physical verification limits.
 
 A route transition invalidates queued voice and silences the previous output before
 changing the platform route. A pending Bluetooth output starts without audible PCM;

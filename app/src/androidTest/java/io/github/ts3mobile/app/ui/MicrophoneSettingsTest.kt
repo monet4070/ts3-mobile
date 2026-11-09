@@ -14,7 +14,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import io.github.ts3mobile.app.service.MicrophoneMode
+import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
 import io.github.ts3mobile.audio.opus.EchoCancellationState
+import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -99,6 +101,34 @@ class MicrophoneSettingsTest {
         rule.runOnIdle {
             assertEquals(-15, fixture.state.value.microphoneSettings.gateThresholdDb)
             assertFalse(fixture.state.value.isCapturing)
+        }
+    }
+
+    @Test fun failedSaveIsVisibleAndRetryDoesNotPretendTheSettingsAreSaved() {
+        val fixture = UiFixture()
+        fixture.microphonePreferenceStatus.value = MicrophonePreferenceStatus.WRITE_FAILED
+        rule.setContent { fixture.Render() }
+        openSettings()
+        rule.onNodeWithText("Tuning could not be saved. Changes remain active for this service; retry to keep them.")
+            .assertIsDisplayed()
+        rule.onNodeWithText("Tuning saved on this device").assertDoesNotExist()
+        rule.onNodeWithText("Retry saving or loading").performScrollTo().performClick()
+        rule.runOnIdle { assertEquals(1, fixture.microphonePreferenceRetries) }
+        rule.onNodeWithText("Tuning saved on this device").assertDoesNotExist()
+    }
+
+    @Test fun restoringDefaultsAndClosingCommitsWithoutStartingCapture() {
+        val fixture = UiFixture()
+        fixture.state.value = fixture.state.value.copy(microphoneSettings = MicrophoneSettings(170, false, false, -20))
+        rule.setContent { fixture.Render() }
+        openSettings()
+        rule.onNodeWithText("Restore tuning defaults").performScrollTo().performClick()
+        rule.runOnIdle { assertEquals(MicrophoneSettings(), fixture.state.value.microphoneSettings) }
+        rule.onNodeWithText("Close").performClick()
+        rule.runOnIdle {
+            assertTrue(fixture.microphonePreferenceCommits > 0)
+            assertFalse(fixture.state.value.isCapturing)
+            assertTrue(fixture.transmission.none { it })
         }
     }
 

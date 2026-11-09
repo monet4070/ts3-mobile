@@ -4,7 +4,7 @@ Thanks for helping improve TS3 Mobile. This is a community-maintained client;
 changes should preserve connection stability, bounded audio latency, and user
 control over microphone transmission.
 
-The first stable release is 1.0.0 (2026-11-04). User documentation starts
+The current stable line is 1.1.0 (2026-11-09); 1.0.0 was the first stable release. User documentation starts
 at the [README](README.md); release roles, artifact/signature requirements and
 open acceptance items are in the [release pack](docs/release/README.md).
 Do not mark a release or a device-matrix row passed merely because docs are ready.
@@ -88,7 +88,30 @@ emulator (no TeamSpeak server or credentials are required):
 ```
 
 The preview tests write PNGs into the app's external `ui-previews` directory.
+CI also runs the main-tab chat navigation, channel/private chat, bookmark
+editor/list and microphone preference workflows alongside microphone/playback
+checks. Pull requests into `main` and stacked `codex/**` branches receive the
+same checks. JUnit,
+Android test and lint XML reports plus emulator startup logs are retained for
+seven days, including failed runs. These offline tests use synthetic data;
+never add live identities, messages or device dumps to artifact paths.
 Check both palettes, Chinese text and large text before changing shared UI tokens.
+
+Participant-mute regression uses the offline `ParticipantMuteMeasurementTest`
+and `ParticipantMuteIsolationTest` audio classes. They feed synthetic native Opus
+into a fake output, without recording or a server. CI preserves only the extracted
+synthetic measurement JSON, not full device logs. The production output still
+retires; these metrics do not establish audible HAL gaps. See
+[B1.2 evidence](docs/testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
+
+Appearance regressions use `AppearanceScreenTest` and `AppearanceActivityTest`.
+`GateControlLayoutTest`, `ChatBubbleLayoutTest` and `SearchResultLayoutTest`
+check the shared gate scale (including RTL), message alignment and search-row
+hierarchy with synthetic inputs. CI includes all three; screenshots remain local.
+`InputDialogImeTest` enables the emulator software keyboard temporarily, waits
+for stable insets and checks actions against the actual visible window frame;
+it restores the prior keyboard preference. It records no audio and uses no server.
+See [D1 checks](docs/testing/IMPROVEMENT_D1_2026-11-07_ZH.md).
 
 Changes to native audio or device interaction should also be tested on a
 physical device. Describe the tested device, Android version, audio route, and
@@ -182,6 +205,32 @@ same checked-in synthetic corpus through production JNI. Regenerate assets only
 with an intentional reviewed `--write-fixtures` run. All four ABIs must build;
 runtime evidence must name the ABI actually tested. See [A4a evidence](docs/testing/AUDIO_A4A_2026-10-24.md).
 
+### In-place Debug and minified upgrade fixtures
+
+`tools/check-upgrade-compat.py` seeds a fresh disposable emulator through the
+installed baseline Debug app's actual identity, form and bookmark vaults, then
+uses `adb install -r` to update without clearing data. It checks APK identity,
+version and certificates before installation and refuses physical devices or
+an emulator that already contains the app/probe. It never uninstalls an app to
+make the check pass. Use a dedicated new AVD, not a personal session.
+
+```sh
+python3 tools/check-upgrade-compat.py --device emulator-5558 --sdk "$ANDROID_HOME" --baseline-apk /path/to/baseline-debug.apk --candidate-apk /path/to/candidate.apk
+# For an A2+ baseline, also preserve four non-default microphone preferences:
+python3 tools/check-upgrade-compat.py --device emulator-5558 --sdk "$ANDROID_HOME" --baseline-apk /path/to/a2-or-later-debug.apk --candidate-apk /path/to/candidate.apk --include-tuning
+python3 -m unittest discover -s tools/tests -p 'test_*.py'
+```
+
+The isolated Java/manifest under `app/src/upgradeSmokeTest` is compiled separately;
+it does not enter production or keep classes alive for R8. Debug candidates are
+verified through real vault reads. For minified candidates, the probe verifies
+unchanged encrypted files, original-key AES-GCM challenges and application UID;
+also inspect the actual app's form/bookmark UI and run the Release parsing probe.
+Use copies signed with the standard Android development test key, never a
+production key. A test-signed upgrade does not establish production signing or
+real-user-data acceptance. Results and aggregate hashes remain under ignored
+`build/upgrade-compat/`, without printing identity material or passwords.
+
 ## Pull requests
 
 Explain the user-visible behavior, technical approach, tests performed, and
@@ -197,3 +246,13 @@ all passed. Physical-device evidence is required for audio routing, microphone,
 foreground-service, and native codec behavior.
 
 All contributors must follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+
+### Offline audio diagnostic regressions
+
+Follow [ADR 0035](docs/decisions/0035-offline-audio-diagnostics.md). Keep observation callbacks free
+of disk/network I/O, retain report/v2 fields, and validate bounded append/recovery and clipboard size.
+The offline emulator gate includes `PlaybackDiagnosticsTest`, `OfflineAudioDiagnosticsTest` and
+`OfflineDiagnosticsUiTest`; all use synthetic media/fake output or no frames and no live server.
+Never run install/connected-test commands against a user's production package to bypass signatures.
+Field listening results remain separate from telemetry and offline verification.

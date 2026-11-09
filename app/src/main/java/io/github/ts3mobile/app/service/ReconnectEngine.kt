@@ -4,6 +4,8 @@ import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ServerConfig
 import io.github.ts3mobile.protocol.SessionSnapshot
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -20,6 +22,9 @@ import kotlinx.coroutines.launch
 internal class ReconnectEngine(
     private val host: ConnectionCoordinatorHost,
     private val delegate: Delegate,
+    private val prepareJob: (suspend CoroutineScope.() -> Unit) -> Job? = { block ->
+        host.serviceScope.launch(start = CoroutineStart.LAZY, block = block)
+    },
 ) {
     private var reconnectAttempt = 0
     private var reconnectJob: Job? = null
@@ -39,7 +44,7 @@ internal class ReconnectEngine(
         cause: ConnectionStatus,
         epoch: Long,
     ) {
-        if (!host.sessionGeneration.isActive(epoch)) return
+        if (!isEpochActive(epoch)) return
         val message =
             if (host.networkAvailable.value) {
                 UserMessage.ConnectionInterrupted(cause.detail?.takeIf(String::isNotBlank))
@@ -67,19 +72,21 @@ internal class ReconnectEngine(
         if (isActive) return
 
         val job =
-            host.serviceScope.launch {
+            prepareJob {
+                if (!isEpochActive(epoch)) return@prepareJob
                 delegate.suspendAudioForReconnect()
                 loop(epoch)
-            }
+            } ?: return
         reconnectJob = job
         job.invokeOnCompletion {
             if (reconnectJob === job) reconnectJob = null
         }
+        job.start()
     }
 
     private suspend fun loop(epoch: Long) {
         val config = delegate.desiredConfig ?: return
-        while (host.sessionGeneration.isActive(epoch)) {
+        while (isEpochActive(epoch)) {
             if (!host.networkAvailable.value) {
                 host.mutableState.update { current ->
                     current.withStatus(
@@ -93,7 +100,7 @@ internal class ReconnectEngine(
                 host.updateNotification()
                 host.networkAvailable.first { it }
             }
-            if (!host.sessionGeneration.isActive(epoch)) return
+            if (!isEpochActive(epoch)) return
 
             val attempt = reconnectAttempt + 1
             val delayMs = host.reconnectPolicy.delayForAttempt(attempt)
@@ -109,7 +116,7 @@ internal class ReconnectEngine(
             host.updateNotification()
             delay(delayMs)
             if (!host.networkAvailable.value) continue
-            if (!host.sessionGeneration.isActive(epoch)) return
+            if (!isEpochActive(epoch)) return
 
             reconnectAttempt = attempt
             host.mutableState.update { current ->
@@ -137,7 +144,11 @@ internal class ReconnectEngine(
         }
     }
 
+    private fun isEpochActive(epoch: Long): Boolean = host.sessionGeneration.isActive(epoch) && delegate.isEpochActive(epoch)
+
     internal interface Delegate {
+        fun isEpochActive(epoch: Long): Boolean = true
+
         val desiredConfig: ServerConfig?
 
         suspend fun performAttempt(epoch: Long): AttemptResult

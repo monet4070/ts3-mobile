@@ -18,6 +18,7 @@ import io.github.ts3mobile.protocol.ConnectionFailureCategory
  */
 fun UserMessage.resolve(context: Context): String =
     when (this) {
+        UserMessage.IdentityMaintenance -> context.getString(R.string.status_identity_maintenance)
         UserMessage.NotConnected -> context.getString(R.string.status_not_connected)
         UserMessage.SessionExpired -> context.getString(R.string.status_session_expired)
         UserMessage.WaitingForNetwork -> context.getString(R.string.status_waiting_for_network)
@@ -41,6 +42,7 @@ fun UserMessage.resolve(context: Context): String =
         is UserMessage.Reconnecting -> context.getString(R.string.status_reconnecting_attempt, attempt)
         UserMessage.ConnectionLimitWait -> context.connectionLimitGuidance()
         is UserMessage.ChannelJoinFailed -> context.getString(R.string.channel_join_failed, cause)
+        UserMessage.ChannelTargetChanged -> context.getString(R.string.channel_target_changed)
         is UserMessage.ChannelRestoreFailed -> context.getString(R.string.channel_restore_failed, cause)
         UserMessage.MicrophonePermissionForContinuous ->
             context.getString(R.string.microphone_permission_continuous)

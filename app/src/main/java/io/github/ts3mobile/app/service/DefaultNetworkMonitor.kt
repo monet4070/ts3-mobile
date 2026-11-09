@@ -67,6 +67,7 @@ internal class DefaultNetworkMonitor(
                     tracker.onCapabilitiesChanged(
                         key,
                         capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+                        diagnosticTransport(capabilities),
                     )
                 }
             }
@@ -123,6 +124,7 @@ internal class DefaultNetworkMonitor(
             tracker.onCapabilitiesChanged(
                 key,
                 capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+                diagnosticTransport(capabilities),
             )
         }
         return tracker.current
@@ -144,3 +146,12 @@ internal class DefaultNetworkMonitor(
         if (changed) onStateChanged?.invoke(status)
     }
 }
+
+private fun diagnosticTransport(capabilities: NetworkCapabilities): DiagnosticNetwork =
+    when {
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> DiagnosticNetwork.VPN
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> DiagnosticNetwork.CELLULAR
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> DiagnosticNetwork.WIFI
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> DiagnosticNetwork.ETHERNET
+        else -> DiagnosticNetwork.OTHER
+    }

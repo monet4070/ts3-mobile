@@ -42,6 +42,8 @@ internal class ParticipantGainMixer {
 
     fun advanceSilence(samples: Int) = limiter.advanceSilence(samples)
 
+    fun resetOutputHistory() = limiter.reset()
+
     fun reset() {
         gains.clear()
         limiter.reset()

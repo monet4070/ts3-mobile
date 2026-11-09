@@ -1,5 +1,21 @@
 # 兼容性与验证范围 / Compatibility and validation
 
+更新日期：2026-11-09。当前版本 **1.1.0 / versionCode 15**；确切最终包门禁、签名、
+Xiaomi 14 升级与云端 CI 以 [1.1.0 发布验收](release/1.1.0/CHECKLIST.md) 为准。
+
+1.1.0 集成先前离线/模拟器候选及后续 UI、蓝牙、更新检查和离线诊断。
+此前 UI/更新检查通过 421 项应用 JVM 与 23 项定向 Android 回归；离线诊断在 Xiaomi 14 /
+Android 16、移动网络、蓝牙下完成正常断开、重启恢复和文件导出，用户曾反馈暂时流畅。
+这些是带日期的功能证据，不代替最终 1.1.0 APK 的重新验收，也不证明真实弱网已解决。
+
+Android 8.0+、四 ABI 和单一活动服务器范围保持不变。其他 OEM/API、长时锁屏、蓝牙热插拔、
+电量开销及独立安全审计仍有限。身份备份是自有加密格式；收藏/表单没有应用内备份迁移。
+
+下面保留 1.0.0 与开发候选的历史数据；原“未发布”或“尚未验收”描述仅对应各节当时工件，
+最终 1.1.0 的状态请以上方发布验收为准。
+
+## 1.0.0 / code 14 历史范围
+
 更新日期：2026-11-05。对应修复重发 **1.0.0 / versionCode 14**，替代撤回的 code 13。
 
 本次音频修复新增 11 项独立回归，全量 JVM 测试为 562 项。Android 16 调试包的
@@ -54,7 +70,7 @@
 - Android 通知权限、频道、勿扰和电池策略可能抑制提醒或中断后台连接。
 - 音量门控在安静时持续采集；设备 AEC 支持与实际声学效果因设备不同。
 - 聊天/戳一下记录与草稿只在服务内存；不提供永久历史、云同步或已读回执。
-- 身份导入导出、收藏跨包迁移、Whisper、文件传输、管理和多服务器标签页未实现。
+- 公开code14没有身份导入导出；本分支C2草稿候选支持自有加密格式，验证边界见下方。收藏跨包迁移、Whisper、文件传输、管理和多服务器标签页仍未实现。
 - 默认 APK 不包含 APM 实验库，不将开发实验结果宣传为默认能力。
 - ts3j 使用维护者 fork 的不可移动标签 `ts3mobile-1`，源码与原固定提交相同；
   JitPack 可用性仍是构建边界，见 [ADR-0004](decisions/0004-take-ownership-of-ts3j-dependency.md)。
@@ -101,3 +117,49 @@ device AEC quality remain system-dependent. Volume gate captures during silence.
 Chat/poke history is memory-only with no read receipts or cloud history. Identity
 export/transfer, Whisper, file transfer, administration, multi-server tabs and the
 optional APM experiment are outside the default release.
+
+
+## 身份改进候选范围 / Identity candidate scope
+
+C2候选在API35／arm64／4KiB独立模拟器验证自有备份的实际SAF导出、跨安装导入、明确确认、
+force-stop后精确身份材料和本地回退，含测试签名minified实际页面。具体SHA及source约束见
+[C2.2](testing/IMPROVEMENT_C22_2026-11-07_ZH.md)、[C2.3](testing/IMPROVEMENT_C23_2026-11-07_ZH.md)及
+[R3候选](testing/IMPROVEMENT_R3_2026-11-07_ZH.md)。公开1.0.0/code14尚未包含这些功能。
+测试没有使用生产签名私钥、真实个人身份、线上服务器或录音。API26运行时、低端物理设备、
+OEM／云文件提供方持久性、公开签名覆盖升级和独立安全审计仍未验收；构建minSdk26不是运行时证明。
+
+The unshipped identity candidate is verified on independent API35 arm64 4-KiB
+emulators, including actual SAF export/import, explicit confirmation, exact private
+material after force-stop, and local rollback in test-signed minified builds.
+Published code 14 does not include it. Source/APK fingerprints and limits are in
+the linked C2.2/C2.3/R3 records. No production key, personal identity, live server
+or recording was used. API26 runtime, low-end/OEM hardware, cloud-provider durability,
+published-signature upgrades and an independent security audit remain unverified.
+
+## 最终提升候选范围 / Final improvement candidate — 2026-11-08
+
+本节仅对应尚未发布的P0–R4组合候选，生产源码沿用D2 `417ebf1`，版本字段仍是1.0.0/code14。
+与上面的公开code14及code13历史证据分别记录，不表示公开包已具备候选功能。
+精确APK／源码摘要、原日志位置及回退边界见[R4](testing/IMPROVEMENT_R4_2026-11-07_ZH.md)。
+
+| 验证条件 | 本轮已通过 | 保留边界 |
+| --- | --- | --- |
+| JVM／工具 | app384、protocol133、audio219，共736；Python18 | 合成fixture，不连接线上服务 |
+| API35 ARM64，4 KiB | 完整app Android210通过／2外部fixture跳过；选定离线音频18通过；实际minified身份与Opus探针 | 不含录音／可选APM实验；不是所有API或机型证明 |
+| fresh API35 ARM64，4 KiB | B1→最终Debug和测试签名minified覆盖升级保全原三Vault／keys／UID／调音；D1主题→Debug→minified保全并从真实UI读回 | Debug通过真实Vault读值；minified升级严格核对原文件／原密钥／UID，不称真实Vault方法读回 |
+| fresh API35 ARM64，16 KiB | 八个身份事务边界真实进程终止恢复／保全；最终minified Opus往返 | 未运行完整16 KiB UI／音频套件 |
+| 单人静音 | 同一合成进料下其他人的有效未混音队列与decoder保留，最终六条native player轨迹复核 | 输出仍安全退役；无flush的50%声音缺口目标和实体听感未验 |
+
+未执行：实体OEM／锁屏通知／麦克风与物理音频路由、真实服务器组合、未测API、生产签名覆盖升级、
+云文件提供方持久性及独立安全审计。没有合并、公开发布或版本提升。
+
+This unshipped candidate retains production source `417ebf1` and version fields
+1.0.0/code14. It passed 736 JVM, 18 Python, 210 full-app Android and 18 selected
+offline-audio Android tests; two external-fixture app tests were skipped. The full
+Android suite ran on API35 ARM64 with 4-KiB pages. Fresh in-place Debug/minified
+upgrades preserved original storage, keys, UID, tuning and selected appearance.
+Debug read values through real vaults; minified upgrade checks preserve raw files
+and original keys and do not claim reflective vault readback. A separate fresh
+16-KiB emulator passed eight process-crash boundaries and the minified Opus probe,
+not the complete UI suite. Physical/OEM behavior, listening gaps, live servers,
+other APIs, production-signed upgrades and an independent audit remain unverified.

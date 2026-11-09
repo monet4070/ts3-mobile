@@ -1,8 +1,6 @@
 package io.github.ts3mobile.app
 
 import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -13,7 +11,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -27,16 +24,21 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.service.MicrophoneMode
+import io.github.ts3mobile.app.service.PrivateMessageNotificationIntent
+import io.github.ts3mobile.app.service.PrivateMessageNotifications
 import io.github.ts3mobile.app.service.TeamSpeakService
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
+import io.github.ts3mobile.app.settings.MicrophonePreferenceState
 import io.github.ts3mobile.app.ui.MainScreen
-import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
+import io.github.ts3mobile.app.ui.theme.ApplicationTheme
 import io.github.ts3mobile.protocol.ServerConfig
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MainViewModel>()
     private var serviceBinder by mutableStateOf<TeamSpeakService.SessionBinder?>(null)
+    private val diagnosticReports = DiagnosticReportActions(this) { serviceBinder?.redactedDiagnosticsJson() }
     private var isBound = false
     private var pushToTalkPressed = false
     private var activityVisible = false
@@ -74,6 +76,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 serviceBinder = binder as? TeamSpeakService.SessionBinder
                 serviceBinder?.setAppVisible(activityVisible)
+                resolveChatNotification()
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -83,15 +86,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) viewModel.chatNotificationEntry.accept(PrivateMessageNotificationIntent.token(intent))
         enableEdgeToEdge()
         setContent {
-            Ts3MobileTheme {
+            ApplicationTheme {
                 val fallbackState = remember { MutableStateFlow(TeamSpeakServiceState()) }
                 val serviceState by (serviceBinder?.state ?: fallbackState)
                     .collectAsStateWithLifecycle()
                 val fallbackChat = remember { MutableStateFlow(ChatState()) }
                 val chatState by (serviceBinder?.chatState ?: fallbackChat).collectAsStateWithLifecycle()
+                val fallbackPreferences = remember { MutableStateFlow(MicrophonePreferenceState()) }
+                val microphonePreferences by (serviceBinder?.microphonePreferenceState ?: fallbackPreferences).collectAsStateWithLifecycle()
                 val form by viewModel.form.collectAsStateWithLifecycle()
+                val chatNotification by viewModel.chatNotificationEntry.destination.collectAsStateWithLifecycle()
                 val history by viewModel.history.collectAsStateWithLifecycle()
                 val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
                 val historyError by viewModel.historyError.collectAsStateWithLifecycle()
@@ -128,9 +135,11 @@ class MainActivity : ComponentActivity() {
                     onMicrophoneModeChanged = ::setMicrophoneMode,
                     onPushToTalkChanged = ::setPushToTalkPressed,
                     onJoinChannel = { channelId, password ->
-                        serviceBinder?.joinChannel(channelId, password)
+                        serviceBinder?.joinChannel(channelId, password, serviceState.bookmarkConnection?.token)
                     },
-                    onCopyDiagnostics = ::copyDiagnostics,
+                    onCopyDiagnostics = diagnosticReports::copy,
+                    onSaveDiagnostics = diagnosticReports::save,
+                    onMarkAudioIssue = { diagnosticReports.mark { serviceBinder?.markAudioIssue() == true } },
                     onKeepCpuAwakeChanged = { serviceBinder?.setKeepCpuAwake(it) },
                     onRefreshBackgroundRuntime = { serviceBinder?.refreshBackgroundRuntime() },
                     onBatterySettings = ::openBatterySettings,
@@ -144,10 +153,17 @@ class MainActivity : ComponentActivity() {
                     onChatConversationClosed = { serviceBinder?.closeChat(it) },
                     onPoke = { recipient, reason -> serviceBinder?.poke(recipient, reason) ?: false },
                     onPokeDismiss = { serviceBinder?.dismissPoke(it) },
-                    onMicrophoneSettingsChanged = { serviceBinder?.setMicrophoneSettings(it) },
+                    microphonePreferenceStatus = microphonePreferences.status,
+                    onMicrophonePreferenceEdit = { field, settings -> serviceBinder?.editMicrophonePreference(field, settings) },
+                    onMicrophonePreferenceCommit = { serviceBinder?.commitMicrophonePreferences() },
+                    onMicrophonePreferenceRetry = { serviceBinder?.retryMicrophonePreferences() },
+                    onMicrophonePreferenceReset = { serviceBinder?.resetMicrophonePreferences() },
                     bookmarks = bookmarks,
                     canUseBookmarkConnection = serviceBinder != null,
                     onBookmarkSave = viewModel::saveBookmark,
+                    onBookmarkSaveFromConnection = { entry, selection ->
+                        viewModel.saveBookmarkValidated(entry) { serviceBinder?.validateBookmarkSelection(entry, selection) == true }
+                    },
                     onBookmarkRemove = viewModel::removeBookmark,
                     onBookmarkSelect = viewModel::applyBookmark,
                     onBookmarkConnect = { entry ->
@@ -163,7 +179,19 @@ class MainActivity : ComponentActivity() {
                     onAwayChanged = { away, message -> serviceBinder?.setAway(away, message) },
                     onPresenceRetry = { serviceBinder?.retryPresence() },
                     onResolveUserChannel = { id, uid -> serviceBinder?.resolveUserChannel(id, uid) },
+                    onIdentityManagement = {
+                        startActivity(
+                            Intent(this, io.github.ts3mobile.app.identity.IdentityManagementActivity::class.java),
+                        )
+                    },
+                    onAppearance = { startActivity(Intent(this, io.github.ts3mobile.app.appearance.AppearanceActivity::class.java)) },
                     onOpenRepository = { openProjectRepository(this) },
+                    onCheckUpdates = { startActivity(Intent(this, io.github.ts3mobile.app.updates.UpdatesActivity::class.java)) },
+                    chatNotification = chatNotification,
+                    onChatNotificationConsumed = viewModel.chatNotificationEntry::consumed,
+                    onUserNavigation = viewModel.chatNotificationEntry::cancel,
+                    onNotificationSettings = ::openNotificationSettings,
+                    microphoneLevels = serviceBinder?.microphoneLevels ?: remember { emptyFlow() },
                 )
             }
         }
@@ -177,6 +205,25 @@ class MainActivity : ComponentActivity() {
                 serviceConnection,
                 Context.BIND_AUTO_CREATE,
             )
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        viewModel.chatNotificationEntry.accept(PrivateMessageNotificationIntent.token(intent))
+        resolveChatNotification()
+    }
+
+    private fun resolveChatNotification() {
+        serviceBinder?.let { viewModel.chatNotificationEntry.resolve(it::consumeChatNotification) }
+    }
+
+    private fun openNotificationSettings() {
+        try {
+            startActivity(PrivateMessageNotifications.settingsIntent(this))
+        } catch (_: android.content.ActivityNotFoundException) {
+            openAppSettings()
+        }
     }
 
     override fun onPause() {
@@ -291,13 +338,5 @@ class MainActivity : ComponentActivity() {
             viewModel.pendingMicrophoneMode = null
             serviceBinder?.setMicrophoneMode(mode)
         }
-    }
-
-    private fun copyDiagnostics() {
-        val export = serviceBinder?.redactedDiagnosticsJson() ?: return
-        getSystemService(ClipboardManager::class.java).setPrimaryClip(
-            ClipData.newPlainText("TS3 Mobile diagnostics", export),
-        )
-        Toast.makeText(this, getString(R.string.diagnostics_copied), Toast.LENGTH_SHORT).show()
     }
 }

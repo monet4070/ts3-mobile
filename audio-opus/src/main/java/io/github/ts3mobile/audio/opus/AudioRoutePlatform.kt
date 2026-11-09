@@ -15,6 +15,7 @@ internal interface AudioRoutePlatform {
     fun start(
         onDevicesChanged: () -> Unit,
         onBluetoothLost: () -> Unit,
+        onBluetoothSuspended: () -> Unit,
     )
 
     fun select(routeId: Int): Boolean
@@ -47,6 +48,7 @@ internal class AndroidAudioRoutePlatform(context: Context) : AudioRoutePlatform 
     override fun start(
         onDevicesChanged: () -> Unit,
         onBluetoothLost: () -> Unit,
+        onBluetoothSuspended: () -> Unit,
     ) {
         this.onDevicesChanged = onDevicesChanged
         previousMode = manager.mode
@@ -54,7 +56,7 @@ internal class AndroidAudioRoutePlatform(context: Context) : AudioRoutePlatform 
         previousBluetoothScoOn = manager.isBluetoothScoOn
         manager.mode = AudioManager.MODE_IN_COMMUNICATION
         manager.registerAudioDeviceCallback(callback, handler)
-        bluetoothMonitor.start(onBluetoothLost)
+        bluetoothMonitor.start(onBluetoothLost, onBluetoothSuspended)
     }
 
     override fun routes(): List<AudioRouteOption> =

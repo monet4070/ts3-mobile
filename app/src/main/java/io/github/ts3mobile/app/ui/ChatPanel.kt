@@ -1,5 +1,6 @@
 package io.github.ts3mobile.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -88,7 +89,10 @@ internal fun ChatPanel(
         }
         if (state.overflow) Text(stringResource(R.string.chat_overflow), style = MaterialTheme.typography.labelSmall)
         if (state.invalidEvent) Text(stringResource(R.string.chat_invalid_event), style = MaterialTheme.typography.labelSmall)
-        LazyColumn(Modifier.weight(1f).testTag("chat_messages"), state = list) {
+        LazyColumn(
+            Modifier.weight(1f).background(MaterialTheme.colorScheme.surfaceContainerLow).testTag("chat_messages"),
+            state = list,
+        ) {
             if (state.messages.isEmpty()) item { Text(stringResource(R.string.chat_empty), Modifier.padding(16.dp)) }
             items(state.messages, key = { it.id }) { ChatMessageRow(it, state.active.isPrivate) }
         }

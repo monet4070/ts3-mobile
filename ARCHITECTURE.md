@@ -1,5 +1,34 @@
 # Architecture
 
+The independent `updates` page checks public GitHub Releases only when the user opens
+it, changes the remembered prerelease choice, or explicitly retries. `UpdateController`
+owns page state and rejects canceled/stale results; its mutex serializes blocking
+metadata requests. `GitHubHttpClient` bounds HTTPS redirects, time and response size,
+and `GitHubReleaseJson` binds release assets to their `BUILDINFO.json`. Android version
+codes decide update availability; app ID, certificate and Android compatibility are
+reported separately. Browser intents perform explicit downloads. No update work is
+started by the connection service or application startup, and no installer permission
+is added. The fixed page header owns close; the full release-note reader has its
+own scroll body and a fixed collapse action, restoring the summary scroll position.
+Markwon renders bounded Markdown to native text, including GFM tables/tasks and
+strikethrough; Compose supplies text scale and theme colors. Description links and
+images render labels/alt text without navigation or fetching. Explicit official
+release/download buttons retain navigation ownership. No HTML/image-loading plugin
+or WebView is used. See [ADR 0034](docs/decisions/0034-manual-update-checks.md).
+
+Offline audio diagnostics retain numeric receive/playback evidence without USB.
+`PlaybackDiagnostics` exposes per-generation counters and interval peaks; the service
+samples them on IO and observes only coarse route/focus/network categories.
+The application-owned `AudioDiagnosticRepository` appends bounded checkpoints and
+survives service replacement, retaining three audio generations with 120 samples
+and 64 events each. Normal retirement supplies a final snapshot; an abrupt exit
+recovers only successful checkpoints and marks the earlier generation interrupted.
+`audio` extends report/v2 without removing `session`/`history`. `counterKeys` and
+`peakKeys` label compact numeric arrays; counters are not network-loss percentages.
+No voice, endpoint, identity, client/device name or payload is stored. Formatting,
+clipboard preparation and document writes stay off the audio/UI threads. See
+[ADR 0035](docs/decisions/0035-offline-audio-diagnostics.md).
+
 The audio review follow-up is specified in
 [the repair plan](docs/plans/AUDIO_REVIEW_FIXES_2026-10-24_ZH.md).
 `OpusAudioPlayer` owns Android focus, routing and its worker; the serialized,
@@ -10,6 +39,16 @@ Stop invalidates first, interrupts the worker and joins only off the main thread
 Failed retirement keeps the old control reachable and blocks a new output until
 cleanup succeeds. Successful samples accumulate across short talkspurts to clear
 the failure streak, and idle wall time advances the limiter's release envelope.
+Participant mute transitions use `PlaybackAdmission` tickets and coalesced
+`PlaybackInvalidation` commands. Only the affected client's prepared/queued media
+is revoked; the worker preserves other valid unmixed leases and decoders. Late
+commands retain post-unmute generations that have already reset their decoder.
+Mixed PCM, render references and output still retire together, with a fresh
+timeline/head origin and shared limiter reset; other participants' gain envelopes
+remain. Global mute/focus/routes/stop retain global protection, and participant
+commands cannot shorten a retry deadline. See
+[ADR-0032](docs/decisions/0032-participant-playback-invalidation.md) and
+[offline measurement](docs/testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
 Playback failure guidance is shown only for an established connection. Retirement
 errors during intentional disconnect remain diagnostic events without prompting
 the user to reconnect. `MicrophoneController` owns capture/send serialization;
@@ -18,7 +57,7 @@ the user to reconnect. `MicrophoneController` owns capture/send serialization;
 An output that cannot be released blocks replacement. A failed session exposes
 `PlaybackStatus.FAILED`, consumed by service state, UI, notifications and a fixed
 diagnostic event; aggregate receive/recovery counters are emitted once on
-close without media or participant data. `MicrophoneVoiceSource` invalidates the
+close without media or participant data, and are retained in the offline archive. `MicrophoneVoiceSource` invalidates the
 send generation synchronously, while capture stop/close runs on the controller's
 IO dispatcher under its transmit mutex. Capture routing revisions invalidate
 queued audio, partial input and DSP history before new-route samples are encoded.
@@ -45,7 +84,7 @@ Compose UI / MainActivity
 TeamSpeakService (Android application layer)
         ├── Ts3SessionClient (protocol port)
         ├── OpusAudioPlayer / OpusMicrophoneCapture (audio ports)
-        └── IdentityVault (local encrypted storage)
+        └── Application-owned IdentityRepository → IdentityStore / IdentityVault (local encrypted storage)
                 │
                 ├── ts3-protocol (JVM models, session adapter, channel ordering)
                 └── audio-opus (JNI libopus/RNNoise and Android audio I/O)
@@ -55,6 +94,16 @@ TeamSpeakService (Android application layer)
 contains the concrete audio infrastructure and depends on protocol data types,
 not on Compose. The Android `app` module owns lifecycle, permissions,
 notifications, reconnection orchestration and user-visible error mapping.
+
+Microphone tuning persistence is app-owned: `MicrophonePreferenceController`
+merges field edits with delayed reads and serializes durable revisions through
+`MicrophonePreferenceDataStore`. Its separate Binder StateFlow reports save
+status without coupling it to connection-state resets. All applications are
+posted in order to the service main handler and use the existing microphone
+configuration entry; loading/resetting never requests capture or restores a
+capture mode. Unknown/corrupt preferences are not silently overwritten, and only
+an explicit tuning reset can replace an incompatible schema. See
+[ADR-0023](docs/decisions/0023-persistent-microphone-preferences.md).
 
 ## State and concurrency
 
@@ -76,6 +125,15 @@ success notification. `MicrophoneController`
 owns microphone permissions, push-to-talk intent, capture lifecycle and the
 separate transmit mutex; it updates the shared immutable service state through
 the application-layer state flow.
+
+`ConnectionMonitor` observes default-network transitions, a bounded post-switch
+probe and transport/watch ticks through the protocol port and monotonic clock.
+Facts carry the captured session, listener, epoch and (for probes) network
+generation. It owns no scope, service state or recovery action. The coordinator
+retains identity-lease job registration, validates facts, atomically claims the
+listener and applies existing terminal/reconnect/exit policy. Clock gaps are
+observations only; voice silence never triggers a probe. Watch/probe timing is
+unchanged. See [ADR-0034](docs/decisions/0034-session-bound-connection-monitoring.md).
 
 `SessionSnapshotStore` is the protocol adapter's synchronized mutable boundary.
 It converts ts3j events into immutable `SessionSnapshot` values before crossing
@@ -99,6 +157,10 @@ observes communication-device changes and legacy SCO/noisy broadcasts. `Bluetoot
 checks actual `AudioTrack` routes across output lifetimes; waiting routes discard stale voice and
 unexpected fallback silences output. Service state publishes the safety mute through the existing
 listening control. Only a manual unmute clears it; reconnecting a headset cannot resume playback.
+Idle SCO suspension while the selected headset remains available instead arms a pending Bluetooth
+attempt. The next playback obtains focus before requesting the route; a fresh guard generation
+keeps speaker/earpiece writes blocked during setup. Active loss, physical removal, timeout and
+denied recovery still latch mute. No idle SCO keepalive or repeated recovery timer is added.
 See [ADR 0020](docs/decisions/0020-bluetooth-playback-protection.md) for boundaries and verification.
 
 `ChannelRestorePolicy` keeps the last channel target, including its password,
@@ -111,8 +173,24 @@ Restore completion also refreshes chat's switching state, including on refusal.
 
 ## Visual presentation
 
+The November 8 presentation refinement uses sans-serif heading roles and separates
+dialog headers, scrollable content and actions. Search result rows own their icon,
+name, channel context and join affordance. Microphone settings group gate, gain and
+processing; only the level indicator collects live samples. Its Slider track shares
+the threshold's -60..-15 dBFS coordinate space, including RTL, while the numeric
+readout retains the actual RMS. Values outside that visible range clamp the fill,
+not the measurement. Chat renders incoming/outgoing bubbles and centered system
+notes without changing message storage, visibility/read tracking or send outcomes.
+
 The Compose layer follows TailSync's warm Canvas palette, with a cream light
 default, coordinated warm dark preview tokens and restrained 4/6/10 dp geometry.
+The app-owned `ThemePreferenceController` serializes a separate appearance
+DataStore and publishes selection/save status. `ApplicationTheme` wraps the three
+Activity roots; unset remains Light and only System follows configuration.
+Appearance has no service/audio port and updates Compose/bar contrast without
+recreating components. Unsupported/corrupt preferences remain visible errors;
+explicit appearance reset never touches identity or microphone settings. See
+[ADR-0033](docs/decisions/0033-persistent-appearance.md).
 `ui/theme` owns colors, typography and shapes; `UiComponents` owns shared panels
 and icon tiles. `AppIcon` renders
 bundled Lucide 0.468.0 vector drawables without a runtime icon dependency.
@@ -342,6 +420,12 @@ chat StateFlow. Activity collects this state without putting it in MainViewModel
 SavedState or persistent storage. Focused ChatPanel/ChatComposer/ChatMessageRow
 components own presentation; explicit SessionTab values preserve exhaustive
 navigation. Only tab choice, numeric conversation IDs and scroll metadata use saveable UI state.
+`ChatSessionState` owns the saveable providers outside the conditional main tabs.
+An opaque random `ChatState.sessionToken` namespaces each manual session across
+service instances; reconnect retains it. Conversation views restore a numeric
+message-sequence anchor and offset, so hidden retention eviction cannot silently
+restore an unrelated index. Hidden chat stays uncomposed and does not mark read.
+See [ADR-0022](docs/decisions/0022-session-scoped-chat-navigation.md).
 Closed conversation scroll buckets are removed, including after state recreation. See
 [ADR-0013](docs/decisions/0013-bounded-channel-text-chat.md) for deadline, privacy
 and decomposition boundaries and [ADR-0014](docs/decisions/0014-session-owned-private-conversations.md)
@@ -533,6 +617,17 @@ See [A4b traces, parameters and limits](docs/testing/AUDIO_A4B_2026-10-24.md).
 
 ## Bookmarks, presence and channel discovery
 
+The development branch adds a password-free `BookmarkConnection` context owned
+by the coordinator. Live channel selections capture its manual-connection token;
+the editor validates it and the real BookmarkVault checks it again inside its
+DataStore edit, alongside the existing revision rules. Endpoint matching does
+not resolve DNS aliases. The picker uses bounded local name/path results and
+keeps the existing defaultChannelId schema. Ordinary manual/offline edits retain
+their original behavior. Visible channel Join/accessibility actions share the
+existing password and join path; the binder forwards the captured connection
+token so stale UI cannot join a new server. See
+[ADR-0024](docs/decisions/0024-current-connection-channel-bookmarks.md).
+
 ADR-0017 fixes the current scope to recommendations 1/3/4. BookmarkVault has its
 own DataStore ciphertext and Keystore alias. BookmarkCodec bounds and validates
 schema/version/count/fields/IDs, strips passwords unless opted in, and compares
@@ -569,3 +664,126 @@ trailing fields; all consumers rebuild together, without a precompiled ABI promi
 MainScreenAppBar now owns the shared toolbar/menu, keeping MainScreen below the
 preferred 300-line boundary. Bookmark, presence and discovery dialogs/controllers
 remain separate from the connection coordinator and the activity/service wiring.
+
+## Private message alert boundary
+
+Accepted ordinary private TEXT advances bounded global/per-conversation revisions,
+independent of message eviction and unread receipts. `PrivateMessageAlertObserver`
+starts at a high water mark, uses fixed two-second windows and a synchronous
+foreground barrier. Disconnect advances a generation even when StateFlow conflates
+its pause/rebind updates. The first background summary alerts; subsequent updates
+use onlyAlertOnce. `PrivateMessageNotifications` obeys permission/channel/DND policy.
+
+`ChatNotificationRegistry` issues at most 16 random one-shot capabilities with a
+five-minute monotonic expiry. Explicit immutable PendingIntent identity includes
+only that token. Consumption and Compose both validate the manual session,
+disconnect generation and conversation existence. A ViewModel-owned
+`ChatNotificationEntry` handles cold/warm Activity entry and at most one request
+before binding; explicit navigation supersedes it. Single-target selection settles
+before mounting chat; summaries mount a restorable conversation list without
+message geometry/read callbacks. See [ADR-0025](docs/decisions/0025-private-message-notifications.md).
+
+## Subscribed microphone level boundary
+
+`MicrophoneFrameProcessor.levelDb` shares the existing gate RMS definition; an
+optional measurement for non-gated blocks cannot change gain/limiter/Opus output.
+`MicrophoneLevelMeter` owns one scalar and closeable subscriptions, with 100 ms
+monotonic publication limits and capture/processing/route revision barriers.
+Capture stop and configuration/routing invalidation clear stale values before
+late worker results can publish. No coroutine is created on the audio thread.
+
+The application exposes a cold polling Flow that closes its adapter subscription
+on cancellation. Only `MicrophoneLevelIndicator` collects it while started; levels
+never enter `MicrophoneCaptureState`, whole-screen state or notification updates.
+The tuning dialog uses normal PTT and an explicit current-channel warning, with
+focus/disposal releases and a stop action for continuous/gated capture. See
+[ADR-0026](docs/decisions/0026-live-microphone-levels.md).
+
+## Portable identity backup prototype
+
+The C1 prototype separates a bounded portable AES-GCM/PBKDF2 container from the
+installation Keystore envelopes. The protocol codec adds only bounded identity
+validation/summary, including private/public correspondence; cipher/KDF and
+passphrase policy stay in app identity infrastructure. No import or replacement
+UI is connected at this stage. A tested qualification model and a one-transaction
+active/rollback/pending recovery contract precede C2 wiring; they cannot rely on
+UI phase alone. See [ADR-0027](docs/decisions/0027-portable-identity-backup.md) and
+[format v1](docs/IDENTITY_BACKUP_FORMAT_V1.md).
+
+## Compatible local encrypted payloads
+
+Identity/form/bookmark Vaults retain their DataStore names, fields, aliases,
+serializers and transactions. `KeystorePayloadCipher` alone owns legacy v1 AES-GCM
+layout; `AndroidKeystoreKeys` separates lookup from new-data generation. Existing
+ciphertext reads fail on missing/unusable keys without creating an alias or
+rewriting data. Context/default constructor entry points remain available, with
+internal store/cipher injection for isolated tests. The portable password backup
+format is a different boundary. See [ADR-0028](docs/decisions/0028-compatible-keystore-envelopes.md).
+
+
+## Identity maintenance transactions (C2.1)
+
+`Ts3MobileApplication` explicitly owns one `IdentityRepository` and `IdentityUseGate`.
+Android components share them across instance replacement. `IdentityConnectionLease`
+tracks epoch work before scheduling: handshake, reconnect, watch/probe, channel
+operations, terminal cleanup and exit. Cancelled work retains its owner until it
+actually finishes; all superseded owners count. Service destruction separately
+retains ownership through asynchronous audio cleanup. Maintenance blocks connection
+registration synchronously; terminal phase alone never grants maintenance.
+
+`IdentityStore` keeps the legacy active field and cipher unchanged. Initial creation
+runs inside the DataStore transaction; cancellation waits for acknowledgement.
+Replacement writes active, verified previous rollback and pending plaintext digest
+in one atomic transaction. Readback validates identity correspondence/digest and
+clears pending. Restart validates pending active or restores a valid rollback;
+corruption/key loss never generates a replacement. Unreadable blobs are retained
+as evidence, not advertised as rollback. Physically unreadable Preferences fails
+without resetting the file. Confirmations carry a state revision. Public observable
+state contains summaries/fixed errors only. No UI replacement or SAF entry yet.
+
+The legacy `IdentityVault.getOrCreate` signature is retained; identity read failures
+now use fixed `IdentityOperationException` categories without provider causes.
+See [ADR-0029](docs/decisions/0029-identity-maintenance-transactions.md) for that error
+migration, cancellation and Android rejected-foreground-start requirements.
+
+
+## Verified identity document export (C2.2)
+
+The main menu opens a non-exported `IdentityManagementActivity` with FLAG_SECURE.
+Its AndroidViewModel owns a small Main-thread `IdentityExportController`; only
+summaries/status/opaque picker request ids enter observable state. Password inputs
+use non-saveable Compose state and are cleared at submission. No SavedStateHandle,
+persisted URI grant or plaintext temporary file. Rotation retains the private
+operation; process recreation drops it and ignores orphan picker results.
+
+Export reads existing identity under the Application repository lease and encrypts
+on IO. A single picker slot remains reserved through cancelled/late callbacks.
+`PreparedIdentityBackup` owns private arrays through writing/closing/reopening,
+bounded read, GCM authentication and exact plaintext digest comparison. Only that
+success publishes VERIFIED; all provider/write/close/readback failures publish
+UNVERIFIED with no provider cause. A cancelled worker owns its cleanup until it
+actually returns. No arbitrary document deletion and no cloud durability claim.
+The test provider is Java in the separate Android instrumentation APK only and has
+no dependency on the target APK or its Kotlin runtime. See
+[ADR-0030](docs/decisions/0030-verified-document-backups.md).
+
+
+## Confirmed identity restore (C2.3)
+
+The private identity Activity provides mutually qualified export/restore tabs.
+`IdentityRestoreController` owns one OpenDocument slot, an opaque operation id,
+a private `ImportedIdentity` candidate and the comparison revision. Candidate
+bytes are strictly UTF-8 decoded and inspected after bounded container/KDF checks
+and authentication. Passwords/candidate bytes never enter observable/saved state.
+Preflight changes no active identity. Confirmation delegates to the existing
+Application repository transaction; BUSY/stale retains the candidate but requires
+refreshing the displayed comparison and another explicit confirmation. Rollback
+previews the latest verified previous identity under the same revision/gate rules.
+
+The commit worker owns candidate cleanup through durable acknowledgement even
+when the ViewModel disappears. A completion refresh re-reads authoritative state;
+new Activities always load the repository. No auto-connect. Existing unusable keys
+and physical Preferences corruption are never reset; external backups can restore
+on another fresh installation. Real independent test aliases/stores and resolver
+streams exercise import, wrong-password preservation, confirmation and rollback.
+See [ADR-0031](docs/decisions/0031-confirmed-identity-restore.md).

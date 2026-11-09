@@ -14,6 +14,7 @@ internal class AndroidPlaybackOutput(
     onRoutingChanged: (AndroidPlaybackOutput) -> Unit,
     private val routeGuard: BluetoothPlaybackGuard,
     private val onUnsafeRoute: (AndroidPlaybackOutput) -> Unit,
+    private val stats: ReceiveStats? = null,
 ) : PlaybackOutput {
     private val track: AudioTrack
     private val routingListener: AudioRouting.OnRoutingChangedListener
@@ -21,6 +22,7 @@ internal class AndroidPlaybackOutput(
     private val routeRevision = routeGuard.revision()
     private var silenced = false
     private var closed = false
+    private var reportedUnderruns = 0
 
     @Volatile
     private var routedDeviceId: Int? = null
@@ -75,6 +77,13 @@ internal class AndroidPlaybackOutput(
 
     override fun sampleClock(): AudioSampleClock? = AndroidAudioClocks.playback(track)
 
+    override fun pollDiagnostics() =
+        synchronized(outputLock) {
+            if (!closed && stats != null) {
+                reportedUnderruns = stats.measureUnderruns(reportedUnderruns) { track.underrunCount }
+            }
+        }
+
     override fun start() = track.play()
 
     override val routeReady: Boolean get() = checkRoute()
@@ -107,6 +116,7 @@ internal class AndroidPlaybackOutput(
             synchronized(outputLock) {
                 if (closed || silenced) return false
                 val kind = track.routedDevice?.let { AudioRouteDevices.routeKindForDeviceType(it.type) }
+                stats?.observeRoute(kind)
                 routeGuard.evaluate(kind, routeRevision).also { track.setVolume(if (it == PlaybackRouteDecision.ALLOW) 1f else 0f) }
             }
         if (decision == PlaybackRouteDecision.MUTE) onUnsafeRoute(this)
@@ -133,12 +143,14 @@ internal class AndroidPlaybackOutput(
         synchronized(outputLock) {
             if (closed) return
             silenced = true
+            pollDiagnostics()
             try {
                 track.setVolume(0f)
                 track.removeOnRoutingChangedListener(routingListener)
             } finally {
                 track.release()
                 closed = true
+                stats?.observeRoute(null)
             }
         }
 

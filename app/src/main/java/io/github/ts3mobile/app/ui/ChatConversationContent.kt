@@ -1,13 +1,16 @@
 package io.github.ts3mobile.app.ui
 
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import io.github.ts3mobile.app.chat.ChatConversationKey
 import io.github.ts3mobile.app.chat.ChatState
 
@@ -15,6 +18,7 @@ import io.github.ts3mobile.app.chat.ChatState
 @Composable
 internal fun ChatConversationContent(
     state: ChatState,
+    holder: SaveableStateHolder,
     onDraft: (String) -> Unit,
     onSend: () -> Unit,
     onVisible: (ChatConversationKey, Long) -> Unit,
@@ -22,15 +26,26 @@ internal fun ChatConversationContent(
     onSelect: (ChatConversationKey) -> Unit,
     onClose: (ChatConversationKey) -> Unit,
 ) {
-    val holder = rememberSaveableStateHolder()
-    var previousIds by rememberSaveable { mutableStateOf(longArrayOf()) }
-    val ids = state.conversations.map { it.id }.toSet()
-    LaunchedEffect(ids) {
-        (previousIds.toSet() - ids).forEach(holder::removeState)
-        previousIds = ids.toLongArray()
-    }
     holder.SaveableStateProvider(state.active.id) {
-        val list = rememberLazyListState()
+        var anchor by rememberSaveable { mutableStateOf<Long?>(null) }
+        var offset by rememberSaveable { mutableStateOf(0) }
+        val messages by rememberUpdatedState(state.messages)
+        val list =
+            remember {
+                val index = anchor?.let { sequence -> messages.indexOfFirst { it.sequence >= sequence } } ?: 0
+                val retainedIndex = if (index < 0) messages.lastIndex.coerceAtLeast(0) else index
+                LazyListState(retainedIndex, if (messages.getOrNull(retainedIndex)?.sequence == anchor) offset else 0)
+            }
+        LaunchedEffect(list) {
+            snapshotFlow {
+                list.layoutInfo.visibleItemsInfo.firstOrNull()?.key to list.firstVisibleItemScrollOffset
+            }.collect { (id, scrollOffset) ->
+                messages.firstOrNull { it.id == id }?.let { message ->
+                    anchor = message.sequence
+                    offset = scrollOffset
+                }
+            }
+        }
         ChatPanel(state, list, onDraft, onSend, { onVisible(state.selected, it) }, onFocus, onSelect, onClose)
     }
 }

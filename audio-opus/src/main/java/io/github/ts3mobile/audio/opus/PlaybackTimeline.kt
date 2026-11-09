@@ -100,9 +100,15 @@ internal class PlaybackTimeline(
         repeat(MAX_WRITES_PER_TICK) {
             if (!canWrite()) return
             val remaining = samples.size - pendingOffset
+            val writeStart = System.nanoTime()
             val written = output.write(samples, pendingOffset, remaining)
+            receiveStats?.peak(AudioReceivePeak.OUTPUT_WRITE_NS, System.nanoTime() - writeStart)
             check(written in 0..remaining) { "Audio output write failed: $written" }
-            if (written == 0) return
+            if (written == 0) {
+                receiveStats?.count(AudioReceiveCounter.ZERO_WRITES)
+                return
+            }
+            receiveStats?.count(AudioReceiveCounter.OUTPUT_SAMPLES, written.toLong())
             pendingArrival?.let { arrival -> receiveStats?.let { it.maximum(it.maxCombinedWaitNanos, now - arrival) } }
             if (reference != null) {
                 val timestamp = output.sampleClock()
@@ -125,6 +131,7 @@ internal class PlaybackTimeline(
             }
             pendingOffset += written
             submittedFrames += written
+            receiveStats?.peak(AudioReceivePeak.OUTPUT_BACKLOG_SAMPLES, submittedFrames - playedFrames)
             if (pendingOffset == samples.size) {
                 pending = null
                 return

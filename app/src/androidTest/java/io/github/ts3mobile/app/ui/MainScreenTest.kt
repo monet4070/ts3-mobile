@@ -9,8 +9,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -88,7 +90,7 @@ class MainScreenTest {
         rule.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Private room"))
         rule.onNodeWithText("Private room").performScrollTo().performTouchInput { doubleClick() }
         rule.onNodeWithText("Channel password").performTextInput("fixture-secret")
-        rule.onNodeWithText("Join").performClick()
+        rule.onNode(hasText("Join") and hasAnyAncestor(isDialog())).performSemanticsAction(SemanticsActions.OnClick) { it() }
         rule.runOnIdle { assertEquals(listOf(2 to "", 3 to "fixture-secret"), fixture.joins) }
     }
 

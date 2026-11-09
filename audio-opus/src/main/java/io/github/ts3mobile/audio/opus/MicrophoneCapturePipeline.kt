@@ -14,6 +14,7 @@ internal class MicrophoneCapturePipeline(
     private var previousRouteRevision = -1L
     private val processor = MicrophoneFrameProcessor()
     val isSpeaking: Boolean get() = processor.isSpeaking
+    val levelDb: Double get() = processor.levelDb
 
     /** Null means a partial Opus block, not the end of a talkspurt. */
     fun process(
@@ -21,6 +22,7 @@ internal class MicrophoneCapturePipeline(
         options: MicrophoneProcessingOptions,
         revision: Long,
         routeRevision: Long = revision,
+        measureLevel: Boolean = false,
     ): List<ByteArray>? {
         require(pcm.size == 480)
         if (options != previousOptions || revision != previousRevision) {
@@ -52,6 +54,6 @@ internal class MicrophoneCapturePipeline(
         offset += pcm.size
         if (offset < opusPcm.size) return null
         offset = 0
-        return processor.process(opusPcm, options).map(encode)
+        return processor.process(opusPcm, options, measureLevel).map(encode)
     }
 }

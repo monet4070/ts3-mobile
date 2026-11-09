@@ -2,7 +2,7 @@
 
 [简体中文](USER_GUIDE_ZH.md) · [Install and upgrade](INSTALLATION.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
-This guide describes stable 1.0.0 (2026-11-04). Check the [README](../README.md)
+This guide describes stable 1.1.0 (2026-11-09). Check the [README](../README.md)
 and GitHub Release for downloads and tested coverage.
 
 ## Connect and join
@@ -21,6 +21,11 @@ channels prompt for a password. Search in the audio controls or More options
 looks through loaded channel names/topics and nicknames. User-channel joins
 resolve the current target again. Channel details and administration are absent.
 
+The channel list also shows a Join action on each other channel and a
+matching accessibility action; double-tap remains available. Protected joins use
+the same password dialog. A connection/channel replacement invalidates a pending
+target.
+
 ## Microphone and listening
 
 | Mode | Capture and transmission |
@@ -32,13 +37,40 @@ resolve the current target again. Channel details and administration are absent.
 
 Capture needs microphone permission. A quiet gate is still listening; choose Off
 to stop capture. More options → Microphone settings controls input gain, RNNoise,
-device echo cancellation and the gate threshold. Settings reset when the service
-is recreated and cannot start capture by themselves.
+device echo cancellation and the gate threshold. After saving,
+these four tuning choices survive service/process restart after saving finishes.
+They cannot start capture, and a new service still starts in Hold mode.
+
+The dialog distinguishes loading, unsaved changes, saving, saved and failure.
+Slider release and closing settings request the latest save; edits interrupted
+before saving completes may be lost. Retry a failed load/save, or use Restore
+tuning defaults to replace the four stored choices. This never clears identity,
+bookmarks or connection memory. A failed reset remains visible rather than
+deleting unreadable storage.
+
+The app shows a live input level in the tuning dialog while capture is
+already active. It uses the gate's post-denoise/post-gain RMS before the limiter,
+updates at most ten times per second, and shows the actual gate/sending state.
+The dialog's **Hold to talk** sends to the current channel through normal PTT;
+release, cancel, close or switch away to stop holding. Opening settings never
+starts capture. Continuous/Gate mode has a Stop microphone action. Levels are
+cleared when capture, routing or the observation ends and are not saved.
 
 Choose routes from those Android reports as available. Headset, Bluetooth and USB
 behavior depends on the device. AEC status reports Android's capability/activation,
 not a guarantee of acoustic quality. User actions provide per-user mute and volume.
 Listening mute is separate from turning your microphone off.
+
+Open **More options → Appearance**: Light (the unset default),
+Dark, or Follow system. The choice is saved locally and applies to the main,
+identity and appearance pages. System changes affect the palette only in Follow
+system. A save error means the visible choice may not survive restart; use Retry.
+If reading fails, retry or explicitly reset appearance. An unreadable file is
+preserved and reset may still fail. Appearance does not start the microphone.
+
+1.1.0 preserves other participants' valid unmixed audio and decoders
+when one user is muted/unmuted. The shared output still retires, so an interruption
+is possible; physical listening gaps have not been quantified. See [offline evidence](testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
 
 Available Bluetooth communication headsets are selected at session start and when connected.
 Device removal or unexpected Bluetooth fallback mutes listening. Check the selected route and
@@ -50,12 +82,25 @@ microphone mode. Android callback and hardware latency still need physical-heads
 Use Chat for the current channel. Send private message in user actions opens a
 private conversation; the chat header switches conversations. Drafts and unread
 positions are separate. Long-press to copy a message body. Closing a private chat
-clears its retained messages and draft.
+clears its retained messages and draft. Switching to Channels or Users and back keeps the reading
+position and the choice to follow new messages. New messages do not move you
+away from older history; use the new-message button to jump to the latest.
+Ordinary reconnect and Activity recreation retain the position while the same
+service session exists. A new manual connection starts fresh. If an old message
+has left the bounded history, the view moves to a retained message nearby.
 
 Send outcomes distinguish server acceptance, rejection and unknown results.
 Acceptance is not a read receipt; unknown messages are never automatically resent.
 Text input is limited to 1,024 UTF-8 bytes. Up to 20 conversations share 500
 messages / 2 MiB; older records can be evicted.
+
+New ordinary private messages received while the app is in the background use the
+separate **Private message alerts** channel. The first two-second window creates
+a generic summary; updates to the existing notification stay silent.
+One conversation opens that chat; several open a conversation list without
+marking messages read. Stale clicks only open the app. Foreground tabs keep unread
+badges. Open **More options → Private message notifications** for system settings;
+Android permission, channel settings and Do Not Disturb control delivery and sound.
 
 Tap the hand icon beside a channel member, or Poke in user actions. The optional
 reason is limited to 100 UTF-8 bytes. Confirming keeps the current page and gives
@@ -80,6 +125,19 @@ passwords are not copied automatically. Turning password storage off removes tha
 bookmark's passwords without clearing independent form memory. Up to 50 entries
 are stored in a separate encrypted local vault.
 
+Save current connection uses the active endpoint and
+nickname, even if you edited the connection form meanwhile. Its current channel
+is preselected. For a bookmark matching the connected endpoint, Choose default
+channel lists names with parent paths; Use current channel selects it directly.
+This stores the same channel ID as before. Passwords are still explicit opt-in
+and are never copied from the active session. Changing the selected channel
+clears its previously entered channel password.
+
+Connection replacement, channel deletion or an out-of-date bookmark revision
+keeps your draft and prevents a stale save. Choose again, clear the default
+channel, or use the numeric field in More settings for deliberate offline/manual
+editing. Choosing a channel does not grant permission to join it.
+
 ## Away, background and exit
 
 The coffee-cup/clock icon opens Away and status. The icon gains emphasis after
@@ -103,3 +161,32 @@ it does not star it automatically or send session data. Diagnostics leave the ap
 only when you copy and share them. Check logs, screenshots and clipboard content
 before sharing. See [privacy](../PRIVACY.md), [support](../SUPPORT.md) and
 [compatibility](COMPATIBILITY.md).
+
+
+
+## Updates and identity backups
+
+More options → Check for updates offers stable releases and an optional remembered prerelease choice.
+Close remains at the top; Markdown notes have a fixed collapse action that returns to the prior position.
+The browser handles downloads; disconnect before installation. There is no background polling or automatic install.
+Older versions need one manual update to gain this entry.
+
+More options → Identity and backups exports verified, encrypted identity files and supports confirmed import/local rollback.
+Keep the passphrase separately. Backups exclude bookmarks/forms and do not support desktop-client identity formats.
+See [README identity instructions](../README.md) and [installation](INSTALLATION.md).
+
+## Offline audio diagnostics
+
+In 1.1.0:
+
+1. Listen in the network conditions that reproduce the problem; USB is unnecessary.
+2. Open More options → Diagnostics and mark an interruption promptly, or note its time.
+3. Disconnect normally after testing, save the JSON file and share it with the maintainer.
+4. After an abrupt exit, reopen and export the retained records without connecting again.
+
+The latest three audio sessions keep up to 120 samples (normally about ten minutes)
+and 64 events each. Numeric receive/playback statistics and coarse route/network types
+are retained, without audio or private connection data. Abrupt exits, delayed sampling
+or failed writes can lose the final interval or more; check persistence time and errors.
+Rejected callbacks are not measured network packet loss, and accepted writes do not
+prove audible delivery.

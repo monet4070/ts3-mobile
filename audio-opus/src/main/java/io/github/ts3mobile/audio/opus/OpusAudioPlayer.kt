@@ -10,7 +10,6 @@ import io.github.ts3mobile.protocol.sanitizedFailureTypes
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 class OpusAudioPlayer internal constructor(
     context: Context,
@@ -19,6 +18,7 @@ class OpusAudioPlayer internal constructor(
     private val onStatusChanged: (PlaybackStatus) -> Unit = {},
     private val outputFactory: (() -> PlaybackOutput)? = null,
     private val onUnsafeRoute: () -> Unit = {},
+    private val prepareOutputRoute: () -> Unit = {},
 ) : AutoCloseable {
     constructor(context: Context) : this(context, null)
     constructor(context: Context, onRouteChanged: () -> Unit) : this(context, null, onRouteChanged)
@@ -26,17 +26,24 @@ class OpusAudioPlayer internal constructor(
         this(context, null, onRouteChanged, onStatusChanged)
     constructor(context: Context, onRouteChanged: () -> Unit, onStatusChanged: (PlaybackStatus) -> Unit, onUnsafeRoute: () -> Unit) :
         this(context, null, onRouteChanged, onStatusChanged, onUnsafeRoute = onUnsafeRoute)
+    constructor(
+        context: Context,
+        onRouteChanged: () -> Unit,
+        onStatusChanged: (PlaybackStatus) -> Unit,
+        onUnsafeRoute: () -> Unit,
+        prepareOutputRoute: () -> Unit,
+    ) : this(context, null, onRouteChanged, onStatusChanged, onUnsafeRoute = onUnsafeRoute, prepareOutputRoute = prepareOutputRoute)
 
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val inputQueue = VoiceReceiveQueue()
-    private val discontinuityClients = ConcurrentHashMap.newKeySet<Int>()
+    private val receiveDiagnostics = PlaybackDiagnostics(inputQueue.budget.stats)
     private val participantGains = ConcurrentHashMap<Int, Float>()
     private val userMuted = AtomicBoolean(false)
     private val routeGuard = BluetoothPlaybackGuard()
 
     @Volatile private var routeSwitching = false
     private val lifecycleLock = Any()
-    private val admissionRevision = AtomicLong()
+    private val admission = PlaybackAdmission()
 
     @Volatile var status = PlaybackStatus.STOPPED
         private set
@@ -53,9 +60,9 @@ class OpusAudioPlayer internal constructor(
             if (control?.running?.get() == true) return
             check(worker?.isAlive != true) { "Previous playback worker has not stopped" }
             check(control?.session?.retired != false) { "Previous playback output has not been released" }
-            admissionRevision.incrementAndGet()
+            admission.invalidateAll()
             inputQueue.clear()
-            discontinuityClients.clear()
+            receiveDiagnostics.begin()
             val active = PlaybackControl()
             control = active
             publishStatus(PlaybackStatus.BUFFERING)
@@ -67,17 +74,29 @@ class OpusAudioPlayer internal constructor(
         }
     }
 
+    /** One diagnostics collector owns interval peaks; no payload or device identifier is exposed. */
+    fun takeReceiveDiagnostics(): AudioReceiveDiagnostics {
+        control?.session?.output?.pollDiagnostics()
+        return receiveDiagnostics.take(true)
+    }
+
+    fun setDiagnosticsObserver(observer: AudioDiagnosticsObserver?) {
+        inputQueue.budget.stats.observer = observer
+    }
+
     fun submit(frame: VoiceFrame) {
+        inputQueue.budget.stats.count(AudioReceiveCounter.SUBMITTED)
         val expectedControl = control ?: return
-        val revision = admissionRevision.get()
         if (!expectedControl.running.get() || userMuted.get() || routeSwitching) return
-        val queued = inputQueue.prepare(QueuedFrame(frame, System.nanoTime())) ?: return
-        synchronized(lifecycleLock) {
-            val active = control ?: return
-            if (active !== expectedControl || admissionRevision.get() != revision) return
-            if (!active.running.get() || userMuted.get() || routeSwitching || status == PlaybackStatus.FAILED) return
-            if ((participantGains[frame.clientId] ?: 1f) <= 0f) return
-            inputQueue.offer(queued, System.nanoTime())
+        admission.withTicket(frame.clientId) { ticket ->
+            val queued = inputQueue.prepare(QueuedFrame(frame, System.nanoTime())) ?: return@withTicket
+            synchronized(lifecycleLock) {
+                val active = control ?: return@synchronized
+                if (active !== expectedControl || !admission.accepts(ticket)) return@synchronized
+                if (!active.running.get() || userMuted.get() || routeSwitching || status == PlaybackStatus.FAILED) return@synchronized
+                if ((participantGains[frame.clientId] ?: 1f) <= 0f) return@synchronized
+                inputQueue.offer(queued, System.nanoTime())
+            }
         }
     }
 
@@ -85,7 +104,7 @@ class OpusAudioPlayer internal constructor(
         synchronized(lifecycleLock) {
             userMuted.set(muted)
             if (!muted) routeGuard.acknowledgeSafetyMute()
-            admissionRevision.incrementAndGet()
+            admission.invalidateAll()
             control?.let { active ->
                 active.session.output?.muteImmediately()
                 active.invalidate()
@@ -100,16 +119,16 @@ class OpusAudioPlayer internal constructor(
             val previous = participantGains.toMap()
             participantGains.clear()
             participantGains.putAll(normalized)
-            (previous.keys + normalized.keys).forEach { clientId ->
-                val oldGain = previous[clientId] ?: 1f
-                val newGain = normalized[clientId] ?: 1f
-                if ((oldGain <= 0f) != (newGain <= 0f)) {
-                    discontinuityClients += clientId
-                    admissionRevision.incrementAndGet()
-                    control?.invalidate()
+            val affected =
+                (previous.keys + normalized.keys).filterTo(mutableSetOf()) { clientId ->
+                    ((previous[clientId] ?: 1f) <= 0f) != ((normalized[clientId] ?: 1f) <= 0f)
                 }
+            if (affected.isNotEmpty()) {
+                inputQueue.budget.stats.count(AudioReceiveCounter.PARTICIPANT_INVALIDATIONS)
+                admission.invalidateParticipants(affected)
+                affected.forEach(inputQueue::removeClient)
+                control?.invalidation?.invalidateParticipants(affected)
             }
-            normalized.filterValues { it <= 0f }.keys.forEach(inputQueue::removeClient)
         }
     }
 
@@ -129,6 +148,7 @@ class OpusAudioPlayer internal constructor(
                 routing.selectedRoute.kind == AudioRouteKind.BLUETOOTH ||
                     device?.let { AudioRouteDevices.routeKindForDeviceType(it.type) } == AudioRouteKind.BLUETOOTH
             val guardChanged = routeGuard.select(routing.selectedRouteId, requireBluetooth)
+            if (requireBluetooth && routing.switching && !routeSwitching) routeGuard.beginBluetoothAttempt()
             if (preferredDevice?.id == device?.id && selectedRouteId == routing.selectedRouteId &&
                 !guardChanged && routeSwitching == routing.switching
             ) {
@@ -137,7 +157,7 @@ class OpusAudioPlayer internal constructor(
             preferredDevice = device
             selectedRouteId = routing.selectedRouteId
             routeSwitching = routing.switching
-            admissionRevision.incrementAndGet()
+            admission.invalidateAll()
             control?.let { active ->
                 active.session.output?.muteImmediately()
                 active.invalidate()
@@ -149,7 +169,7 @@ class OpusAudioPlayer internal constructor(
         val activeWorker =
             synchronized(lifecycleLock) {
                 val active = control ?: return
-                admissionRevision.incrementAndGet()
+                admission.invalidateAll()
                 active.running.set(false)
                 if (worker?.isAlive != true && !active.session.retired) {
                     worker = Thread({ retire(active) }, "ts3-playback-retire").apply { start() }
@@ -177,8 +197,9 @@ class OpusAudioPlayer internal constructor(
         synchronized(lifecycleLock) {
             val active = control ?: return
             if (active.session.output === output && active.running.get()) {
-                admissionRevision.incrementAndGet()
+                admission.invalidateAll()
                 active.invalidate()
+                inputQueue.budget.stats.count(AudioReceiveCounter.ROUTE_CALLBACKS)
                 changed = true
             }
         }
@@ -191,7 +212,7 @@ class OpusAudioPlayer internal constructor(
             if (active.session.output !== output || !active.running.get() || userMuted.get()) return
             userMuted.set(true)
             output.muteImmediately()
-            admissionRevision.incrementAndGet()
+            admission.invalidateAll()
             active.invalidate()
         }
         onUnsafeRoute()
@@ -200,17 +221,26 @@ class OpusAudioPlayer internal constructor(
     private fun playbackLoop(active: PlaybackControl) {
         val pacer = PlaybackPacer()
         var failed = false
-        var appliedRevision = active.revision.get()
+        var previousTick: Long? = null
         try {
             System.err.println("TS3_AUDIO: playback codec=${NativeOpusInfo.version}")
             while (active.running.get()) {
                 TimeUnit.NANOSECONDS.sleep(pacer.waitNanos(System.nanoTime()))
-                val revision = active.revision.get()
-                if (revision != appliedRevision) {
-                    active.session.invalidate(System.nanoTime(), active.focusInterrupted.getAndSet(false))
-                    appliedRevision = revision
+                val tick = System.nanoTime()
+                previousTick?.let { previous ->
+                    val gap = (tick - previous).coerceAtLeast(0)
+                    inputQueue.budget.stats.peak(AudioReceivePeak.WORKER_GAP_NS, gap)
+                    if (gap > 30_000_000L) inputQueue.budget.stats.count(AudioReceiveCounter.WORKER_GAPS_OVER_30_MS)
                 }
-                active.writingRevision = revision
+                previousTick = tick
+                active.invalidation.take()?.let { command ->
+                    if (command.global) {
+                        active.session.invalidate(System.nanoTime(), command.focusInterrupted)
+                    } else {
+                        active.session.invalidateParticipants(command.clients, System.nanoTime())
+                    }
+                    active.writingRevision = command.revision
+                }
                 if (active.running.get() && !userMuted.get() && !routeSwitching) active.session.tick(System.nanoTime())
                 pacer.completed(System.nanoTime())
             }
@@ -234,21 +264,22 @@ class OpusAudioPlayer internal constructor(
         synchronized(lifecycleLock) {
             if (control !== active || !active.running.get()) return
             if (AudioFocusPolicy.signalFor(change) == AudioFocusSignal.INTERRUPT) {
-                admissionRevision.incrementAndGet()
-                active.focusInterrupted.set(true)
-                active.invalidate()
+                inputQueue.budget.stats.count(AudioReceiveCounter.FOCUS_INTERRUPTS)
+                inputQueue.budget.stats.observer?.onEvent(AudioDiagnosticEventKind.FOCUS_INTERRUPTED)
+                admission.invalidateAll()
+                active.invalidate(focusInterrupted = true)
             }
         }
     }
 
     private inner class PlaybackControl {
         val running = AtomicBoolean(true)
-        val revision = AtomicLong()
-        val focusInterrupted = AtomicBoolean(false)
+        val invalidation = PlaybackInvalidation()
         var writingRevision = 0L
 
-        fun invalidate() {
-            revision.incrementAndGet()
+        fun invalidate(focusInterrupted: Boolean = false) {
+            inputQueue.budget.stats.count(AudioReceiveCounter.GLOBAL_INVALIDATIONS)
+            invalidation.invalidateAll(focusInterrupted)
             inputQueue.clear()
         }
 
@@ -261,16 +292,25 @@ class OpusAudioPlayer internal constructor(
         val session =
             PlaybackSession(
                 inputQueue,
-                PlaybackStreams(inputQueue, discontinuityClients, participantGains),
+                PlaybackStreams(inputQueue, mutableSetOf(), participantGains),
                 {
                     outputFactory?.invoke()
-                        ?: AndroidPlaybackOutput(preferredDevice, ::onOutputRouteChanged, routeGuard, ::onUnsafeOutputRoute)
+                        ?: AndroidPlaybackOutput(
+                            preferredDevice, ::onOutputRouteChanged, routeGuard, ::onUnsafeOutputRoute, inputQueue.budget.stats,
+                        )
                 },
-                { audioManager.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED },
+                {
+                    val granted = audioManager.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                    if (granted) {
+                        inputQueue.budget.stats.observer?.onEvent(AudioDiagnosticEventKind.FOCUS_GAINED)
+                        prepareOutputRoute()
+                    }
+                    granted
+                },
                 { audioManager.abandonAudioFocusRequest(focusRequest) },
                 reference,
                 { publishStatus(it) },
-                { running.get() && !userMuted.get() && !routeSwitching && revision.get() == writingRevision },
+                { running.get() && !userMuted.get() && !routeSwitching && invalidation.permitsWrite(writingRevision) },
             )
     }
 
@@ -282,6 +322,7 @@ class OpusAudioPlayer internal constructor(
         try {
             active.session.close()
         } finally {
+            receiveDiagnostics.end()
             synchronized(lifecycleLock) {
                 if (control === active && failed) publishStatus(PlaybackStatus.FAILED)
                 if (control === active && active.session.retired) control = null

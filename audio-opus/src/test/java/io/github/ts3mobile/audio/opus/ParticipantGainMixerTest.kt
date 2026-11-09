@@ -6,6 +6,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ParticipantGainMixerTest {
+    @Test fun outputHistoryResetReleasesOldLimiterButPreservesAnotherParticipantsGainRamp() {
+        val mixer = ParticipantGainMixer()
+        val b = ParticipantGainMixer.Input(99, ShortArray(480) { 1000 }, 1f)
+        mixer.mix(listOf(b), 480)
+        val loud = (1..8).map { ParticipantGainMixer.Input(it, ShortArray(480) { 30000 }, 1f) }
+        mixer.mix(loud + b.copy(gain = 2f), 480)
+        loud.forEach { mixer.forget(it.clientId) }
+        mixer.resetOutputHistory()
+        val resumed = mixer.mix(listOf(b.copy(gain = 2f)), 480)
+        assertEquals(1501, resumed.first().toInt())
+        assertEquals(2000, resumed.last().toInt())
+    }
+
     @Test fun emptyTicksAdvanceReleaseExactlyLikeSilentSamplesWithoutResettingGain() {
         val emptyMixer = ParticipantGainMixer()
         val silentMixer = ParticipantGainMixer()

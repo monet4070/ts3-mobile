@@ -9,23 +9,28 @@ internal class MicrophoneFrameProcessor {
     private val onset = ArrayDeque<ShortArray>()
     var isSpeaking = false
         private set
+    var levelDb = Double.NaN
+        private set
 
     fun process(
         pcm: ShortArray,
         current: MicrophoneProcessingOptions,
-    ): List<ShortArray> = processSamples(pcm.size, current) { pcm[it].toFloat() }
+        measureLevel: Boolean = false,
+    ): List<ShortArray> = processSamples(pcm.size, current, measureLevel) { pcm[it].toFloat() }
 
     fun process(
         pcm: FloatArray,
         current: MicrophoneProcessingOptions,
+        measureLevel: Boolean = false,
     ): List<ShortArray> {
         require(pcm.all { it.isFinite() })
-        return processSamples(pcm.size, current) { pcm[it] }
+        return processSamples(pcm.size, current, measureLevel) { pcm[it] }
     }
 
     private inline fun processSamples(
         sampleCount: Int,
         current: MicrophoneProcessingOptions,
+        measureLevel: Boolean,
         sampleAt: (Int) -> Float,
     ): List<ShortArray> {
         require(sampleCount == 960)
@@ -41,13 +46,14 @@ internal class MicrophoneFrameProcessor {
         }
         gain.setTarget(current.settings.volumePercent / 100f)
         val amplified = FloatArray(sampleCount) { sampleAt(it) * gain.next() }
+        levelDb = if (current.volumeGate || measureLevel) VolumeGate.rmsDb(amplified) else Double.NaN
         val limited = limiter.process(amplified)
         if (!current.volumeGate) {
             isSpeaking = true
             return listOf(limited)
         }
         val wasSpeaking = isSpeaking
-        isSpeaking = gate.update(VolumeGate.rmsDb(amplified), current.settings.gateThresholdDb)
+        isSpeaking = gate.update(levelDb, current.settings.gateThresholdDb)
         if (wasSpeaking) {
             // Include the final hold block; the transport drains it before ending.
             return listOf(limited)
@@ -63,6 +69,7 @@ internal class MicrophoneFrameProcessor {
         onset.clear()
         if (!preserveLimiter) limiter.reset()
         isSpeaking = false
+        levelDb = Double.NaN
     }
 
     companion object {

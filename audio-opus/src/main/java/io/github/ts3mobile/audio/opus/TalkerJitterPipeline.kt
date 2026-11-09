@@ -33,6 +33,7 @@ internal class TalkerJitterPipeline(
         private set
     val nextTargetMs: Int get() = delay.targetMs
     val oldestReadArrival: Long? get() = pcm.oldestReadArrival
+    val hasCurrentGeneration: Boolean get() = token != null && budget.generation(clientId) == token
     var resetDroppedPcmSamples = 0L
         private set
     var lastArrivalNanos = 0L
@@ -55,6 +56,7 @@ internal class TalkerJitterPipeline(
         token = lease.token
         var extended = sequence.unwrap(queued.frame.packetId)
         if (expected?.let { extended - it > MAX_FORWARD_PACKET_GAP } == true) {
+            budget.stats.count(AudioReceiveCounter.SEQUENCE_SKIPPED, extended - checkNotNull(expected))
             reset(clearSequence = true)
             extended = sequence.unwrap(queued.frame.packetId)
         }
@@ -132,6 +134,7 @@ internal class TalkerJitterPipeline(
             ) {
                 decoder.reset()
                 delay.discontinuity()
+                budget.stats.count(AudioReceiveCounter.SEQUENCE_SKIPPED, gap)
                 expected = next.key
                 missingRun = 0
                 concealedSamples = 0
@@ -150,6 +153,7 @@ internal class TalkerJitterPipeline(
             val lease = budget.conceal(source, concealSize, now)
             if (lease == null) {
                 decoder.reset()
+                budget.stats.count(AudioReceiveCounter.SEQUENCE_SKIPPED, gap)
                 expected = next.key
                 continue
             }

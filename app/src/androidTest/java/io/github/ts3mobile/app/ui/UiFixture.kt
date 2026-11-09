@@ -15,16 +15,21 @@ import io.github.ts3mobile.app.ConnectionFormState
 import io.github.ts3mobile.app.bookmarks.BookmarkCodec
 import io.github.ts3mobile.app.bookmarks.BookmarkState
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
+import io.github.ts3mobile.app.bookmarks.bookmarkContext
 import io.github.ts3mobile.app.bookmarks.withSelectedBookmark
 import io.github.ts3mobile.app.chat.ChatBinding
+import io.github.ts3mobile.app.chat.ChatNotificationDestination
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.chat.ChatStore
 import io.github.ts3mobile.app.discovery.resolveParticipantChannel
 import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.app.service.ParticipantAudioSettings
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
+import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import io.github.ts3mobile.app.withSelectedHistoryEntry
+import io.github.ts3mobile.audio.opus.MicrophoneLevel
+import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ControlOutcome
@@ -37,6 +42,7 @@ import io.github.ts3mobile.protocol.Ts3Channel
 import io.github.ts3mobile.protocol.Ts3Participant
 import io.github.ts3mobile.protocol.Ts3PokeEvent
 import io.github.ts3mobile.protocol.Ts3TextEvent
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.Locale
 
 internal class UiFixture(connected: Boolean = false) {
@@ -45,6 +51,9 @@ internal class UiFixture(connected: Boolean = false) {
     val awayRequests = mutableListOf<Pair<Boolean, String>>()
     val chatStore = ChatStore()
     val chat = mutableStateOf(ChatState())
+    val chatNotification = mutableStateOf<ChatNotificationDestination?>(null)
+    var notificationSettings = 0
+    val microphoneLevels = MutableStateFlow<MicrophoneLevel?>(null)
     val sentBodies = mutableListOf<String>()
     val sentTargets = mutableListOf<TextTarget>()
     val sentPokes = mutableListOf<Pair<TextTarget.Private, String>>()
@@ -93,7 +102,13 @@ internal class UiFixture(connected: Boolean = false) {
     var connects = 0
     var disconnects = 0
     var copies = 0
+    var diagnosticSaves = 0
+    var audioMarks = 0
     var repositoryOpens = 0
+    var updateChecks = 0
+    val microphonePreferenceStatus = mutableStateOf(MicrophonePreferenceStatus.SAVED)
+    var microphonePreferenceRetries = 0
+    var microphonePreferenceCommits = 0
     val joins = mutableListOf<Pair<Int, String>>()
     val transmission = mutableListOf<Boolean>()
 
@@ -138,6 +153,7 @@ internal class UiFixture(connected: Boolean = false) {
         ) {
             Ts3MobileTheme(darkTheme = dark) {
                 MainScreen(
+                    onCheckUpdates = { updateChecks++ },
                     form = form.value,
                     history = history.value,
                     historyError = historyError.value,
@@ -178,6 +194,8 @@ internal class UiFixture(connected: Boolean = false) {
                     onPushToTalkChanged = { transmission += it },
                     onJoinChannel = { id, password -> joins += id to password },
                     onCopyDiagnostics = { copies++ },
+                    onSaveDiagnostics = { diagnosticSaves++ },
+                    onMarkAudioIssue = { audioMarks++ },
                     onKeepCpuAwakeChanged = {
                         keepCpuAwakeRequests += it
                         state.value = state.value.copy(backgroundRuntime = state.value.backgroundRuntime.copy(keepCpuAwake = it))
@@ -186,6 +204,11 @@ internal class UiFixture(connected: Boolean = false) {
                     onBatterySettings = { batterySettings++ },
                     onAppSettings = { appSettings++ },
                     chatState = chat.value,
+                    chatNotification = chatNotification.value,
+                    onChatNotificationConsumed = { if (chatNotification.value?.requestId == it) chatNotification.value = null },
+                    onUserNavigation = { chatNotification.value = null },
+                    onNotificationSettings = { notificationSettings++ },
+                    microphoneLevels = microphoneLevels,
                     onChatDraft = {
                         chatStore.updateDraft(it)
                         refreshChat()
@@ -227,6 +250,13 @@ internal class UiFixture(connected: Boolean = false) {
                     },
                     bookmarks = bookmarks.value,
                     onBookmarkSave = saveBookmark,
+                    onBookmarkSaveFromConnection = { entry, selection ->
+                        if (state.value.bookmarkContext()?.accepts(entry, selection) == true) {
+                            saveBookmark(entry)
+                        } else {
+                            bookmarks.value = bookmarks.value.copy(failed = true, contextChanged = true)
+                        }
+                    },
                     onBookmarkRemove = {
                         bookmarks.value =
                             BookmarkState(
@@ -259,6 +289,10 @@ internal class UiFixture(connected: Boolean = false) {
                     onResolveUserChannel = { id, uid -> resolveParticipantChannel(state.value.snapshot, id, uid) },
                     onOpenRepository = { repositoryOpens++ },
                     onMicrophoneSettingsChanged = { state.value = state.value.copy(microphoneSettings = it) },
+                    microphonePreferenceStatus = microphonePreferenceStatus.value,
+                    onMicrophonePreferenceCommit = { microphonePreferenceCommits++ },
+                    onMicrophonePreferenceRetry = { microphonePreferenceRetries++ },
+                    onMicrophonePreferenceReset = { state.value = state.value.copy(microphoneSettings = MicrophoneSettings()) },
                     onPokeDismiss = {
                         chatStore.dismissPoke(it)
                         refreshChat()

@@ -12,14 +12,19 @@ TS3 Mobile is an open-source, unofficial client with a warm cream/terracotta int
 English and Simplified Chinese. Connect directly to your TeamSpeak server; there is no project account
 to register.
 
-> **Latest stable: [1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)**,
-> reissued on **2026-11-05** (versionCode 14) with audio-continuity fixes; replaces the
-> withdrawn November 4 build. Download the signed APK and checksums
-> from the release. Its certificate matches the public 0.11.1-m10 APK; keep your
-> existing installation when updating. See [installation](docs/INSTALLATION.md),
+> **Latest stable: [1.1.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0)** · **2026-11-09**, versionCode **15**.
+> Adds in-app update checks, offline audio diagnostics, identity backups, saved tuning and appearance,
+> clearer microphone controls and chat bubbles. Keep the existing app when upgrading; the package
+> and public signing certificate are unchanged. See [installation](docs/INSTALLATION.md),
 > [tested coverage](docs/COMPATIBILITY.md) and the [changelog](CHANGELOG.md).
 
 ## Contents
+
+1.1.0 also preserves chat reading position across tabs, adds private-message notifications,
+bookmarks the current connection/channel and distinguishes idle Bluetooth SCO release from
+headset loss. Shared output can still retire during mute changes. Real weak-network interruption
+has not yet been reproduced with the final diagnostic build; this release does not promise a
+universal audio fix. Detailed scope is in the [1.1.0 release record](docs/release/1.1.0/CHECKLIST.md).
 
 [Features](#features) · [Installation](#installation) · [First use](#first-use) ·
 [Interface tour](#interface-tour) · [Voice and audio](#voice-and-audio) ·
@@ -49,13 +54,23 @@ to register.
 4. Allow installation from that source if Android asks. The app does not
    automatically check for or install later updates.
 
+Open **More options → Check for updates**. Stable releases
+are the default; **Include prereleases** is an optional, remembered choice. The page
+shows the version and release notes, and **Download APK** opens the official asset
+in your browser. Checks run only when opening the page, changing the channel or
+checking again; there is no background polling or automatic installation. Updates
+are compared by Android versionCode, including same-name repair releases.
+The close action stays at the top. Release notes render Markdown with a six-line
+preview; the full reader keeps **Show less** visible and returns to the same page position.
+
 **Android 8.0 (API 26)+** is required. The universal APK contains arm64-v8a, armeabi-v7a, x86
 and x86_64. Installability does not mean every device/version has been tested; see
 [compatibility and validation](docs/COMPATIBILITY.md).
 
 **Keep the existing app when upgrading.** An in-place update needs the same application ID and
 compatible signing. Do not fix a conflict by immediately uninstalling or clearing storage: that removes
-the local identity, bookmarks and encrypted form. There is no built-in identity export/restore. Separate
+the local identity, bookmarks and encrypted form. 1.1.0 adds encrypted identity
+export/import and local rollback under More options → Identity and backups. An identity backup does not include bookmarks or the connection form. Separate
 TS3 Mobile UI test packages have their own data and do not migrate into the release. See [installation
 and upgrades](docs/INSTALLATION.md) for checksums and certificates.
 
@@ -132,13 +147,29 @@ chat keyboard open, the compact voice bar's microphone-off icon can stop capture
 Open **More options → Microphone settings**. Input gain ranges from 0–200%; you can switch RNNoise and
 device echo cancellation, and adjust the gate threshold. Lower thresholds let quieter sounds trigger it.
 Lower it if soft speech is missed; raise it if background noise triggers transmission. Settings apply
-immediately, opening the dialog does not start capture, and service recreation restores defaults.
+immediately. Opening the dialog does not start capture. Saved tuning survives service/process recreation.
+
+The tuning dialog shows a live input level in the tuning dialog while capture is
+already active. It uses the gate's post-denoise/post-gain RMS before the limiter,
+updates at most ten times per second, and shows the actual gate/sending state.
+The dialog's **Hold to talk** sends to the current channel through normal PTT;
+release, cancel, close or switch away to stop holding. Opening settings never
+starts capture. Continuous/Gate mode has a Stop microphone action. Levels are
+cleared when capture, routing or the observation ends and are not saved.
+
+The tuning dialog places the live gate level and threshold on one scale;
+drag the threshold marker while watching the input. Tuning groups gate, input gain
+and sound processing. Chat uses left/right bubbles, and search rows group names,
+channel context and Join actions.
 
 Tap the audio row's device name to choose from Android's available earpiece, speaker, headset, Bluetooth
 or USB routes. Available Bluetooth communication headsets are selected automatically at session start
 and when connected. Removing the selected device or losing an active Bluetooth output mutes listening
 to prevent speaker playback. Reconnecting selects Bluetooth again but keeps listening muted until you
 check the route and unmute manually. System/device delays still require physical-headset validation.
+1.1.0 distinguishes idle SCO release while the headset remains available:
+fresh playback obtains focus and restores Bluetooth without enabling speaker fallback. See the
+[mobile RX and Bluetooth audit](docs/testing/MOBILE_RX_AUDIT_2026-11-08_ZH.md).
 Playback mute and microphone Off serve different purposes. Prefer headphones if speaker echo occurs;
 device AEC status is not a guarantee of equal acoustic performance on every phone.
 
@@ -186,6 +217,14 @@ Each conversation keeps its own draft, unread and scroll position. Status separa
 server-accepted, rejected and unknown. **Server acceptance is not a read receipt.** Unknown results are
 not automatically retried. Offline or uncertain identity targets pause sending. Input is limited to
 1,024 UTF-8 bytes; CJK/emoji may use multiple bytes per character.
+
+New ordinary private messages received while the app is in the background use the
+separate **Private message alerts** channel. The first two-second window creates
+a generic summary; updates to the existing notification stay silent.
+One conversation opens that chat; several open a conversation list without
+marking messages read. Stale clicks only open the app. Foreground tabs keep unread
+badges. Open **More options → Private message notifications** for system settings;
+Android permission, channel settings and Do Not Disturb control delivery and sound.
 
 ### Poke a member
 
@@ -244,11 +283,13 @@ bans. Reopening does not connect automatically.
 | Server bookmarks | Manage saved servers, including while disconnected |
 | Microphone settings | Input gain, RNNoise, device AEC and gate threshold |
 | Background voice check | Battery restrictions, CPU-awake and Android settings |
-| Diagnostics | Inspect runtime information and manually copy redacted diagnostics |
+| Diagnostics | Inspect local connection/audio history, mark interruptions and copy or save JSON reports |
 | Give the project a Star | Open GitHub externally; starring remains your choice |
 
 The app currently defaults to the warm light interface. English or Simplified
-Chinese follows Android's system/app locale. There is no in-app language/theme switch.
+Chinese follows Android's system/app locale. **More options → Appearance** offers
+Light, Dark and System; an unset preference stays Light.
+There is no in-app language switch.
 
 ## Data privacy and limits
 
@@ -259,13 +300,13 @@ Chinese follows Android's system/app locale. There is no in-app language/theme s
 | Recent endpoints | Up to ten successful endpoints; deleting history does not clear bookmarks or the form |
 | Bookmarks | Separate encrypted storage with opt-in passwords; no cross-package transfer/in-app restore |
 | Messages/drafts | Service memory only; reconnect keeps them, manual/new/terminal sessions or process death clear them |
-| Voice/diagnostics | No voice archive; diagnostics leave only when you choose to copy/share |
+| Voice/diagnostics | No voice archive; diagnostics leave only when you choose to copy, save or share |
 
 Up to 20 conversations share 500 messages / 2 MiB; older content may be evicted. Servers/recipients can
 retain received text. No ads, analytics or automatic project crash backend. Read [privacy](PRIVACY.md)
 for complete details.
 
-One active server. Whisper, file transfer, administration, identity import/export and
+One active server. Whisper, file transfer, administration and
 multi-server tabs are absent. Tested Bluetooth/background/acoustic coverage is recorded in
 [compatibility](docs/COMPATIBILITY.md).
 
@@ -303,3 +344,46 @@ Built on [ts3j](https://github.com/Manevolent/ts3j), licensed [Apache-2.0](LICEN
 by TeamSpeak Systems GmbH. Thanks to [@polleyr](https://github.com/polleyr) for
 [server-password authentication](https://github.com/monet4070/ts3-mobile/pull/1) and English
 localization. Follow the [Code of Conduct](CODE_OF_CONDUCT.md) when contributing.
+
+The following identity workflows are available in **1.1.0**.
+Their offline/emulator evidence and remaining limits are in the [final candidate record](docs/testing/IMPROVEMENT_R4_2026-11-07_ZH.md) and [release record](docs/release/1.1.0/CHECKLIST.md).
+
+Identity storage corruption or a missing local key reports a fixed recovery
+failure and preserves existing data; it never silently creates a different identity.
+The internal maintenance/recovery transactions are documented in
+[ADR-0029](docs/decisions/0029-identity-maintenance-transactions.md); the user-facing
+backup and restore workflows follow below.
+
+
+Identity backups are encrypted `.ts3mbak` files in the TS3 Mobile format. In
+**More options → Identity and backups**, finish connection tasks, enter and confirm
+a 12–1,024-character passphrase, and choose a new file in the system picker.
+The page reports **Backup verified** only after closing, reopening, authenticating
+and checking the original identity. Unverified files may be incomplete: retry to
+a new file. Document providers control cloud synchronization. Keep the passphrase
+separately; it cannot be recovered. A local previous identity is not an external
+backup. Opening this page does not create an identity or connect to a server.
+Desktop-client identity formats are not supported.
+
+
+To restore, choose **Import or restore**, enter the backup’s existing passphrase,
+and select the file. Review current/proposed UID, offset, security level and server
+permission impact, then **Confirm change**. Preflight/cancellation does not replace
+identity or connect. If connection work starts or the current identity changes,
+refresh the comparison and confirm again. **Review local previous identity** uses
+the same confirmation and idle requirements; the previous identity remains encrypted
+locally, not externally backed up. A confirmed save finishes safely even if the
+page closes; reopen/refresh to check its actual result. Connect manually afterwards.
+
+Keep the original installation when recovering a physically unreadable Preferences
+file or unusable local key. Those originals are not automatically erased or reset;
+restore a verified external backup on another fresh installation. A missing alias
+with readable Preferences can accept an explicitly verified import, preserving the
+old unreadable ciphertext as evidence rather than a usable rollback.
+
+
+1.1.0 adds [offline audio diagnostics](docs/testing/OFFLINE_AUDIO_DIAGNOSTICS_2026-11-09_ZH.md).
+Use More options → Diagnostics to mark an interruption and save the report after testing, without USB.
+Up to 120 samples (normally about ten minutes) and 64 events are retained for each of the last three audio
+sessions, including after reopening. No audio is recorded. Abrupt exits or delayed/failed writes can lose
+the final interval. This helps collect evidence; it does not prove weak-network interruptions are fixed.

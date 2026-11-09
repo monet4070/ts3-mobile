@@ -1,7 +1,10 @@
 package io.github.ts3mobile.app.service
 
+import io.github.ts3mobile.app.bookmarks.BookmarkConnection
 import io.github.ts3mobile.app.chat.ChatBinding
 import io.github.ts3mobile.app.chat.SessionChatController
+import io.github.ts3mobile.app.identity.IdentityConnectionLease
+import io.github.ts3mobile.app.identity.IdentityUseGate
 import io.github.ts3mobile.protocol.ConnectionFailureCategory
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
@@ -17,7 +20,6 @@ import io.github.ts3mobile.protocol.connectionFailureCategory
 import io.github.ts3mobile.protocol.isRetryableConnectionFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,7 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -168,6 +170,7 @@ internal class ConnectionCoordinator(
     // sleep; the Android service injects SystemClock.elapsedRealtime().
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val chat: SessionChatController? = null,
+    private val identityGate: IdentityUseGate = IdentityUseGate(),
     private val sessionFactory: () -> Ts3SessionClient = { Ts3jSessionClient() },
 ) : ReconnectEngine.Delegate {
     @Volatile
@@ -185,6 +188,8 @@ internal class ConnectionCoordinator(
     override var desiredConfig: ServerConfig? = null
         private set
 
+    @Volatile
+    private var identityLease: IdentityConnectionLease? = null
     private var identityMaterial: String? = null
     private var connectionJob: Job? = null
     private var stableConnectionJob: Job? = null
@@ -209,22 +214,29 @@ internal class ConnectionCoordinator(
     @Volatile
     private var livenessJob: Job? = null
 
-    @Volatile
-    private var lastNetworkState = DefaultNetworkState.Unknown
-    private var lastAvailableNetworkGeneration: Long? = null
-    private val reconnectEngine = ReconnectEngine(host, this)
+    private val monitor = ConnectionMonitor(clockMs)
+    private val reconnectEngine =
+        ReconnectEngine(host, this) { block ->
+            identityLease?.prepare(host.serviceScope, block)
+        }
 
     @Volatile
     private var refusedEpoch: Long? = null
     private val channelRestore = ChannelRestoreTracker()
 
-    fun beginConnection(config: ServerConfig) {
-        if (closed) return
+    fun beginConnection(config: ServerConfig): Boolean {
+        if (closed) return false
+        val lease = IdentityConnectionLease.acquire(identityGate) ?: return false
         // Registered first and synchronously: a connect always takes ownership away
         // from an exit that is still finishing, so that exit can no longer stop the
         // service or clear this request's state.
-        ownership.beginConnect()
-        val epoch = host.sessionGeneration.beginSession()
+        val epoch =
+            synchronized(exitLock) {
+                identityLease?.retire()
+                identityLease = lease
+                ownership.beginConnect()
+                host.sessionGeneration.beginSession()
+            }
         chat?.begin(epoch)
         host.onManualConnectionStarted()
         connectedOnce = false
@@ -256,6 +268,10 @@ internal class ConnectionCoordinator(
                 audioRouting = host.mutableState.value.audioRouting,
                 diagnostics = host.diagnosticsRecorder.snapshot(),
                 backgroundRuntime = host.mutableState.value.backgroundRuntime,
+                bookmarkConnection =
+                    BookmarkConnection(
+                        UUID.randomUUID().toString(), config.host.trim(), config.port, config.nickname.trim(),
+                    ),
             )
         // A session captured by an in-flight exit is already out of `session`, so
         // this never closes the socket that exit is still using.
@@ -263,11 +279,11 @@ internal class ConnectionCoordinator(
         runCatching { previousSession?.close() }
 
         connectionJob =
-            host.serviceScope.launch {
+            lease.prepare(host.serviceScope) {
                 // Request order is established before IO scheduling, not by which
                 // coroutine happens to acquire the session mutex first.
                 synchronized(exitLock) { exitJob }?.join()
-                if (!isEpochActive(epoch)) return@launch
+                if (!isEpochActive(epoch)) return@prepare
                 host.stopMicrophoneCapture()
                 when (val result = performConnectionAttempt(config, epoch, reconnecting = false)) {
                     AttemptResult.Success,
@@ -282,6 +298,8 @@ internal class ConnectionCoordinator(
                     }
                 }
             }
+        connectionJob?.start()
+        return true
     }
 
     /** User-visible disconnect; the same single exit as task removal. */
@@ -309,7 +327,10 @@ internal class ConnectionCoordinator(
         val deadlineMs: Long
         val firstExit: Boolean
         val exitToken: Long
+        val lease: IdentityConnectionLease
         synchronized(exitLock) {
+            lease = identityLease?.takeIf { it.isActive } ?: IdentityConnectionLease.acquire(identityGate) ?: return
+            identityLease = lease
             exitToken = ownership.beginExit()
             captured = session
             session = null
@@ -320,7 +341,10 @@ internal class ConnectionCoordinator(
             // of sending a second leave command.
             firstExit = exitToken != activeExitToken || exitJob == null
         }
-        if (!firstExit) return
+        if (!firstExit) {
+            lease.retire()
+            return
+        }
         host.sessionGeneration.invalidate()
         chat?.clear()
         activeListener = null
@@ -343,27 +367,38 @@ internal class ConnectionCoordinator(
         val job =
             synchronized(exitLock) {
                 val previous = exitJob
-                host.serviceScope.launch(start = CoroutineStart.LAZY) {
-                    previous?.join()
-                    exitRunner.run(trigger, captured, handshaking, deadlineMs, exitToken) {
-                        if (exitSession === captured) exitSession = null
-                    }
-                }.also {
+                checkNotNull(
+                    lease.prepare(host.serviceScope) {
+                        previous?.join()
+                        exitRunner.run(trigger, captured, handshaking, deadlineMs, exitToken) {
+                            if (exitSession === captured) exitSession = null
+                        }
+                    },
+                ).also {
                     exitJob = it
                     activeExitToken = exitToken
                     exitJobs += it
                 }
             }
         job.invokeOnCompletion { synchronized(exitLock) { exitJobs.remove(job) } }
+        identityMaterial = null
+        lease.retire()
         job.start()
     }
 
     fun joinChannel(
         channelId: Int,
         password: String,
+        expectedConnectionToken: String? = null,
     ) {
         val current = host.mutableState.value
         if (current.status.phase != ConnectionPhase.CONNECTED) return
+        if (expectedConnectionToken != null &&
+            (current.bookmarkConnection?.token != expectedConnectionToken || current.snapshot.channels.count { it.id == channelId } != 1)
+        ) {
+            host.mutableState.update { it.copy(channelError = UserMessage.ChannelTargetChanged) }
+            return
+        }
         if (current.switchingChannelId != null) return
         if (current.snapshot.currentChannelId == channelId) return
         val listener = activeListener ?: return
@@ -374,10 +409,10 @@ internal class ConnectionCoordinator(
             it.copy(switchingChannelId = channelId, channelError = null)
         }
         syncChatContext(listener)
-        host.serviceScope.launch {
+        launchIdentityWork(listener.epoch) {
             try {
                 host.sessionMutex.withLock {
-                    if (!isListenerActive(listener) || session !== captured) return@launch
+                    if (!isListenerActive(listener) || session !== captured) return@launchIdentityWork
                     if (host.mutableState.value.status.phase != ConnectionPhase.CONNECTED) {
                         throw NotConnectedException()
                     }
@@ -422,17 +457,10 @@ internal class ConnectionCoordinator(
      * liveness check, never a blind reconnect.
      */
     fun onNetworkChanged(state: DefaultNetworkState) {
-        lastNetworkState = state
-        if (state.isPending && !state.isBlocked) return
-        if (!state.isAvailable) {
-            lastAvailableNetworkGeneration = null
-            onNetworkUnavailable()
-            return
-        }
-        val previousAvailableGeneration = lastAvailableNetworkGeneration
-        lastAvailableNetworkGeneration = state.generation
-        if (previousAvailableGeneration != null && previousAvailableGeneration != state.generation) {
-            verifySessionAfterNetworkSwitch(state.generation)
+        when (monitor.networkChanged(state)) {
+            NetworkTransition.PENDING, NetworkTransition.UNCHANGED -> Unit
+            NetworkTransition.UNAVAILABLE -> onNetworkUnavailable()
+            NetworkTransition.SWITCHED -> verifySessionAfterNetworkSwitch(state.generation)
         }
     }
 
@@ -442,7 +470,7 @@ internal class ConnectionCoordinator(
      * duplicate capability callback cannot be mistaken for a network switch.
      */
     fun onNetworkChanged(available: Boolean) {
-        val previous = lastNetworkState
+        val previous = monitor.networkState
         val generation =
             if (available && !previous.isAvailable) previous.generation + 1 else previous.generation
         onNetworkChanged(
@@ -492,29 +520,17 @@ internal class ConnectionCoordinator(
         val listener = activeListener?.takeIf { it.connected } ?: return
         if (host.mutableState.value.status.phase != ConnectionPhase.CONNECTED) return
         val probeSession = session ?: return
+        val binding = MonitoredSession(listener.epoch, probeSession, listener)
         livenessJob?.cancel()
         livenessJob =
-            host.serviceScope.launch {
-                val alive =
-                    try {
-                        // withTimeoutOrNull bounds a suspend implementation; the
-                        // blocking socket call keeps its own protocol timeout.
-                        withTimeoutOrNull(ConnectionLivenessPolicy.PROBE_TIMEOUT_MS) {
-                            probeSession.verifyLiveness(ConnectionLivenessPolicy.PROBE_TIMEOUT_MS)
-                        } ?: false
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (_: Throwable) {
-                        false
-                    }
-                if (!isActive) return@launch
-                if (!isListenerActive(listener) || !listener.connected) return@launch
+            launchIdentityWork(listener.epoch) {
+                val observation = monitor.probe(binding, generation)
+                if (!isActive) return@launchIdentityWork
+                if (!isMonitoredSessionActive(observation.binding) || !listener.connected) return@launchIdentityWork
                 // A second switch (B -> C) must not let a stale B probe end a
                 // healthy C session.
-                if (session !== probeSession) return@launch
-                val current = lastNetworkState
-                if (current.generation != generation || current.isPending || !current.isAvailable) return@launch
-                if (!alive) {
+                if (!monitor.isCurrentNetwork(observation.networkGeneration)) return@launchIdentityWork
+                if (!observation.alive) {
                     onEstablishedSessionEnded(
                         listener,
                         ConnectionStatus(
@@ -546,6 +562,8 @@ internal class ConnectionCoordinator(
         runCatching { capturedExit?.close() }
         val current = synchronized(exitLock) { session.also { session = null } }
         runCatching { current?.close() }
+        identityMaterial = null
+        identityLease?.retire()
     }
 
     override suspend fun performAttempt(epoch: Long): AttemptResult {
@@ -826,7 +844,7 @@ internal class ConnectionCoordinator(
         if (status.retryable && connectedOnce && !host.sessionGeneration.isDisconnectRequested) {
             reconnectEngine.launch(status, listener.epoch)
         } else {
-            host.serviceScope.launch { finishTerminalFailure(status, listener.epoch) }
+            launchIdentityWork(listener.epoch) { finishTerminalFailure(status, listener.epoch) }
         }
     }
 
@@ -853,7 +871,7 @@ internal class ConnectionCoordinator(
             host.diagnosticsRecorder.recordConnectionFailure(false)
             host.onConnectionFailure(terminal)
         }
-        host.serviceScope.launch {
+        launchIdentityWork(epoch) {
             stopRefusedAttempt(epoch)
             finishTerminalFailure(terminal, epoch)
         }
@@ -907,13 +925,30 @@ internal class ConnectionCoordinator(
             if (!updated) return@withLock
             host.refreshDiagnostics()
             host.finishTerminalOnMainThread(epoch)
+            synchronized(exitLock) {
+                if (host.sessionGeneration.isActive(epoch)) {
+                    identityMaterial = null
+                    identityLease?.retire()
+                }
+            }
         }
+    }
+
+    private fun launchIdentityWork(
+        epoch: Long,
+        block: suspend CoroutineScope.() -> Unit,
+    ): Job? {
+        val lease = identityLease ?: return null
+        if (!isEpochActive(epoch)) return null
+        // prepare refuses retired owners atomically. Avoid exitLock here: listener callbacks
+        // may already hold the generation boundary, whose lock precedes lease ownership.
+        return lease.prepare(host.serviceScope, block)?.also { it.start() }
     }
 
     private fun scheduleStableConnectionReset(listener: SessionListener) {
         stableConnectionJob?.cancel()
         stableConnectionJob =
-            host.serviceScope.launch {
+            launchIdentityWork(listener.epoch) {
                 delay(STABLE_CONNECTION_MS)
                 if (isListenerActive(listener) && listener.connected) {
                     reconnectEngine.resetAttemptCount()
@@ -922,44 +957,36 @@ internal class ConnectionCoordinator(
     }
 
     private fun startConnectedWatch(listener: SessionListener) {
+        val watchedSession = session ?: return
+        val binding = MonitoredSession(listener.epoch, watchedSession, listener)
         connectedWatchJob?.cancel()
         connectedWatchJob =
-            host.serviceScope.launch {
-                var previousTickMs = clockMs()
-                while (isActive && isListenerActive(listener)) {
-                    // Forward progress of this watch is the only local evidence
-                    // that the process is still being scheduled. A gap is
-                    // reported as data and never inferred as a specific cause.
-                    val nowMs = clockMs()
-                    val gapMs = nowMs - previousTickMs
-                    previousTickMs = nowMs
-                    if (gapMs >= WATCH_EXECUTION_GAP_THRESHOLD_MS && isListenerActive(listener)) {
-                        host.onWatchExecutionGap(gapMs / MILLIS_PER_SECOND)
+            launchIdentityWork(listener.epoch) {
+                monitor.watch(binding, ::isMonitoredSessionActive) { observation ->
+                    if (isMonitoredSessionActive(observation.binding)) {
+                        when (observation) {
+                            is ConnectionWatchObservation.ExecutionGap -> host.onWatchExecutionGap(observation.seconds)
+                            is ConnectionWatchObservation.Tick -> host.refreshDiagnostics()
+                            is ConnectionWatchObservation.TransportClosed ->
+                                onEstablishedSessionEnded(
+                                    listener,
+                                    ConnectionStatus(
+                                        ConnectionPhase.ERROR,
+                                        ConnectionLivenessPolicy.TRANSPORT_LOST_DETAIL,
+                                        retryable = true,
+                                    ),
+                                    transportSession = observation.binding.session,
+                                )
+                        }
                     }
-                    // ts3j can silently transition to DISCONNECTED after its
-                    // PONG/ACK timeout. Observe that local state without sending
-                    // extra keepalives or treating channel silence as failure.
-                    val observedSession = session ?: return@launch
-                    if (observedSession.transportConnected == false &&
-                        session === observedSession && isListenerActive(listener)
-                    ) {
-                        // Ending the session cancels this watch. Keep this
-                        // transition synchronous; recovery has its own job.
-                        onEstablishedSessionEnded(
-                            listener,
-                            ConnectionStatus(
-                                ConnectionPhase.ERROR,
-                                ConnectionLivenessPolicy.TRANSPORT_LOST_DETAIL,
-                                retryable = true,
-                            ),
-                            transportSession = observedSession,
-                        )
-                        return@launch
-                    }
-                    host.refreshDiagnostics()
-                    delay(CONNECTED_WATCH_INTERVAL_MS)
                 }
             }
+    }
+
+    private fun isMonitoredSessionActive(binding: MonitoredSession): Boolean {
+        val listener = activeListener ?: return false
+        return listener === binding.listener && listener.epoch == binding.epoch &&
+            session === binding.session && isListenerActive(listener)
     }
 
     private fun restoreLastChannelIfNeeded(listener: SessionListener) {
@@ -969,10 +996,10 @@ internal class ConnectionCoordinator(
                 ?: return
         channelRestore.beginRestore()
         host.mutableState.update { it.copy(switchingChannelId = target.channelId) }
-        host.serviceScope.launch {
+        launchIdentityWork(listener.epoch) {
             try {
                 host.sessionMutex.withLock {
-                    if (!isListenerActive(listener) || !listener.connected || session !== captured) return@launch
+                    if (!isListenerActive(listener) || !listener.connected || session !== captured) return@launchIdentityWork
                     runInterruptible { captured.joinChannel(target.channelId, target.password) }
                 }
                 withChannelSession(listener, captured) {
@@ -1012,13 +1039,10 @@ internal class ConnectionCoordinator(
     private fun isListenerActive(listener: SessionListener): Boolean =
         activeListener === listener && isEpochActive(listener.epoch) && refusedEpoch != listener.epoch
 
-    private fun isEpochActive(epoch: Long): Boolean = host.sessionGeneration.isActive(epoch)
+    override fun isEpochActive(epoch: Long): Boolean = host.sessionGeneration.isActive(epoch) && identityLease?.isActive == true
 
     private companion object {
         const val STABLE_CONNECTION_MS = 30_000L
-        const val CONNECTED_WATCH_INTERVAL_MS = 1_000L
-        const val WATCH_EXECUTION_GAP_THRESHOLD_MS = 10_000L
-        const val MILLIS_PER_SECOND = 1_000L
 
         /** Total budget for one exit: capture stop, mutex wait, protocol exit and release. */
         const val EXIT_BUDGET_MS = 2_000L

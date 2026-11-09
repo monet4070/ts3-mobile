@@ -75,7 +75,12 @@ internal class PlaybackSession(
                     return
                 }
                 focusDenials = 0
-                val currentOutput = output ?: createOutput().also { output = it }
+                val currentOutput =
+                    output ?: createOutput().also {
+                        output = it
+                        stats.count(AudioReceiveCounter.OUTPUTS_CREATED)
+                        stats.observer?.onEvent(AudioDiagnosticEventKind.OUTPUT_CREATED)
+                    }
                 if (!canWrite()) return
                 currentOutput.start()
                 if (!currentOutput.routeReady || !canWrite()) {
@@ -130,6 +135,23 @@ internal class PlaybackSession(
         if (closed) return
         streams.reset()
         input.clear()
+        resetOutput(now, if (focusInterrupted) now + PlaybackPolicy.INITIAL_BACKOFF_NANOS else 0)
+    }
+
+    fun invalidateParticipants(
+        clients: Set<Int>,
+        now: Long,
+    ) {
+        if (closed) return
+        streams.invalidateParticipants(clients)
+        // Producers already removed old input. Do not delete newly admitted post-unmute packets.
+        resetOutput(now, retryAt)
+    }
+
+    private fun resetOutput(
+        now: Long,
+        nextRetryAt: Long,
+    ) {
         if (!retireOutput()) {
             stats.outputRecoveryExhausted.incrementAndGet()
             status = PlaybackStatus.FAILED
@@ -138,8 +160,8 @@ internal class PlaybackSession(
         outputFailures = 0
         healthyFrames = 0
         idleSince = null
-        retryAt = if (focusInterrupted) now + PlaybackPolicy.INITIAL_BACKOFF_NANOS else 0
-        status = if (focusInterrupted) PlaybackStatus.RETRYING else PlaybackStatus.BUFFERING
+        retryAt = nextRetryAt
+        status = if (now < retryAt) PlaybackStatus.RETRYING else PlaybackStatus.BUFFERING
     }
 
     override fun close() {

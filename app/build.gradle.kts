@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.ts3mobile.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "1.0.0"
+        versionCode = 15
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -54,6 +54,12 @@ android {
                 "META-INF/NOTICE.txt",
             )
     }
+
+    // Shared synthetic crypto vectors belong only to JVM/Android tests, never the application APK.
+    sourceSets {
+        getByName("test").resources.srcDir("src/testFixtures/resources")
+        getByName("androidTest").assets.srcDir("src/testFixtures/resources")
+    }
 }
 
 // Lock the resolved dependency graph of every configuration to the committed
@@ -84,6 +90,10 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.markwon.core)
+    implementation(libs.markwon.tables)
+    implementation(libs.markwon.tasklist)
+    implementation(libs.markwon.strikethrough)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

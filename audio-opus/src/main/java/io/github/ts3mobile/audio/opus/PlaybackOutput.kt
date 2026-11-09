@@ -9,6 +9,8 @@ internal interface PlaybackOutput : AutoCloseable {
 
     fun sampleClock(): AudioSampleClock? = null
 
+    fun pollDiagnostics() = Unit
+
     fun start()
 
     fun write(

@@ -5,6 +5,46 @@ used milestone naming. After 1.0.0, patch versions are intended for compatible f
 and minor versions for compatible features; Android versionCode increases for
 each distributed update.
 
+## 1.1.0 — 2026-11-09
+
+VersionCode 15 integrates the previously staged improvements. The official package and
+public certificate are retained. See [release acceptance](docs/release/1.1.0/CHECKLIST.md)
+for final artifact, CI and physical-upgrade scope. Weak-network audio interruption remains
+an open diagnostic investigation.
+
+- Retain offline audio receive/playback snapshots and route/focus events across
+  disconnect/reopening; add interruption marks and JSON file export. Keep the
+  existing report fields and clarify that callback rejection is not network loss.
+- Add a manual GitHub release checker with a remembered prerelease choice,
+  versionCode comparison, release notes and explicit browser downloads.
+- Keep update-page close and full-note collapse controls fixed above scrolling
+  content; render Markdown release notes and separate channel, result and note cards.
+- Distinguish idle Bluetooth SCO suspension from headset loss. Restore the selected
+  headset after playback obtains focus, while preserving speaker fallback protection.
+- Refine visual hierarchy with grouped microphone settings, a shared live-level/
+  threshold track, structured search rows, left/right chat bubbles and centered
+  system notes. Keep sending, capture and persistence rules unchanged.
+
+- Preserve each chat's reading position across tabs; remember microphone tuning;
+  save the current channel in bookmarks and offer an explicit channel Join action.
+- Add private-message notifications with stale-click protection and bounded live
+  microphone-level feedback during existing capture.
+- Add verified encrypted `.ts3mbak` identity backup, explicit import/replacement and
+  local rollback. Preserve existing encrypted storage and keys; desktop identity formats are unsupported.
+- Keep unrelated participants' valid unmixed audio and decoder state when muting
+  one participant. Output still retires safely; physical listening gaps remain unverified.
+- Add persistent Light/Dark/System appearance, keep Light when unset, and fix
+  dialog actions obscured by a settled software keyboard.
+- Extract session-bound connection monitoring while preserving existing timing,
+  reconnect policy and coordinator ownership. Expand offline CI regressions.
+
+R4 local acceptance, before the UI follow-up: 736 JVM and 228 Android passes, with two external-fixture
+tests skipped; four fresh API35 ARM64 emulator scenarios passed. See the
+[R4 record](docs/testing/IMPROVEMENT_R4_2026-11-07_ZH.md) for exact artifacts, upgrade
+and 16-KiB scope. Physical devices, live servers and production-signed upgrades
+were outside this round.
+The subsequent UI changes have their own [validation record](docs/testing/UI_HIERARCHY_2026-11-08_ZH.md).
+
 ## 1.0.0 reissue — 2026-11-05
 
 The maintainer withdrew the original code 13 release after an audio regression and

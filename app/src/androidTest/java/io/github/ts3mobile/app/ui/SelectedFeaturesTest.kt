@@ -8,6 +8,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -131,14 +133,14 @@ class SelectedFeaturesTest {
         openMenu("Find channels and users")
         rule.onNodeWithText("Channel, topic or nickname").performTextInput("MORGAN")
         rule.onNodeWithText("Channel, topic or nickname").performImeAction()
-        rule.onNodeWithText("Join this user’s channel").performClick()
+        rule.onNodeWithContentDescription("Join this user’s channel").performClick()
         rule.runOnIdle { assertEquals(listOf(2 to ""), fixture.joins) }
         openMenu("Find channels and users")
         rule.onNodeWithText("Channel, topic or nickname").performTextInput("Private")
         rule.onNodeWithText("Channel, topic or nickname").performImeAction()
-        rule.onNodeWithText("Join").performClick()
+        rule.onNode(hasText("Join") and hasAnyAncestor(isDialog())).performClick()
         rule.onNodeWithText("Channel password").performTextInput("fixture-password")
-        rule.onNodeWithText("Join").performClick()
+        rule.onNode(hasText("Join") and hasAnyAncestor(isDialog())).performClick()
         rule.runOnIdle { assertEquals(3 to "fixture-password", fixture.joins.last()) }
     }
 

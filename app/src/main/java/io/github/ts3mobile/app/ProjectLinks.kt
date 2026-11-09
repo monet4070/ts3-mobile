@@ -6,7 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 
-internal const val PROJECT_REPOSITORY_URL = "https://github.com/monet4070/ts3-mobile"
+internal const val PROJECT_REPOSITORY = "monet4070/ts3-mobile"
+internal const val PROJECT_REPOSITORY_URL = "https://github.com/$PROJECT_REPOSITORY"
 
 internal fun openProjectRepository(context: Context) {
     try {

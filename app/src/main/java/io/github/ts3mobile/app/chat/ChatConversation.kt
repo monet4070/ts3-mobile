@@ -22,6 +22,7 @@ data class ChatConversation(
     val draft: String = "",
     val draftOverflow: Boolean = false,
     val readThrough: Long = 0,
+    val privateMessageRevision: Long = 0,
 ) {
     val unread: Int get() = messages.count { it.kind == ChatMessageKind.INCOMING && it.sequence > readThrough }
     val isPrivate: Boolean get() = key != ChatConversationKey.Channel

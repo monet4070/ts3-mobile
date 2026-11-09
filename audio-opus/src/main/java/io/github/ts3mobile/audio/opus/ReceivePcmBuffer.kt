@@ -58,6 +58,7 @@ internal class ReceivePcmBuffer(private val stats: ReceiveStats) {
 
     fun clear(): Int {
         val dropped = available
+        stats.count(AudioReceiveCounter.PCM_RESET_DROPPED, dropped.toLong())
         chunks.forEach { it.lease.release() }
         chunks.clear()
         available = 0

@@ -1,0 +1,134 @@
+# 提升计划执行进度
+
+2026-11-09 更新：维护者要求把已完成的组合候选与后续界面、蓝牙、更新检查、离线诊断
+集成为 1.1.0 / code 15 正式发布，并安装到 Xiaomi 14。最终源码、CI、签名与上线状态见
+[1.1.0 发布验收](../release/1.1.0/CHECKLIST.md)。下方为逐阶段历史，不把旧候选工件重命名为新版本证据。
+
+日期：2026-11-07（Asia/Shanghai）。维护者已要求逐阶段完成[执行计划](IMPROVEMENT_EXECUTION_PLAN_2026-11-07_ZH.md)。此表记录实际进展，估算和设计文档不作为完成证明。
+
+维护者随后明确：本轮只做离线与模拟器验收。实体设备、锁屏听感和物理路由验证留待后续；不会作为本轮已通过的证据，也不再阻止本轮离线阶段推进。
+
+2026-11-08最终状态：全部工作包在上述授权范围内完成，最终生产候选为D2 `417ebf1`，
+R4完成组合回归及四台fresh模拟器验收。最终提交／云端状态见文末；下方历史推进记录保留当时状态。
+所有交付仍为堆叠草稿PR，没有合并、发布或提高版本。[最终验收及剩余边界](../testing/IMPROVEMENT_R4_2026-11-07_ZH.md)。
+
+| 工作包 | 状态 | 证据／下一步 |
+| --- | --- | --- |
+| P0 | 离线基线完成 | [本次基线](../testing/IMPROVEMENT_P0_2026-11-07_ZH.md)；物理设备和其他API验证按功能项安排 |
+| A1 | 离线实现与验收完成 | [4项旧实现失败、8项新增回归及137项完整套件](../testing/IMPROVEMENT_A1_Q1_2026-11-07_ZH.md) |
+| Q1 | 离线／云端验收完成 | [PR #8 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42348440916)通过；下载核对报告含导航8项与关键UI57项 |
+| A2 | 离线／云端验收完成 | [253 JVM／141 Android、真实Activity服务进程重启](../testing/IMPROVEMENT_A2_2026-11-07_ZH.md)；[PR #9 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42357799673)通过并核对报告 |
+| A3a / A3b | 离线／云端验收完成 | [263 JVM／154 Android、事务guard和可见Join](../testing/IMPROVEMENT_A3_2026-11-07_ZH.md) |
+| R1 | 离线／模拟器验收完成 | [Debug及minified候选同开发证书覆盖升级、真实Vault及原密钥保全](../testing/IMPROVEMENT_R1_2026-11-07_ZH.md)；不包含生产签名／实体设备 |
+| A4 | 离线／模拟器／云端完成 | [282 JVM、完整 167 Android 通过／1 外部 fixture 默认跳过，真实系统开关两 fixture 通过](../testing/IMPROVEMENT_A4_2026-11-07_ZH.md) |
+| A5 | 离线实现与模拟器验收完成 | [282 app／204 audio JVM、完整 177 Android 通过／1 外部 fixture 默认跳过及最终 27 项补验](../testing/IMPROVEMENT_A5_2026-11-07_ZH.md) |
+| R2 | 离线／模拟器验收完成 | [第一批→第二批Debug／minified覆盖升级、四调音参数／原密文／原密钥／UID保全与组合流程](../testing/IMPROVEMENT_R2_2026-11-07_ZH.md) |
+| C1 | 离线原型／参数关卡完成 | [132 protocol／295 app JVM、4 Android及跨提供者／资源／资格／计时证据](../testing/IMPROVEMENT_C1_2026-11-07_ZH.md) |
+| C0 | 离线／模拟器兼容验收完成 | [299 JVM／188 Android通过、三真实Vault双向兼容／缺钥保全及默认alias覆盖升级](../testing/IMPROVEMENT_C0_2026-11-07_ZH.md) |
+| C2.1 | 离线／模拟器验收完成 | [325 JVM、完整195 Android通过／1跳过及最终12补验、独立覆盖升级](../testing/IMPROVEMENT_C21_2026-11-07_ZH.md) |
+| C2.2 | 离线／模拟器验收完成 | [340 app／133 protocol JVM、完整201 Android通过／1跳过与最终7补验、实际Debug／minified SAF导出](../testing/IMPROVEMENT_C22_2026-11-07_ZH.md) |
+| C2.3 | 离线／模拟器验收完成 | [355 app JVM、完整206 Android通过／1跳过与最终9补验、独立安装Debug／minified实际导入／回退及四次精确材料核对](../testing/IMPROVEMENT_C23_2026-11-07_ZH.md) |
+| R3 | 离线／模拟器候选验收完成 | [356／133／204 JVM、206 app Android通过／2外部夹具默认跳过、14离线音频及8真实进程终止恢复／保全](../testing/IMPROVEMENT_R3_2026-11-07_ZH.md) |
+| B1.1 | 离线／模拟器量化关卡通过 | [12条真实player合成轨迹，A静音额外丢弃B有效未混音90ms并重建B decoder](../testing/IMPROVEMENT_B11_2026-11-07_ZH.md) |
+| B1.2 / B1.3 | 有界实现及离线／模拟器验收完成 | [12+12条同夹具对照、B有效未混音零额外丢弃／decoder保留、219音频JVM、18音频Android及206应用Android通过／2跳过](../testing/IMPROVEMENT_B12_2026-11-07_ZH.md)；输出仍退役，不flush的50%缺口与实体听感未验证 |
+| D1 | 离线／模拟器验收完成 | [370 app JVM、完整210 Android通过／2跳过、最终minified三模式／进程重启／系统切换及真实IME布局](../testing/IMPROVEMENT_D1_2026-11-07_ZH.md)；未设置保持浅色，独立存储，主题无service／采集依赖 |
+| D2 | 离线／模拟器／云端验收完成 | [原实现71行为对照、384 app JVM、6个常量不变与2项真实服务／主题接线](../testing/IMPROVEMENT_D2_2026-11-07_ZH.md)；[CI42443547332](https://github.com/monet4070/ts3-mobile/actions/runs/42443547332)通过且报告核对 |
+| R4 | 最终离线／模拟器组合验收完成 | [736 JVM／228 Android通过、2外部夹具跳过、最终minified探针、四fresh模拟器覆盖升级／主题保留／16KiB八个进程终止点](../testing/IMPROVEMENT_R4_2026-11-07_ZH.md) |
+
+P0/A1/Q1已经提交到草稿[PR #8](https://github.com/monet4070/ts3-mobile/pull/8)，固定源码`b1b44a9`；远端CI通过且报告已核对。A2是后续草稿[PR #9](https://github.com/monet4070/ts3-mobile/pull/9)，基于PR #8，源码`d3f481c`；为连续阶段PR补充`codex/**`目标分支CI触发。没有合并或公开发布，实际结果以各阶段记录及对应源码指纹为准。
+
+A3 草稿 [PR #10](https://github.com/monet4070/ts3-mobile/pull/10) 生产源码 `827f851`，
+追加小屏惰性列表及 IME 行为测试修复至 `5636d3d`；最新 CI 待确认。
+R1 草稿 [PR #11](https://github.com/monet4070/ts3-mobile/pull/11) 初始 `e7b4241`，
+[云端组合 CI](https://github.com/monet4070/ts3-mobile/actions/runs/42362487981) 263／129／194 JVM、81／11 Android 通过且下载核对；
+后续仅同步上述频道测试修复至 `7eb183d`。所有 PR 仍为草稿，没有合并或公开发布。
+
+A4 已提交草稿 [PR #12](https://github.com/monet4070/ts3-mobile/pull/12)，生产及回归源码 `0ca3f1c`，
+[离线／模拟器验收](../testing/IMPROVEMENT_A4_2026-11-07_ZH.md)完成，云端 CI 待确认。下一阶段 A5。
+
+A3 最新[CI 42363545006](https://github.com/monet4070/ts3-mobile/actions/runs/42363545006)与
+R1 最新[CI 42363547532](https://github.com/monet4070/ts3-mobile/actions/runs/42363547532)均通过，下载核对了263／129／194 JVM、81／11 Android。
+A4 测试修复至 `fac612b`，[CI 42364912604](https://github.com/monet4070/ts3-mobile/actions/runs/42364912604)通过，
+报告核对为282／129／194 JVM、96／11 Android，0失败。上述最新证据取代之前“待确认”状态。
+
+A5 已提交草稿 [PR #13](https://github.com/monet4070/ts3-mobile/pull/13)，生产与回归源码 `3adcbdb`，
+[离线／模拟器验收](../testing/IMPROVEMENT_A5_2026-11-07_ZH.md)完成，云端CI待确认。R2继续组合与覆盖升级验收。
+
+R2 已提交草稿 [PR #14](https://github.com/monet4070/ts3-mobile/pull/14)，测试／工具源码 `c95935d`；
+[第二批验收](../testing/IMPROVEMENT_R2_2026-11-07_ZH.md)完成，生产仍沿用A5。下一阶段 C1。
+
+A5 [CI42366139680](https://github.com/monet4070/ts3-mobile/actions/runs/42366139680)与
+R2 [CI42366823505](https://github.com/monet4070/ts3-mobile/actions/runs/42366823505)通过且下载核对：
+两者282／129／204 JVM；A5 app107／audio14 Android，R2 app108／audio14 Android，全部零失败。
+
+C1 已提交草稿 [PR #15](https://github.com/monet4070/ts3-mobile/pull/15)，源码 `c844b9a`，
+[离线关卡](../testing/IMPROVEMENT_C1_2026-11-07_ZH.md)完成，云端CI待确认。C0继续旧Vault兼容收敛。
+
+C1 [CI42368616849](https://github.com/monet4070/ts3-mobile/actions/runs/42368616849)通过且下载核对：
+295／132／204 JVM，app112／audio14 Android，全部零失败；本地参数和资源关卡证据仍见C1记录。
+
+C0 已提交草稿 [PR #16](https://github.com/monet4070/ts3-mobile/pull/16)，源码 `3a3c10e`，
+[兼容验收](../testing/IMPROVEMENT_C0_2026-11-07_ZH.md)完成；云端 CI 待确认。开始 C2.1 存储事务与维护互斥。
+
+C0 [CI42371137285](https://github.com/monet4070/ts3-mobile/actions/runs/42371137285)通过并下载核对：
+299／132／204 JVM、app117／audio14 Android，全部零失败。C2.1正在完成事务与维护资格验收。
+
+C2.1 已提交草稿 [PR #17](https://github.com/monet4070/ts3-mobile/pull/17)，源码 `440dfcc`。
+[事务／维护验收](../testing/IMPROVEMENT_C21_2026-11-07_ZH.md)完成，云端CI待确认；继续C2.2。
+
+C2.1 [CI42388366562](https://github.com/monet4070/ts3-mobile/actions/runs/42388366562)重试后通过并下载核对：
+325／132／204 JVM、app124／audio14 Android，全零失败；首次失败为既有Opus源码下载连接重置。
+
+C2.2 已提交草稿 [PR #18](https://github.com/monet4070/ts3-mobile/pull/18)，源码 `dfc3aa1`；
+[SAF实际导出验收](../testing/IMPROVEMENT_C22_2026-11-07_ZH.md)完成，云端CI待确认；继续C2.3。
+
+C2.2 [CI42390907613](https://github.com/monet4070/ts3-mobile/actions/runs/42390907613)通过并下载核对：
+340／133／204 JVM、app131／audio14 Android，全部零失败。C2.3已完成实现和自动门禁，正在实际跨安装／minified文件恢复验收。
+
+C2.3 已提交草稿 [PR #19](https://github.com/monet4070/ts3-mobile/pull/19)，源码 `dbe74bf`；
+[独立安装导入／回退验收](../testing/IMPROVEMENT_C23_2026-11-07_ZH.md)完成，云端CI待确认；继续R3。
+
+C2.3 [CI42393919381](https://github.com/monet4070/ts3-mobile/actions/runs/42393919381)通过并下载核对：
+355／133／204 JVM、app135／audio14 Android，全部零失败。R3本地8个真实进程终止用例全部符合预期。
+
+R3 已提交草稿 [PR #20](https://github.com/monet4070/ts3-mobile/pull/20)，测试／工具源码 `7942116`；
+[身份候选验收](../testing/IMPROVEMENT_R3_2026-11-07_ZH.md)完成，云端CI待确认；继续B1量化关卡。
+
+B1.1 已提交草稿 [PR #21](https://github.com/monet4070/ts3-mobile/pull/21)，测量源码 `03e0ad3`；
+204项音频JVM、Lint／格式及12条模拟器轨迹通过。B1.2继续有界隔离；B1整体尚未完成。
+R3签名解析工具修复 `452b7df` 的[云端复验](https://github.com/monet4070/ts3-mobile/actions/runs/42397034160)运行中。
+
+R3上述云端复验已通过并下载核对：356／133／204 JVM、app135／audio14 Android全零失败，
+外部进程8个终止点重启验证全部通过，无默认身份创建。B1.1云端音频通过，首次组合任务仅在既有
+书签中文大字／IME测试点击更多设置后找不到频道字段，失败job已重试；不将其写成已通过。
+
+B1.2／B1.3已提交草稿 [PR #22](https://github.com/monet4070/ts3-mobile/pull/22)，
+生产／回归源码`cf212dc`；[有界隔离验收](../testing/IMPROVEMENT_B12_2026-11-07_ZH.md)完成。
+[云端CI42438416481](https://github.com/monet4070/ts3-mobile/actions/runs/42438416481)运行中，
+不能标作云端通过。下一阶段D1主题；全部仍为草稿，未合并／发布。
+
+B1.1 [CI42397963225](https://github.com/monet4070/ts3-mobile/actions/runs/42397963225)失败job重试通过，
+下载核对第二次报告：356／133／204 JVM、app135／audio15 Android全零失败。
+B1.2／B1.3文档更新触发的最新[CI42438462330](https://github.com/monet4070/ts3-mobile/actions/runs/42438462330)
+通过并下载核对：356／133／219 JVM、app135／audio18 Android，全零失败；
+实际保存的6条合成JSON均为B有效未混音精确保留。此前42438416481因后续更新取消，不作为验收。
+
+D1已提交草稿 [PR #23](https://github.com/monet4070/ts3-mobile/pull/23)，生产／测试源码`2afbd81`；
+最终minified真实三模式／进程重启／系统切换／IME检查完成，完整app Android210通过／2跳过。
+云端CI待确认；继续D2与R4，未合并或发布。
+
+D1 [CI42442283536](https://github.com/monet4070/ts3-mobile/actions/runs/42442283536)通过并下载核对，
+最新实际报告见D1记录。D2已提交草稿 [PR #24](https://github.com/monet4070/ts3-mobile/pull/24)，
+源码`417ebf1`，云端CI待确认；继续R4最终组合。
+
+D2 [CI42443547332](https://github.com/monet4070/ts3-mobile/actions/runs/42443547332)已通过并下载核对：
+384／133／219 JVM、app139／audio18 Android，全部零失败／错误，取代前述待确认状态。
+R4最终组合验收已提交堆叠草稿[PR #25](https://github.com/monet4070/ts3-mobile/pull/25)，
+测试／验收源码`e477164`，生产沿用D2；最终HEAD云端结果及下载报告在该PR跟进。
+全部计划工作包在本轮离线／模拟器范围内完成；完整证据及保留边界见[R4](../testing/IMPROVEMENT_R4_2026-11-07_ZH.md)。
+所有PR仍为草稿，没有合并、发布或提高版本。
+
+R4首次最终[CI42445471798](https://github.com/monet4070/ts3-mobile/actions/runs/42445471798)在
+维护服务测试立即查询通知移除结果时失败；JVM736、audio18、八个进程终止点及app其他138项通过。
+已定位系统通知异步移除与瞬时断言的竞态，只增加测试有界等待及12秒后的无残留复核，保留生产代码与全部原断言。
+本地两项接线／服务定向及quality通过，最终修正提交的云端门禁继续在PR #25跟进；旧失败原报告保留。
