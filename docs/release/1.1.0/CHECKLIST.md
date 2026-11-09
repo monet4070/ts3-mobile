@@ -26,14 +26,16 @@ README、架构、MainActivity、TeamSpeakService 等大文件的职责评估沿
 
 ## 发布门禁
 
-- [ ] 冻结完整源码与版本，执行格式、编译、全模块 JVM、Lint、Debug/Release 构建。
-- [ ] 执行相关 Android 离线回归、Python 工具、隐私和文档检查。
-- [ ] 原公开证书签名，核对版本/非 debuggable/ABI/权限/16 KiB ZIP 对齐与原 ZIP 条目。
-- [ ] 确切签名 APK 的身份/INI、Opus ART 与启动探针。
-- [ ] Xiaomi 14 保留数据升级及更新页面实测。
-- [ ] GitHub 集成 PR CI 通过并正常合入 main。
-- [ ] 新建不可移动的 v1.1.0 标签，绑定实际构建提交与发布提交、源码输入和 APK 摘要。
-- [ ] 草稿三项资产下载复核，通过后发布非 prerelease / Latest，再复核公开下载。
+- [x] 冻结完整源码与版本，执行格式、编译、全模块 JVM、Lint、Debug/Release 构建。
+- [x] 执行相关 Android 离线回归、Python 工具、隐私和文档检查。
+- [x] 原公开证书签名，核对版本/非 debuggable/ABI/权限/16 KiB ZIP 对齐与原 ZIP 条目。
+- [x] 确切签名 APK 的身份/INI、Opus ART 与启动探针。
+- [x] Xiaomi 14 保留数据升级及更新页面实测。
+- [x] GitHub 集成 PR CI 通过并正常合入 main。
+标签和资产流程：新建不可移动的 v1.1.0，绑定实际构建/发布提交和工件摘要；草稿下载复核后
+公开为非 prerelease / Latest，并复核公开下载。本记录在打标前冻结，不预报上线。
+最终执行状态以 [GitHub Release](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0)
+及其 `BUILDINFO.json` 为准。
 
 ## 变更分类
 
@@ -47,3 +49,46 @@ README、架构、MainActivity、TeamSpeakService 等大文件的职责评估沿
 [蓝牙/移动网络排查](../../testing/MOBILE_RX_AUDIT_2026-11-08_ZH.md)、
 [离线诊断](../../testing/OFFLINE_AUDIO_DIAGNOSTICS_2026-11-09_ZH.md)、
 [更新界面](../../testing/UPDATE_CHECK_2026-11-09_ZH.md)。
+
+## 最终验收结果
+
+实际构建源码：`4b0084e99990a2d7390e50bc3a9da71cfc624de0`，构建时工作树干净。
+记录 634 个非 Markdown、非 docs 构建输入；之后的文档补充/普通合并不得改变这些输入。
+最终发布提交与实际构建提交分别写入 `BUILDINFO.json`，不把已有 APK 称作后续文档提交的重新构建。
+
+| 检查 | 结果与范围 |
+| --- | --- |
+| 完整本地门禁 | 禁用构建缓存并重跑 292 项任务，格式、Kotlin 编译、全模块 JVM、音频/App Lint、Debug/Release 与测试 APK 构建通过 |
+| JVM | 应用 421、音频 233、协议 133，共 787 项通过，0 失败/错误/跳过 |
+| API 35 ARM64 / 4 KiB 应用 Android | 246 项通过，2 项要求外部夹具的用例按设计跳过；不将跳过计作通过 |
+| 音频 Android | 20 项离线 native player/路由/诊断/生命周期/个人静音回归通过；使用合成输入，无实体声学测量 |
+| API 35 ARM64 / 16 KiB 身份事务 | fresh 模拟器上 8 个真实终止/重开边界通过，不创建默认身份、不连接服务器 |
+| 工具 | 18 项 Python、48 组 Opus 跨版本组合、独立身份备份向量、隐私扫描、YAML/文档链接及 whitespace 通过 |
+| Lint | 无 Error；既有 Debug 36 Warning/1 Information，Release 25 Warning/1 Information 保留 |
+| 最终 APK | 原公开证书、非 debuggable、四 ABI、API 26/35、16 KiB ZIP 对齐；168 个原 ZIP 条目签名前后相同，权限与公开 code 14 相同 |
+| 最终包探针 | Xiaomi 14 / API 36 与独立 API 35 / 16 KiB 模拟器：身份/INI 和原生 Opus 1.6.1 往返通过 |
+| 公开 code 14 → 15 | 独立模拟器实际安装下载的 1.0.0，再覆盖最终签名 1.1.0；UID、合成私有文件/偏好与 Keystore 密文解密保留，冷启动通过；不称真实身份 Vault 读回 |
+| Xiaomi 14 候选 code 14 → 15 | 正常断开后覆盖，安装二进制摘要一致，UID 与 4 项记忆连接字段一致；更新页面显示 1.1.0/15、真实检查/Markdown/固定关闭/收起通过，首次验证后回到 chat；最终仅提交元数据变化的同版本包再次保留数据覆盖，核对新摘要/UID/4 项表单后保持补装前的未连接状态 |
+
+最终 APK SHA-256：
+
+```text
+0287568eee4c42587ed4e714dc8dc6524a8f2ca1151955a9b57f68ce6258b2a5
+```
+
+证书 SHA-256：
+
+```text
+e239102412f17ddd1909bd323b3825831b153fec4602ec00abb359da7d8be592
+```
+
+云端：集成 [PR #26](https://github.com/monet4070/ts3-mobile/pull/26) 的
+[Android CI](https://github.com/monet4070/ts3-mobile/actions/runs/42607171229) 通过；
+报告下载核对记录保存在本机发布档案。文档验收补充后的构建输入逐项不变。
+这些结果不扩大前述真实弱网、物理蓝牙/声学、长时锁屏或其他 API/OEM 的覆盖范围。
+
+首次云端运行 [42603824867](https://github.com/monet4070/ts3-mobile/actions/runs/42603824867)
+在 3 项布局断言失败：短视口未组合全部聊天气泡，以及搜索结果跨帧/裁剪坐标比较。
+只修改两个 Android 测试文件：先显式滚动到虚拟化项目，再在同一 UI 帧读取未裁剪的布局位置/尺寸；
+保留原有几何和加入操作断言，没有禁用或跳过失败用例，也没有改产品代码。
+修正后 360×640 dp 小屏的 4 项定向测试通过，随后重跑门禁；首次失败报告保留在本地和 Actions 历史。

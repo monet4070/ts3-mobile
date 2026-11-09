@@ -284,6 +284,9 @@ bans. Reopening does not connect automatically.
 | Microphone settings | Input gain, RNNoise, device AEC and gate threshold |
 | Background voice check | Battery restrictions, CPU-awake and Android settings |
 | Diagnostics | Inspect local connection/audio history, mark interruptions and copy or save JSON reports |
+| Check for updates | Stable/prerelease choice, Markdown notes and explicit browser download |
+| Identity and backups | Verified encrypted identity export, confirmed import and local rollback |
+| Appearance | Saved Light, Dark or System |
 | Give the project a Star | Open GitHub externally; starring remains your choice |
 
 The app currently defaults to the warm light interface. English or Simplified
