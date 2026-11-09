@@ -2,11 +2,13 @@ package io.github.ts3mobile.app.ui
 
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
@@ -17,7 +19,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.toSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -34,14 +38,25 @@ class SearchResultLayoutTest {
         rule.onNodeWithText("Find channels and users").performScrollTo().performClick()
         rule.onNodeWithText("Channel, topic or nickname").performTextInput("Morgan")
         rule.onNodeWithText("Channel, topic or nickname").performImeAction()
-        val name = rule.onNode(hasText("Morgan") and hasAnyAncestor(hasTestTag("discovery_user_4"))).fetchSemanticsNode().boundsInRoot
-        val channel =
+        rule.onNode(hasScrollToIndexAction() and hasAnyAncestor(isDialog()))
+            .performScrollToNode(hasTestTag("discovery_user_4"))
+        val nameNode = rule.onNode(hasText("Morgan") and hasAnyAncestor(hasTestTag("discovery_user_4"))).fetchSemanticsNode()
+        val channelNode =
             rule.onNode(
                 hasText("Design studio") and hasAnyAncestor(hasTestTag("discovery_user_4")),
-            ).fetchSemanticsNode().boundsInRoot
-        val action = rule.onNodeWithContentDescription("Join this user’s channel").fetchSemanticsNode().boundsInRoot
-        assertTrue(channel.top >= name.bottom)
-        assertTrue(action.left > name.left && action.center.y > name.top && action.center.y < channel.bottom)
+            ).fetchSemanticsNode()
+        val actionNode = rule.onNodeWithContentDescription("Join this user’s channel").fetchSemanticsNode()
+        // Read one frame's logical layout; the IME can move the window and clip a lazy row's visible bounds.
+        rule.runOnIdle {
+            val name = Rect(nameNode.positionInRoot, nameNode.size.toSize())
+            val channel = Rect(channelNode.positionInRoot, channelNode.size.toSize())
+            val action = Rect(actionNode.positionInRoot, actionNode.size.toSize())
+            assertTrue("Channel subtitle must be below the user name", channel.top >= name.bottom)
+            assertTrue(
+                "Join must remain beside the name/channel group",
+                action.left > name.left && action.center.y > name.top && action.center.y < channel.bottom,
+            )
+        }
         saveDialog("search-user")
         rule.onNodeWithContentDescription("Join this user’s channel").performClick()
         rule.runOnIdle { assertEquals(listOf(2 to ""), fixture.joins) }
