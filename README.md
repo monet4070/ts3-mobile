@@ -8,6 +8,13 @@
 
 **Use TeamSpeak 3 on Android: join voice channels, exchange messages, reach your teammates and save your usual servers.**
 
+## Interface tour
+
+![TS3 Mobile 1.1.0 in English: connection form, Channels tab and More options menu](docs/images/1.1.0/en/interface-overview.webp)
+
+From left to right: the connection form, an example channel session, and the
+disconnected More options menu. Server and member data are synthetic.
+
 TS3 Mobile is an open-source, unofficial client with a warm cream/terracotta interface, outline icons,
 English and Simplified Chinese. Connect directly to your TeamSpeak server; there is no project account
 to register.
@@ -27,7 +34,7 @@ has not yet been reproduced with the final diagnostic build; this release does n
 universal audio fix. Detailed scope is in the [1.1.0 release record](docs/release/1.1.0/CHECKLIST.md).
 
 [Features](#features) · [Installation](#installation) · [First use](#first-use) ·
-[Interface tour](#interface-tour) · [Voice and audio](#voice-and-audio) ·
+[Interface controls](#interface-controls) · [Voice and audio](#voice-and-audio) ·
 [Channels and users](#channels-and-users) · [Chat and pokes](#chat-and-pokes) ·
 [Server bookmarks](#server-bookmarks) · [Away and background](#away-background-and-disconnect) ·
 [More menu](#settings-and-the-more-menu) · [Privacy and limits](#data-privacy-and-limits) · [FAQ](#frequently-asked-questions)
@@ -62,6 +69,7 @@ checking again; there is no background polling or automatic installation. Update
 are compared by Android versionCode, including same-name repair releases.
 The close action stays at the top. Release notes render Markdown with a six-line
 preview; the full reader keeps **Show less** visible and returns to the same page position.
+See the [1.1.0 update screen](docs/images/1.1.0/en/updates.webp) when the installed version is current.
 
 **Android 8.0 (API 26)+** is required. The universal APK contains arm64-v8a, armeabi-v7a, x86
 and x86_64. Installability does not mean every device/version has been tested; see
@@ -104,12 +112,7 @@ Server and channel passwords are different. If connection fails, check the voice
 permissions before retrying. Follow connection-limit guidance rather than repeatedly submitting the same
 refused identity.
 
-## Interface tour
-
-![Connection, channel and More-menu views with synthetic sample data](docs/images/interface-overview.png)
-
-The illustration uses the Chinese UI in different states, with sample server
-and member data. Session-dependent menu entries are disabled while disconnected.
+## Interface controls
 
 | Area | What it is for |
 | --- | --- |
@@ -238,7 +241,7 @@ control appearance/sound. Returning to the app can show the retained pending not
 
 ## Server bookmarks
 
-![Bookmark cards and the add/edit form](docs/images/bookmarks-and-editor.png)
+![TS3 Mobile 1.1.0 in English: saved servers and the Edit bookmark dialog](docs/images/1.1.0/en/bookmarks-and-editor.webp)
 
 Open Choose a saved server on the form, or **More options → Server bookmarks**. Each card separates
 name, address and nickname. Connect is the primary action; its top-right ellipsis contains management
