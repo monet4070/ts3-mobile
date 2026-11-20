@@ -1,6 +1,11 @@
 # 兼容性与验证范围 / Compatibility and validation
 
-更新日期：2026-11-09。当前版本 **1.1.0 / versionCode 15**；确切最终包门禁、签名、
+**1.2.0 / versionCode 16** 保持 Android 8.0+ 和四种 ABI。音频改动与小米 14 测试边界见
+[1.2.0 更新说明](release/1.2.0/RELEASE_NOTES_ZH.md)；历史覆盖不能替代在其他耳机、系统与网络上的实测。
+
+## 1.1.0 / code 15 历史范围
+
+记录日期：2026-11-09。**1.1.0 / versionCode 15** 的确切最终包门禁、签名、
 Xiaomi 14 升级与云端 CI 以 [1.1.0 发布验收](release/1.1.0/CHECKLIST.md) 为准。
 
 [中英文界面截图](images/README.md)仅说明 1.1.0 的界面，不扩大下文的真机、通话或升级验收范围。
