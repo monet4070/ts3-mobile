@@ -1,18 +1,15 @@
 # TS3 Mobile Architecture / TS3 Mobile 架构说明
 
-This bilingual index points to the English and Chinese architecture documents. Both share the
-same diagrams (regenerated from `.mmd` under [`docs/images/`](images/)); the prose in each is a
-parallel translation, not a fork — keep them in sync when you edit either.
+The English and Chinese design snapshots below predate 1.1.0 and share historical
+diagrams. Use the maintained top-level architecture document for current details.
 
-本双语索引指向英文与中文架构文档。两者共用相同的图示（由
-[`docs/images/`](images/) 下的 `.mmd` 重新生成）；两份文字是平行翻译而非分叉，修改任一版本时
-请同步另一版本。
+下方中英文设计快照及共用图示早于 1.1.0。当前实现请以维护中的顶层架构文档为准。
 
 - English / 英文: [`ARCHITECTURE_EN.md`](ARCHITECTURE_EN.md)
 - 中文 / Chinese: [`ARCHITECTURE_ZH.md`](ARCHITECTURE_ZH.md)
 - Top-level architecture note (canonical) / 顶层架构说明（权威）: [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 
-## Diagrams / 图示
+## Historical diagrams / 历史图示
 
 | Diagram / 图示 | Source / 源文件 |
 | --- | --- |

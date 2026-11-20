@@ -24,7 +24,9 @@
 | Bluetooth differs from speaker quality | Duplex can use a communication audio path; system, headset and device capabilities vary |
 | Speaker echo | Prefer headphones, lower speaker volume and inspect device AEC state. Noise suppression and echo cancellation serve different purposes |
 | Screen-off disconnect | Inspect Background voice check and vendor battery policy. Optional CPU-awake cannot guarantee survival on every device |
-| Microphone settings reset | Service recreation restores defaults; these parameters are not permanent cross-process preferences |
+| Microphone settings reset or capture mode changed | In 1.1.0, gain, noise suppression, echo cancellation and gate threshold persist after saving. Check the save status and retry if needed. Capture mode is not saved; a new service starts in Hold without capturing |
+
+For a listening interruption, see the [1.1.0 diagnostics screen and export steps](USER_GUIDE.md#offline-audio-diagnostics).
 
 ## Messages and notifications
 
