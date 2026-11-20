@@ -6,9 +6,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -38,8 +38,13 @@ internal fun UpdateReleaseCard(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.semantics { heading() },
             )
-            Text(release.versionName, style = MaterialTheme.typography.headlineMedium)
-            Text(release.name, style = MaterialTheme.typography.titleSmall)
+            Text(
+                stringResource(R.string.updates_release_version, release.versionName, release.versionCode),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            if (release.name.removePrefix("v") != release.versionName.removePrefix("v")) {
+                Text(release.name, style = MaterialTheme.typography.titleSmall)
+            }
             Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)) {
                 Text(
                     stringResource(if (release.prerelease) R.string.updates_prerelease else R.string.updates_stable),
@@ -47,13 +52,7 @@ internal fun UpdateReleaseCard(
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    stringResource(R.string.updates_release_version, release.versionName, release.versionCode),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(stringResource(R.string.updates_published, release.publishedAt.take(10)), style = MaterialTheme.typography.bodySmall)
-            }
+            Text(stringResource(R.string.updates_published, release.publishedAt.take(10)))
             if (newer && compatibility != UpdateCompatibility.MATCHING_INSTALL) {
                 Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.errorContainer) {
                     Text(
@@ -71,13 +70,14 @@ internal fun UpdateReleaseCard(
                 }
             }
             if (newer) {
+                if (compatibility != UpdateCompatibility.ANDROID_TOO_OLD) Text(stringResource(R.string.updates_disconnect_before_install))
                 Button(
                     onClick = { onDownload(release) },
                     enabled = compatibility != UpdateCompatibility.ANDROID_TOO_OLD,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.updates_download)) }
             }
-            TextButton(onClick = { onReleasePage(release.pageUrl) }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { onReleasePage(release.pageUrl) }, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.updates_release_page))
             }
         }

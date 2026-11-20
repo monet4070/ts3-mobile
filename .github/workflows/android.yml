@@ -140,7 +140,7 @@ jobs:
           pwsh -NoProfile -File ./tools/check-release-identity.ps1 -DeviceSerial emulator-5554 -SdkRoot "$ANDROID_HOME"
           python3 tools/check-release-codec.py --device emulator-5554 --sdk "$ANDROID_HOME"
           python3 -m unittest discover -s tools/tests -p 'test_*.py'
-          ./gradlew :audio-opus:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.audio.opus.OpusAudioPlayerFocusTest,io.github.ts3mobile.audio.opus.NativeAudioLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackRoutePreparationTest,io.github.ts3mobile.audio.opus.PlaybackDiagnosticsTest,io.github.ts3mobile.audio.opus.MicrophonePipelineTest,io.github.ts3mobile.audio.opus.ParticipantMuteMeasurementTest,io.github.ts3mobile.audio.opus.ParticipantMuteIsolationTest --max-workers=2
+          ./gradlew :audio-opus:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.audio.opus.OpusAudioPlayerFocusTest,io.github.ts3mobile.audio.opus.AudioDeviceRouterTest,io.github.ts3mobile.audio.opus.NativeAudioLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackRoutePreparationTest,io.github.ts3mobile.audio.opus.PlaybackDiagnosticsTest,io.github.ts3mobile.audio.opus.MicrophonePipelineTest,io.github.ts3mobile.audio.opus.ParticipantMuteMeasurementTest,io.github.ts3mobile.audio.opus.ParticipantMuteIsolationTest --max-workers=2
           python3 - <<'PY'
           import json
           from pathlib import Path

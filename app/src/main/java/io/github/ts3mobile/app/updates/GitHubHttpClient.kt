@@ -7,16 +7,33 @@ import java.net.URI
 
 internal class UpdateHttpException(val status: Int) : java.io.IOException("Update HTTP $status")
 
-/** No cookies, credentials or app data; bound time, redirects and decoded response bytes. */
+internal fun interface UpdateFetch {
+    fun get(
+        url: String,
+        deadlineNanos: Long,
+    ): String
+}
+
+/**
+ * No cookies, credentials or app data; bound time, redirects and decoded response bytes.
+ *
+ * The caller owns the deadline, so one check shares a budget across requests. Budget
+ * expiry is checked before every request and redirect. A blocking socket read is not
+ * aborted, so the wall clock can exceed the budget by one outstanding wait.
+ */
 internal class GitHubHttpClient(
     private val open: (String) -> HttpURLConnection = { URI(it).toURL().openConnection() as HttpURLConnection },
     private val clockNanos: () -> Long = System::nanoTime,
 ) {
-    fun get(url: String): String {
+    fun get(
+        url: String,
+        deadlineNanos: Long = clockNanos() + UPDATE_CHECK_BUDGET_NANOS,
+    ): String {
         if (!isTrustedUpdateRedirect(url)) throw UpdateCheckException(UpdateFailure.INVALID_RELEASE)
         var target = url
-        val deadline = clockNanos() + 12_000_000_000L
-        repeat(4) {
+        repeat(MAX_REDIRECTS) {
+            val deadline = minOf(deadlineNanos, clockNanos() + UPDATE_REQUEST_CAP_NANOS)
+            if (deadline - clockNanos() <= 0L) throw SocketTimeoutException("Update request timed out")
             val connection = open(target)
             try {
                 connection.instanceFollowRedirects = false
@@ -77,5 +94,6 @@ internal class GitHubHttpClient(
 
     private companion object {
         const val MAX_BYTES = 1_048_576
+        const val MAX_REDIRECTS = 4
     }
 }

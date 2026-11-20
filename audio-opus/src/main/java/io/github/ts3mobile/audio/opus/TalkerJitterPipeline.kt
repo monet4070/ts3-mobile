@@ -29,7 +29,7 @@ internal class TalkerJitterPipeline(
     private var rebufferedSequence: Long? = null
     private var fadeRemaining = 0
     private var framingConfirmed = policy.confirmedPacketSamples != null
-    var activeTargetMs = ReceivePolicy.INITIAL_TARGET_MS
+    var activeTargetMs = policy.delayProfile.initialMs
         private set
     val nextTargetMs: Int get() = delay.targetMs
     val oldestReadArrival: Long? get() = pcm.oldestReadArrival
@@ -142,7 +142,7 @@ internal class TalkerJitterPipeline(
             }
             if (pcm.available >= MIX_TICK_SAMPLES) break
             if (policy.adaptive && pcm.available == 0 && nextTargetMs > activeTargetMs && rebufferedSequence != current) {
-                activeTargetMs = minOf(ReceivePolicy.MAX_TARGET_MS, activeTargetMs + ReceivePolicy.TARGET_STEP_MS)
+                activeTargetMs = minOf(policy.delayProfile.maxMs, activeTargetMs + ReceivePolicy.TARGET_STEP_MS)
                 holdUntil = now + ReceivePolicy.TARGET_STEP_MS * MILLIS
                 rebufferedSequence = current
                 budget.stats.rebuffers.incrementAndGet()

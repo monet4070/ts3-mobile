@@ -12,6 +12,7 @@ internal object AudioRouteDevices {
             AudioDeviceInfo.TYPE_LINE_ANALOG,
             -> AudioRouteKind.WIRED
 
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
             AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
             AudioDeviceInfo.TYPE_BLE_HEADSET,
             AudioDeviceInfo.TYPE_BLE_SPEAKER,
@@ -25,6 +26,9 @@ internal object AudioRouteDevices {
 
             else -> AudioRouteKind.OTHER
         }
+
+    fun isSelectableMediaOutput(type: Int): Boolean =
+        type != AudioDeviceInfo.TYPE_BLUETOOTH_SCO && routeKindForDeviceType(type) != AudioRouteKind.OTHER
 
     fun routeOrder(kind: AudioRouteKind): Int =
         when (kind) {

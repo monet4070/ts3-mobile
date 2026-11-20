@@ -29,6 +29,7 @@ internal class PlaybackTimeline(
     private var headOrigin = 0L
     private var startedAt = 0L
     private var pendingArrival: Long? = null
+    private var extendedStartupWrite = false
 
     fun start(now: Long = System.nanoTime()) {
         check(state == State.IDLE)
@@ -37,6 +38,7 @@ internal class PlaybackTimeline(
         previousHead = output.playbackHead
         headOrigin = previousHead
         startedAt = now
+        extendedStartupWrite = false
         reference?.start()
         state = State.PLAYING
     }
@@ -48,6 +50,10 @@ internal class PlaybackTimeline(
     ) {
         if (state == State.IDLE) return
         updatePlayedFrames()
+        if (extendedStartupWrite && playedFrames > 0L) {
+            extendedStartupWrite = false
+            writeStarted = now
+        }
         if (samples != null && samples.isNotEmpty()) {
             check(pending == null) { "Playback still has an incomplete write" }
             pending = samples
@@ -66,7 +72,8 @@ internal class PlaybackTimeline(
                 state = State.RECOVERING
             }
             State.RECOVERING -> {
-                if (now - recoveryStarted < RECOVERY_NANOS) return
+                val recoveryNanos = if (output.routedKind == AudioRouteKind.BLUETOOTH) BLUETOOTH_RECOVERY_NANOS else RECOVERY_NANOS
+                if (now - recoveryStarted < recoveryNanos || awaitingBluetoothStart(now)) return
                 drainStarted = now
                 drainBudgetNanos =
                     ((submittedFrames - playedFrames) * NANOS_PER_SECOND / SAMPLE_RATE + DRAIN_MARGIN_NANOS)
@@ -96,7 +103,10 @@ internal class PlaybackTimeline(
 
     private fun writePending(now: Long) {
         val samples = pending ?: return
-        check(now - writeStarted < WRITE_TIMEOUT_NANOS) { "Audio output write timed out" }
+        if (now - writeStarted >= WRITE_TIMEOUT_NANOS) {
+            check(awaitingBluetoothStart(now)) { "Audio output write timed out" }
+            extendedStartupWrite = true
+        }
         repeat(MAX_WRITES_PER_TICK) {
             if (!canWrite()) return
             val remaining = samples.size - pendingOffset
@@ -139,6 +149,10 @@ internal class PlaybackTimeline(
         }
     }
 
+    private fun awaitingBluetoothStart(now: Long): Boolean =
+        output.routedKind == AudioRouteKind.BLUETOOTH && submittedFrames > 0L && playedFrames == 0L &&
+            now - startedAt < BLUETOOTH_STARTUP_NANOS
+
     private fun finishDrain(now: Long) {
         if (playedFrames >= submittedFrames) {
             discard()
@@ -152,8 +166,10 @@ internal class PlaybackTimeline(
 
     internal companion object {
         const val RECOVERY_NANOS = 60_000_000L
+        private const val BLUETOOTH_RECOVERY_NANOS = 500_000_000L
         const val MAX_DRAIN_NANOS = 500_000_000L
         const val WRITE_TIMEOUT_NANOS = 100_000_000L
+        const val BLUETOOTH_STARTUP_NANOS = 1_500_000_000L
         private const val DRAIN_MARGIN_NANOS = 100_000_000L
         private const val NANOS_PER_SECOND = 1_000_000_000L
         private const val SAMPLE_RATE = 48_000

@@ -1,14 +1,18 @@
 package io.github.ts3mobile.app.ui
 
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun MicrophonePreferenceControls(
     status: MicrophonePreferenceStatus,
@@ -34,10 +38,10 @@ internal fun MicrophonePreferenceControls(
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
     )
-    Row {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (status == MicrophonePreferenceStatus.READ_FAILED || status == MicrophonePreferenceStatus.WRITE_FAILED) {
-            TextButton(onClick = onRetry) { Text(stringResource(R.string.microphone_preferences_retry)) }
+            OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.microphone_preferences_retry)) }
         }
-        TextButton(onClick = onReset) { Text(stringResource(R.string.microphone_preferences_reset)) }
+        OutlinedButton(onClick = onReset) { Text(stringResource(R.string.microphone_preferences_reset)) }
     }
 }

@@ -5,6 +5,43 @@ used milestone naming. After 1.0.0, patch versions are intended for compatible f
 and minor versions for compatible features; Android versionCode increases for
 each distributed update.
 
+## 1.2.0 — 2026-11-20
+
+- Mix incoming voice with foreground media without taking audio focus or entering
+  Android's communication mode. Prefer the phone microphone for Bluetooth listening.
+- Protect the first utterance while a confirmed Bluetooth route comes out of standby,
+  without delaying ready outputs or weakening the safety mute on route loss.
+- Add Balanced and Stability first receive profiles under Voice playback. Saving a
+  profile resets listening immediately without disconnecting or restarting capture.
+- Open, paste and share TeamSpeak server/channel invites with explicit confirmation
+  and no link credentials or automatic form updates.
+- Keep session actions in a shorter More menu, and find microphone, notifications,
+  appearance, identity, diagnostics and update options on a dedicated Settings page.
+- Test the microphone before or after connecting, without playback, encoding,
+  or sending voice. An active call still requires turning its microphone off first.
+- Preview all three appearance choices in distinct cards, and open background
+  voice and diagnostics as full-screen settings pages. Use visible buttons or
+  full-row targets in subpages, while retaining compact borderless channel controls.
+- Use the same fixed back arrow for identity backups and updates. Remove redundant
+  captions from settings rows and theme choices, retaining status and safety notices.
+- Use a compact, borderless chat conversation selector with a single touch target
+  spanning the icon, title and chevron.
+- Adjust microphone input volume from a vertical slider in the bottom voice
+  controls. The shortcut uses the same saved setting and never enables the mic.
+- Use Disconnect and Mute or Resume listening directly in the connection
+  notification. The default connection channel uses normal importance without
+  sound or vibration. Headset protection still requires checking the route in
+  the app.
+- Keep a confirmed Bluetooth playback track through short audio gaps to reduce
+  interruptions from repeated track creation. Route loss still stops playback.
+- Load the bounded (up to 1 MiB) audio diagnostics archive off the service's main
+  thread and keep the process-owned reader shared across service replacement.
+- Publish the enforced retention limits in the audio diagnostics export and derive
+  them from a single source.
+- Give one update check a shared 20-second budget, cap each request at 10 seconds,
+  and report BUILDINFO transport failures as server errors instead of inconsistent
+  release metadata.
+
 ## 1.1.0 — 2026-11-09
 
 VersionCode 15 integrates the previously staged improvements. The official package and

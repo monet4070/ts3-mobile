@@ -19,6 +19,7 @@ import io.github.ts3mobile.app.MainActivity
 import io.github.ts3mobile.app.Ts3MobileApplication
 import io.github.ts3mobile.app.identity.IdentityManagementActivity
 import io.github.ts3mobile.app.service.TeamSpeakService
+import io.github.ts3mobile.app.ui.openAppSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
@@ -62,7 +63,7 @@ class AppearanceActivityTest {
                 val binder = withTimeout(5000) { connected.await() }
                 assertEquals(ConnectionPhase.DISCONNECTED, binder.state.value.status.phase)
                 waitForMain()
-                rule.onNodeWithContentDescription("More options").performClick()
+                rule.openAppSettings()
                 rule.onNodeWithText("Appearance").performScrollTo().performClick()
                 waitForText("Follow system")
                 rule.onNodeWithText("Follow system").assertIsDisplayed()
@@ -78,9 +79,8 @@ class AppearanceActivityTest {
                     val window = appearance!!.window
                     assertFalse(WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars)
                 }
-                rule.onNodeWithText("Close").performClick()
-                waitForMain()
-                rule.onNodeWithContentDescription("More options").assertIsDisplayed()
+                rule.onNodeWithContentDescription("Back").performClick()
+                waitForText("Settings")
                 rule.runOnIdle {
                     assertFalse(
                         WindowCompat.getInsetsController(
@@ -89,7 +89,6 @@ class AppearanceActivityTest {
                         ).isAppearanceLightNavigationBars,
                     )
                 }
-                rule.onNodeWithContentDescription("More options").performClick()
                 rule.onNodeWithText("Identity and backups").performScrollTo().performClick()
                 waitForText("Export encrypted backup…")
                 rule.onNodeWithText("Export encrypted backup…").performScrollTo().assertIsDisplayed()
@@ -97,9 +96,8 @@ class AppearanceActivityTest {
                     val activity = resumed().filterIsInstance<IdentityManagementActivity>().single()
                     assertFalse(WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightStatusBars)
                 }
-                rule.onNodeWithText("Close").performScrollTo().performClick()
-                waitForMain()
-                rule.onNodeWithContentDescription("More options").performClick()
+                rule.onNodeWithContentDescription("Back").performClick()
+                waitForText("Settings")
                 rule.onNodeWithText("Appearance").performScrollTo().performClick()
                 waitForText("Light")
                 rule.onNodeWithText("Light").performClick()
@@ -110,7 +108,7 @@ class AppearanceActivityTest {
                     val activity = resumed().filterIsInstance<AppearanceActivity>().single()
                     assertTrue(WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightStatusBars)
                 }
-                rule.onNodeWithText("Close").performClick()
+                rule.onNodeWithContentDescription("Back").performClick()
                 assertEquals(1, callbacks)
                 assertEquals(ConnectionPhase.DISCONNECTED, binder.state.value.status.phase)
                 assertFalse(binder.state.value.isCapturing)

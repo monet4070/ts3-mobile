@@ -41,6 +41,9 @@ data class TeamSpeakServiceState(
 val TeamSpeakServiceState.hasPlaybackFailure: Boolean
     get() = status.phase == ConnectionPhase.CONNECTED && playbackStatus == PlaybackStatus.FAILED
 
+internal val ConnectionPhase.allowsOfflineActions: Boolean
+    get() = this == ConnectionPhase.DISCONNECTED || this == ConnectionPhase.ERROR
+
 /**
  * Replaces the connection status together with its user-facing message so a
  * message from an earlier phase can never outlive the status that produced it.

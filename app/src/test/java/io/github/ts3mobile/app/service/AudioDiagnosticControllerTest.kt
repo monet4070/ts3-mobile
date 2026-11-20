@@ -129,6 +129,19 @@ class AudioDiagnosticControllerTest {
             assertEquals(1, stored.events.count { it.kind == AudioDiagnosticEvent.STOPPED })
         }
 
+    @Test fun everyAudioDiagnosticKindIsPersistedWithItsName() =
+        runTest {
+            val repository = AudioDiagnosticRepository(temporary.newFile(), backgroundScope, { 1_000 })
+            val controller = AudioDiagnosticController(repository, { frame(1) }, { AudioDiagnosticContext() }, { 1_000 }, { 1_000 })
+            controller.sampleNow()
+            AudioDiagnosticEventKind.entries.forEach { controller.onEvent(it, 1) }
+            val report = repository.export()
+            AudioDiagnosticEventKind.entries.forEach { kind ->
+                val marker = "\"kind\":\"${kind.name}\""
+                assertEquals("$kind must be persisted exactly once under its own name", 1, report.split(marker).size - 1)
+            }
+        }
+
     private fun frame(count: Long) =
         AudioReceiveDiagnostics(
             1,

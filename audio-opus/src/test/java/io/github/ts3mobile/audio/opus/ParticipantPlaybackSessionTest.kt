@@ -95,21 +95,19 @@ class ParticipantPlaybackSessionTest {
         }
     }
 
-    @Test fun participantChangeDoesNotShortenGlobalFocusRetryOrPreserveRevokedB() {
+    @Test fun participantChangeAfterGlobalInvalidationCannotPreserveRevokedB() {
         Fixture().use { fixture ->
             fixture.startDual()
             val b = fixture.decoders[1]
-            fixture.session.invalidate(70 * MS, focusInterrupted = true)
+            fixture.queue.clear()
+            fixture.session.invalidateOutput(70 * MS)
             fixture.session.invalidateParticipants(setOf(A), 80 * MS)
-            fixture.feed(B, 10, 120 * MS)
-            fixture.session.tick(180 * MS)
-            assertEquals(1, fixture.focusRequests)
-            assertEquals(PlaybackStatus.RETRYING, fixture.session.status)
             assertTrue(b.closed)
             assertEquals(0, fixture.queue.budget.samples(B))
-            fixture.feed(B, 11, 400 * MS)
-            fixture.session.tick(460 * MS)
-            assertEquals(2, fixture.focusRequests)
+            assertTrue(fixture.outputs.single().closed)
+            fixture.feed(B, 10, 120 * MS)
+            fixture.session.tick(180 * MS)
+            assertEquals(2, fixture.outputs.size)
             assertEquals(PlaybackStatus.PLAYING, fixture.session.status)
         }
     }
@@ -137,7 +135,6 @@ class ParticipantPlaybackSessionTest {
         val outputs = mutableListOf<FakePlaybackOutput>()
         val referenceStarts = mutableListOf<Long>()
         var discards = 0
-        var focusRequests = 0
         var nextWriteFails = false
         private var firstReferenceWrite = true
         private val reference =
@@ -178,12 +175,7 @@ class ParticipantPlaybackSessionTest {
                         outputs += it
                     }
                 },
-                {
-                    focusRequests++
-                    true
-                },
-                {},
-                reference,
+                reference = reference,
             )
 
         fun startDual() {

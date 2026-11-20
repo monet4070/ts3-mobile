@@ -84,7 +84,11 @@ internal class VoiceReceiveQueue(
         return true
     }
 
-    @Synchronized fun poll(now: Long): QueuedFrame? {
+    @Synchronized fun poll(
+        now: Long,
+        canPoll: () -> Boolean = { true },
+    ): QueuedFrame? {
+        if (!canPoll()) return null
         prune(now)
         val queued = frames.removeFirstOrNull() ?: return null
         budget.stats.maximum(budget.stats.maxInputAgeNanos, now - queued.arrivalNanos)
@@ -98,7 +102,8 @@ internal class VoiceReceiveQueue(
         frames.removeAll { it.frame.clientId == clientId }
     }
 
-    @Synchronized fun clear() {
+    @Synchronized fun clear(canClear: () -> Boolean = { true }) {
+        if (!canClear()) return
         budget.stats.count(AudioReceiveCounter.INPUT_CLEARED, frames.size.toLong())
         frames.clear()
         recent.clear()

@@ -6,6 +6,7 @@ plugins {
 
 val apmExperimentRoot = providers.gradleProperty("apmExperimentRoot").orNull
 val opusSourceArchive = providers.gradleProperty("opusSourceArchive").orNull
+val bluetoothStandardOutputExperiment = providers.gradleProperty("bluetoothStandardOutputExperiment").orNull?.toBooleanStrict() ?: false
 
 android {
     namespace = "io.github.ts3mobile.audio.opus"
@@ -15,6 +16,7 @@ android {
     defaultConfig {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "BLUETOOTH_STANDARD_OUTPUT_EXPERIMENT", bluetoothStandardOutputExperiment.toString())
 
         externalNativeBuild {
             cmake {
@@ -25,6 +27,10 @@ android {
             }
         }
         if (apmExperimentRoot != null) testInstrumentationRunnerArguments["apmExperiment"] = "true"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     externalNativeBuild {

@@ -3,9 +3,6 @@ package io.github.ts3mobile.app.ui
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -57,10 +54,10 @@ class SecondBatchExperienceTest {
             WindowInsetsControllerCompat(rule.activity.window, rule.activity.window.decorView).hide(WindowInsetsCompat.Type.ime())
         }
         rule.waitUntil(2_000) { rule.onAllNodesWithContentDescription("More options").fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithContentDescription("More options").performClick()
+        rule.openAppSettings()
         rule.onNodeWithText("Microphone settings").performClick()
         rule.onNodeWithContentDescription("Microphone is off").assertIsDisplayed()
-        val ptt = rule.onNode(hasContentDescription("Push to talk") and hasAnyAncestor(isDialog()))
+        val ptt = rule.onNodeWithContentDescription("Push to talk")
         ptt.performTouchInput {
             down(center)
             advanceEventTime(100)
@@ -72,14 +69,15 @@ class SecondBatchExperienceTest {
             fixture.microphoneLevels.value = MicrophoneLevel(1, 0, 0, System.nanoTime(), -30.0, false, true, true, -40)
         }
         rule.onNodeWithContentDescription("Microphone active · sending").assertIsDisplayed()
-        rule.onNode(hasContentDescription("Talking") and hasAnyAncestor(isDialog())).performTouchInput { cancel() }
+        rule.onNodeWithContentDescription("Talking").performTouchInput { cancel() }
         rule.runOnIdle {
             assertEquals(false, fixture.transmission.last())
             fixture.state.value = fixture.state.value.copy(isCapturing = false, isTransmitting = false)
             fixture.microphoneLevels.value = null
         }
         rule.onNodeWithContentDescription("Microphone is off").assertIsDisplayed()
-        rule.onNodeWithText("Close").performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
         rule.waitUntil(2_000) { fixture.microphoneLevels.subscriptionCount.value == 0 }
         rule.onNodeWithText("Users").performClick()
         rule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)

@@ -255,7 +255,7 @@ class SessionExitRunnerTest {
 
         override fun applySelectedPlaybackMuted() = Unit
 
-        override fun startPlayback() = Unit
+        override suspend fun startPlayback() = Unit
 
         override fun stopPlayback() {
             playbackStopped = true

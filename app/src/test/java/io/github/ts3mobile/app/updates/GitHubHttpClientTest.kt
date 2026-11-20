@@ -7,6 +7,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
@@ -86,29 +87,100 @@ class GitHubHttpClientTest {
         )
     }
 
-    @Test fun totalDeadlineExpiresAndStillClosesTheConnection() {
-        var calls = 0
+    @Test fun aSpentSharedDeadlineTimesOutBeforeDialing() {
+        var now = 0L
+        var dials = 0
+        val client =
+            GitHubHttpClient({
+                dials++
+                Connection()
+            }) { now }
+        assertEquals("{}", client.get(STABLE_RELEASE_API))
+        now = UPDATE_CHECK_BUDGET_NANOS + 1L
+        assertThrows(SocketTimeoutException::class.java) { client.get(STABLE_RELEASE_API, UPDATE_CHECK_BUDGET_NANOS) }
+        assertEquals("An exhausted budget must not dial again", 1, dials)
+    }
+
+    @Test fun everyRequestIsCappedSoOneSlowRequestCannotSpendTheWholeBudget() {
         val connection = Connection()
-        val client = GitHubHttpClient({ connection }) { if (calls++ == 0) 0 else 13_000_000_000L }
+        val client = GitHubHttpClient({ connection }) { 0L }
+        assertEquals("{}", client.get(STABLE_RELEASE_API))
+        assertTrue(connection.connectTimeout <= UPDATE_REQUEST_CAP_NANOS / 1_000_000)
+        assertTrue(connection.readTimeout <= UPDATE_REQUEST_CAP_NANOS / 1_000_000)
+    }
+
+    @Test fun redirectsCannotBeFollowedPastTheSharedDeadline() {
+        var now = 0L
+        val opened = mutableListOf<String>()
+        // The 302 arrives in time; the clock only runs out after the redirect branch is entered.
+        val redirect =
+            Connection(
+                status = 302,
+                onResponseCode = { now = UPDATE_CHECK_BUDGET_NANOS },
+            ).apply { headers["Location"] = "https://release-assets.githubusercontent.com/fixture" }
+        val client =
+            GitHubHttpClient({ url ->
+                opened += url
+                redirect
+            }) { now }
         assertThrows(SocketTimeoutException::class.java) { client.get(STABLE_RELEASE_API) }
+        assertEquals("The follow-up request must not be dialed", 1, opened.size)
+        assertTrue(redirect.closed)
+    }
+
+    @Test fun accumulatedBodyReadsTimeOutEvenThoughTheHeadersArrivedInTime() {
+        var now = 0L
+        var reads = 0
+        val slowBody =
+            object : InputStream() {
+                override fun read(): Int = -1
+
+                override fun read(
+                    buffer: ByteArray,
+                    offset: Int,
+                    length: Int,
+                ): Int {
+                    reads++
+                    now += 2_000_000_000L
+                    val count = minOf(length, 16)
+                    buffer.fill('a'.code.toByte(), offset, offset + count)
+                    return count
+                }
+            }
+        val connection =
+            Connection().apply {
+                size = -1
+                stream = slowBody
+            }
+        val client = GitHubHttpClient({ connection }) { now }
+        assertThrows(SocketTimeoutException::class.java) {
+            client.get(STABLE_RELEASE_API, deadlineNanos = UPDATE_REQUEST_CAP_NANOS)
+        }
+        assertTrue("Several reads must have consumed the deadline, not one", reads >= 4)
         assertTrue(connection.closed)
     }
 
-    private class Connection(private val bytes: ByteArray = "{}".toByteArray(), private val status: Int = 200) : HttpURLConnection(
-        URL(STABLE_RELEASE_API),
-    ) {
+    private class Connection(
+        private val bytes: ByteArray = "{}".toByteArray(),
+        private val status: Int = 200,
+        private val onResponseCode: () -> Unit = {},
+    ) : HttpURLConnection(URL(STABLE_RELEASE_API)) {
         val headers = mutableMapOf<String, String>()
         var closed = false
         var read = false
         var size = bytes.size.toLong()
+        var stream: InputStream? = null
 
-        override fun getResponseCode() = status
+        override fun getResponseCode(): Int {
+            onResponseCode()
+            return status
+        }
 
         override fun getContentLengthLong() = size
 
         override fun getHeaderField(name: String): String? = headers[name]
 
-        override fun getInputStream() = ByteArrayInputStream(bytes).also { read = true }
+        override fun getInputStream() = (stream ?: ByteArrayInputStream(bytes)).also { read = true }
 
         override fun disconnect() {
             closed = true

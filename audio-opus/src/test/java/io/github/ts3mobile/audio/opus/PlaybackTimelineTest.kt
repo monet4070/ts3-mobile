@@ -26,6 +26,42 @@ class PlaybackTimelineTest {
     }
 
     @Test
+    fun bluetoothResumesAfterShortStarvationWithoutRecreatingOrFillingTheOutput() {
+        val output = FakePlaybackOutput().apply { routedKind = AudioRouteKind.BLUETOOTH }
+        val timeline = PlaybackTimeline(output)
+        timeline.start(0L)
+        timeline.tick(shortArrayOf(11, 22), 0L)
+        output.playbackHead = 2
+        for (gapMs in 10L..380L step 10) timeline.tick(null, gapMs * MILLIS)
+
+        assertEquals(PlaybackTimeline.State.RECOVERING, timeline.state)
+        assertEquals(0, output.discardCount)
+        assertEquals(1, output.writeCalls)
+        timeline.tick(shortArrayOf(33, 44), 390 * MILLIS)
+
+        assertEquals(PlaybackTimeline.State.PLAYING, timeline.state)
+        assertEquals(2, output.writeCalls)
+        assertArrayEquals(shortArrayOf(11, 22, 33, 44), output.accepted.toShortArray())
+    }
+
+    @Test
+    fun bluetoothDrainsAfterTheBoundedGapWithoutAppendingSilence() {
+        val output = FakePlaybackOutput().apply { routedKind = AudioRouteKind.BLUETOOTH }
+        val timeline = PlaybackTimeline(output)
+        timeline.start(0L)
+        timeline.tick(shortArrayOf(11), 0L)
+        output.playbackHead = 1
+        timeline.tick(null, TICK)
+        timeline.tick(null, TICK + 499 * MILLIS)
+        assertEquals(0, output.discardCount)
+        timeline.tick(null, TICK + 500 * MILLIS)
+
+        assertEquals(PlaybackTimeline.State.IDLE, timeline.state)
+        assertEquals(1, output.discardCount)
+        assertEquals(1, output.writeCalls)
+    }
+
+    @Test
     fun naturalEndWaitsForAllAcceptedSamplesBeforeDiscarding() {
         val output = FakePlaybackOutput()
         val timeline = PlaybackTimeline(output)
@@ -104,6 +140,80 @@ class PlaybackTimelineTest {
         assertThrows(IllegalStateException::class.java) {
             timeline.tick(null, PlaybackTimeline.WRITE_TIMEOUT_NANOS)
         }
+    }
+
+    @Test
+    fun coldBluetoothKeepsPendingSpeechUntilConsumptionThenUsesNormalDeadline() {
+        val output = FakePlaybackOutput().apply { writeResults.addAll(listOf(2, 0)) }
+        val timeline = PlaybackTimeline(output.apply { routedKind = AudioRouteKind.BLUETOOTH })
+        timeline.start(0L)
+        timeline.tick(shortArrayOf(1, 2, 3), 0L)
+        output.maxWriteSamples = 0
+        for (elapsed in 10L..1110L step 10) timeline.tick(null, elapsed * MILLIS)
+        assertEquals(listOf<Short>(1, 2), output.accepted)
+        assertEquals(0L, timeline.playedFrames)
+        assertEquals(0, output.discardCount)
+
+        output.playbackHead = 2L
+        val readyAt = 1120 * MILLIS
+        timeline.tick(null, readyAt)
+        timeline.tick(null, readyAt + PlaybackTimeline.WRITE_TIMEOUT_NANOS - TICK)
+        assertThrows(IllegalStateException::class.java) {
+            timeline.tick(null, readyAt + PlaybackTimeline.WRITE_TIMEOUT_NANOS)
+        }
+    }
+
+    @Test
+    fun coldBluetoothContinuesThePartialWriteWithoutRepeatingItsPrefix() {
+        val output =
+            FakePlaybackOutput().apply {
+                routedKind = AudioRouteKind.BLUETOOTH
+                writeResults.addAll(listOf(2, 0))
+            }
+        val timeline = PlaybackTimeline(output)
+        timeline.start(0L)
+        timeline.tick(shortArrayOf(1, 2, 3), 0L)
+        output.maxWriteSamples = 0
+        timeline.tick(null, 1110 * MILLIS)
+        output.playbackHead = 2L
+        output.maxWriteSamples = Int.MAX_VALUE
+        timeline.tick(null, 1120 * MILLIS)
+        assertEquals(2L, timeline.playedFrames)
+        assertEquals(listOf<Short>(1, 2, 3), output.accepted)
+        assertTrue(timeline.acceptsPcm)
+    }
+
+    @Test
+    fun bluetoothThatNeverConsumesStillTimesOutAtStartupDeadline() {
+        val output =
+            FakePlaybackOutput().apply {
+                routedKind = AudioRouteKind.BLUETOOTH
+                writeResults.addAll(listOf(1, 0))
+            }
+        val timeline = PlaybackTimeline(output)
+        timeline.start(0L)
+        timeline.tick(shortArrayOf(1, 2), 0L)
+        output.maxWriteSamples = 0
+        val deadline = PlaybackTimeline.BLUETOOTH_STARTUP_NANOS
+        timeline.tick(null, deadline - TICK)
+        assertThrows(IllegalStateException::class.java) { timeline.tick(null, deadline) }
+    }
+
+    @Test
+    fun shortBluetoothOpeningIsNotFlushedBeforeTheColdStreamStarts() {
+        val output = FakePlaybackOutput().apply { routedKind = AudioRouteKind.BLUETOOTH }
+        val timeline = PlaybackTimeline(output)
+        timeline.start(0L)
+        timeline.tick(shortArrayOf(11, 22), 0L)
+        timeline.tick(null, TICK)
+        timeline.tick(null, 1110 * MILLIS)
+
+        assertEquals(PlaybackTimeline.State.RECOVERING, timeline.state)
+        assertEquals(0, output.discardCount)
+        output.playbackHead = 2L
+        timeline.tick(null, 1120 * MILLIS)
+        assertEquals(PlaybackTimeline.State.IDLE, timeline.state)
+        assertEquals(0L, timeline.drainTimeoutCount)
     }
 
     @Test

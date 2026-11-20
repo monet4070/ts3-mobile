@@ -3,7 +3,7 @@ package io.github.ts3mobile.audio.opus
 /** Worker-confined 10 ms input -> optional suppression -> 20 ms gain/gate/Opus. */
 internal class MicrophoneCapturePipeline(
     private val denoise: (ShortArray) -> Float,
-    private val encode: (ShortArray) -> ByteArray,
+    private val encode: ((ShortArray) -> ByteArray)?,
     private val stats: CaptureSessionStats,
     private val onConfiguration: (MicrophoneSettings) -> Unit,
 ) {
@@ -54,6 +54,7 @@ internal class MicrophoneCapturePipeline(
         offset += pcm.size
         if (offset < opusPcm.size) return null
         offset = 0
-        return processor.process(opusPcm, options, measureLevel).map(encode)
+        val frames = processor.process(opusPcm, options, measureLevel)
+        return encode?.let { frames.map(it) }.orEmpty()
     }
 }

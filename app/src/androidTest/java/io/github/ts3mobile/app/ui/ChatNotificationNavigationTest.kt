@@ -7,7 +7,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -102,12 +101,24 @@ class ChatNotificationNavigationTest {
     @Test fun notificationSettingsEntryDoesNotRequestAConnection() {
         val fixture = UiFixture()
         rule.setContent { fixture.Render() }
-        rule.onNodeWithContentDescription("More options").performClick()
+        rule.openAppSettings()
         rule.onNodeWithText("Private message notifications").performClick()
         rule.runOnIdle {
             assertEquals(1, fixture.notificationSettings)
             assertEquals(0, fixture.connects)
             assertTrue(fixture.transmission.none { it })
         }
+    }
+
+    @Test fun notificationCanOpenItsConversationWhileSettingsIsVisible() {
+        val fixture = UiFixture(connected = true)
+        fixture.receivePrivate("Open from settings")
+        val target = fixture.chat.value.conversations.single { it.isPrivate }
+        rule.setContent { fixture.Render() }
+        rule.openAppSettings()
+        rule.onNodeWithText("Settings").assertIsDisplayed()
+        rule.runOnIdle { fixture.request(setOf(target.id)) }
+        rule.onNodeWithText("Open from settings").assertIsDisplayed()
+        rule.onNodeWithText("Settings").assertDoesNotExist()
     }
 }

@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class PlaybackRoutePreparationTest {
-    @Test fun preparesTheRouteAfterFocusBeforeCreatingAnOutput() {
+    @Test fun preparesTheRouteBeforeCreatingAnOutput() {
         val prepared = AtomicBoolean()
         val written = CountDownLatch(1)
         val player =

@@ -114,6 +114,35 @@ class AudioDiagnosticArchiveTest {
         assertTrue(file.length() <= AudioDiagnosticStorage.MAX_FILE_BYTES)
     }
 
+    @Test fun exportedRetentionLimitsMatchTheConstantsActuallyEnforced() {
+        val archive = AudioDiagnosticArchive()
+        val id = archive.begin(1_000)
+        repeat(AudioDiagnosticArchive.MAX_SAMPLES_PER_SESSION + 40) { index ->
+            archive.sample(sample(id, index + 1L, index.toLong()))
+        }
+        val report = AudioDiagnosticFormat.json(archive.state(), 1_000)
+        val limits =
+            listOf(
+                "\"sampleIntervalMs\":${AudioDiagnosticController.SAMPLE_INTERVAL_MS}",
+                "\"maxSessions\":${AudioDiagnosticArchive.MAX_SESSIONS}",
+                "\"maxSamplesPerSession\":${AudioDiagnosticArchive.MAX_SAMPLES_PER_SESSION}",
+                "\"maxEventsPerSession\":${AudioDiagnosticArchive.MAX_EVENTS_PER_SESSION}",
+                "\"maxMarksPerSession\":${AudioDiagnosticArchive.MAX_MARKS_PER_SESSION}",
+            )
+        limits.forEach { assertTrue("Export must publish $it", report.contains(it)) }
+        // The documented numbers are the enforced ones: 64 event slots are 16 marks plus 48 ordinary events.
+        assertEquals(5_000L, AudioDiagnosticController.SAMPLE_INTERVAL_MS)
+        assertEquals(3, AudioDiagnosticArchive.MAX_SESSIONS)
+        assertEquals(120, AudioDiagnosticArchive.MAX_SAMPLES_PER_SESSION)
+        assertEquals(64, AudioDiagnosticArchive.MAX_EVENTS_PER_SESSION)
+        assertEquals(16, AudioDiagnosticArchive.MAX_MARKS_PER_SESSION)
+        assertEquals(
+            AudioDiagnosticArchive.MAX_EVENTS_PER_SESSION - AudioDiagnosticArchive.MAX_MARKS_PER_SESSION,
+            AudioDiagnosticArchive.eventLimit(AudioDiagnosticEvent.STARTED),
+        )
+        assertEquals(AudioDiagnosticArchive.MAX_SAMPLES_PER_SESSION, archive.state().samples.size)
+    }
+
     @Test fun oversizedOrUnknownSchemaIsReportedWithoutEchoingPrivateText() {
         val file = temporary.newFile()
         file.writeText("private-secret")

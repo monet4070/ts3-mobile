@@ -1,14 +1,14 @@
 # 安装与升级 / Installation and upgrades
 
-当前稳定版：[1.1.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0)，
-2026-11-09，versionCode **15**。正式包名为 `io.github.ts3mobile.app`，沿用原公开签名。
+稳定版：[1.2.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.2.0)，
+2026-11-20，versionCode **16**。正式包名为 `io.github.ts3mobile.app`，沿用原公开签名。
 实际包名、版本、证书与摘要以同一 Release 的 `BUILDINFO.json` 为准，验证范围见
-[发布验收](release/1.1.0/CHECKLIST.md)和[兼容性](COMPATIBILITY.md)。
+[发布说明](release/1.2.0/RELEASE_NOTES_ZH.md)和[兼容性](COMPATIBILITY.md)。
 
 ## 下载与校验
 
 1. 打开 [GitHub Releases](https://github.com/monet4070/ts3-mobile/releases)，检查正式／测试版标识。
-2. 下载 `ts3-mobile-1.1.0-release.apk`、`SHA256SUMS.txt` 和 `BUILDINFO.json`。
+2. 下载 `ts3-mobile-1.2.0-release.apk`、`SHA256SUMS.txt` 和 `BUILDINFO.json`。
    GitHub 自动附带的 Source code ZIP/TAR 是源码，不是安装包。
 3. 用同一 Release 的校验表比对 APK SHA-256，再由可信浏览器或文件管理器安装。
 4. 安装前正常断开服务器，保留现有应用，按需允许该下载来源安装。
@@ -16,19 +16,19 @@
 macOS：
 
 ```sh
-shasum -a 256 ts3-mobile-1.1.0-release.apk
+shasum -a 256 ts3-mobile-1.2.0-release.apk
 ```
 
 Linux：
 
 ```sh
-sha256sum ts3-mobile-1.1.0-release.apk
+sha256sum ts3-mobile-1.2.0-release.apk
 ```
 
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\ts3-mobile-1.1.0-release.apk -Algorithm SHA256
+Get-FileHash .\ts3-mobile-1.2.0-release.apk -Algorithm SHA256
 ```
 
 文件摘要标识 APK 字节，证书摘要标识签名。`BUILDINFO.json` 同时记录实际构建源码、
@@ -47,6 +47,7 @@ Android 覆盖安装需要相同包名、兼容签名和允许升级的 versionC
 
 | 现有安装 | 处理方式 |
 | --- | --- |
+| 1.1.0 / code 15，原公开签名 | 应用内检查更新，下载 1.2.0 / code 16 并覆盖安装 |
 | 1.0.0 / code 14，原公开签名 | 使用 1.1.0 / code 15 覆盖；最终包实测范围见发布验收 |
 | 旧 code 13 或 0.11.1-m10 / code 12 | 公共证书相同，先核对包来源与版本；不能把单一升级测试扩大为全部历史设备证明 |
 | 本地同签名 code 14 候选 | code 15 可升级；仅看 1.0.0 名字无法区分旧稳定版与本地候选 |
@@ -67,17 +68,17 @@ Android 覆盖安装需要相同包名、兼容签名和允许升级的 versionC
 1.1.0 起可在“更多选项 → 检查更新”查看正式版，可选择包含测试版并保存偏好。
 只在打开页面、切换渠道或重新检查时联网；APK 由浏览器下载，系统负责安装，应用不后台轮询或自动安装。
 关闭固定在顶部，更新说明支持 Markdown；完整正文的收起按钮不会随说明滚走。
-旧版本需要先手动下载一次 1.1.0，之后才能使用该入口。也可通过 GitHub Watch → Custom → Releases 订阅。
+早于 1.1.0 的版本需要先手动下载当前稳定版。也可通过 GitHub Watch → Custom → Releases 订阅。
 
 <img src="images/1.1.0/zh-CN/updates.webp" alt="1.1.0 简体中文检查更新页：当前安装版本已是最新或更新" width="360">
 
 ## English
 
-Stable **1.1.0 / code 15** (2026-11-09) retains the official package and public signing
+Stable **1.2.0 / code 16** (2026-11-20) retains the official package and public signing
 certificate. Download the signed APK, `SHA256SUMS.txt` and `BUILDINFO.json` from the same release.
 Compare the APK hash, disconnect from the server, then update in place. Keep the existing app;
 do not uninstall or clear data to resolve an installation conflict. See
-[acceptance](release/1.1.0/CHECKLIST.md) for exact tested upgrade paths.
+[compatibility](COMPATIBILITY.md) for tested upgrade paths.
 
 Android 8.0+ is required. A packaged ABI does not establish physical-device coverage.
 Side-loaded test packages and differently signed builds do not share the official app's data.

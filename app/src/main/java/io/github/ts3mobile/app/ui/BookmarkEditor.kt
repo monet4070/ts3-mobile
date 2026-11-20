@@ -15,9 +15,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -119,11 +119,11 @@ internal fun BookmarkEditor(
                     }
                 }
                 if (matchingContext != null) {
-                    TextButton(onClick = { choosingChannel = true }, enabled = enabled) {
+                    OutlinedButton(onClick = { choosingChannel = true }, enabled = enabled) {
                         Text(stringResource(R.string.bookmark_choose_channel))
                     }
                     val current = matchingContext.currentChannelId
-                    TextButton(onClick = { current?.let(chooseChannel) }, enabled = enabled && current != null) {
+                    OutlinedButton(onClick = { current?.let(chooseChannel) }, enabled = enabled && current != null) {
                         Text(stringResource(R.string.bookmark_use_current_channel))
                     }
                     val selected = validated.defaultChannelId
@@ -134,7 +134,7 @@ internal fun BookmarkEditor(
                     if (path != null) Text(path, style = MaterialTheme.typography.bodySmall)
                 }
                 if (channel.isNotBlank() || selection != null) {
-                    TextButton(onClick = {
+                    OutlinedButton(onClick = {
                         channel = ""
                         selection = null
                         entry = entry.copy(channelPassword = "")
@@ -143,7 +143,7 @@ internal fun BookmarkEditor(
                     }
                 }
                 HorizontalDivider(Modifier.padding(top = 4.dp))
-                TextButton(onClick = { expanded = !expanded }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { expanded = !expanded }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.bookmark_more_settings), Modifier.weight(1f))
                     AppIcon(UiIcon.ChevronDown, null, Modifier.size(18.dp).rotate(if (expanded) 180f else 0f))
                 }
@@ -195,7 +195,7 @@ internal fun BookmarkEditor(
                 if (captured == null) onSave(validated) else onSaveFromConnection(validated, captured)
             }, enabled = valid && enabled && !staleContext) { Text(stringResource(R.string.bookmark_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !state.busy) { Text(stringResource(R.string.action_cancel)) } },
+        dismissButton = { OutlinedButton(onClick = onDismiss, enabled = !state.busy) { Text(stringResource(R.string.action_cancel)) } },
     )
 }
 

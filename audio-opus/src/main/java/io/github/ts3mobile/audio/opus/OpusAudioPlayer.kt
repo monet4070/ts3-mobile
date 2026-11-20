@@ -2,8 +2,6 @@ package io.github.ts3mobile.audio.opus
 
 import android.content.Context
 import android.media.AudioDeviceInfo
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.os.Looper
 import io.github.ts3mobile.protocol.VoiceFrame
 import io.github.ts3mobile.protocol.sanitizedFailureTypes
@@ -12,7 +10,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class OpusAudioPlayer internal constructor(
-    context: Context,
+    @Suppress("UNUSED_PARAMETER") context: Context,
     private val reference: PlaybackReferenceSink?,
     private val onRouteChanged: () -> Unit = {},
     private val onStatusChanged: (PlaybackStatus) -> Unit = {},
@@ -34,7 +32,6 @@ class OpusAudioPlayer internal constructor(
         prepareOutputRoute: () -> Unit,
     ) : this(context, null, onRouteChanged, onStatusChanged, onUnsafeRoute = onUnsafeRoute, prepareOutputRoute = prepareOutputRoute)
 
-    private val audioManager = context.getSystemService(AudioManager::class.java)
     private val inputQueue = VoiceReceiveQueue()
     private val receiveDiagnostics = PlaybackDiagnostics(inputQueue.budget.stats)
     private val participantGains = ConcurrentHashMap<Int, Float>()
@@ -55,15 +52,17 @@ class OpusAudioPlayer internal constructor(
 
     @Volatile private var worker: Thread? = null
 
-    fun start() {
+    fun start() = start(ReceiveDelayProfile.BALANCED)
+
+    fun start(profile: ReceiveDelayProfile) {
         synchronized(lifecycleLock) {
             if (control?.running?.get() == true) return
             check(worker?.isAlive != true) { "Previous playback worker has not stopped" }
             check(control?.session?.retired != false) { "Previous playback output has not been released" }
             admission.invalidateAll()
             inputQueue.clear()
-            receiveDiagnostics.begin()
-            val active = PlaybackControl()
+            receiveDiagnostics.begin(profile)
+            val active = PlaybackControl(profile)
             control = active
             publishStatus(PlaybackStatus.BUFFERING)
             worker =
@@ -71,6 +70,17 @@ class OpusAudioPlayer internal constructor(
                     priority = Thread.MAX_PRIORITY
                     start()
                 }
+        }
+    }
+
+    fun setReceiveDelayProfile(profile: ReceiveDelayProfile) {
+        synchronized(lifecycleLock) {
+            val active = control ?: return
+            if (!active.running.get() || active.requestedProfile == profile) return
+            active.session.output?.muteImmediately()
+            admission.invalidateAll()
+            active.requestedProfile = profile
+            active.invalidate(profile)
         }
     }
 
@@ -235,7 +245,7 @@ class OpusAudioPlayer internal constructor(
                 previousTick = tick
                 active.invalidation.take()?.let { command ->
                     if (command.global) {
-                        active.session.invalidate(System.nanoTime(), command.focusInterrupted)
+                        active.session.invalidateOutput(System.nanoTime(), command.profile)
                     } else {
                         active.session.invalidateParticipants(command.clients, System.nanoTime())
                     }
@@ -257,60 +267,31 @@ class OpusAudioPlayer internal constructor(
         }
     }
 
-    private fun onFocusChange(
-        active: PlaybackControl,
-        change: Int,
-    ) {
-        synchronized(lifecycleLock) {
-            if (control !== active || !active.running.get()) return
-            if (AudioFocusPolicy.signalFor(change) == AudioFocusSignal.INTERRUPT) {
-                inputQueue.budget.stats.count(AudioReceiveCounter.FOCUS_INTERRUPTS)
-                inputQueue.budget.stats.observer?.onEvent(AudioDiagnosticEventKind.FOCUS_INTERRUPTED)
-                admission.invalidateAll()
-                active.invalidate(focusInterrupted = true)
-            }
-        }
-    }
-
-    private inner class PlaybackControl {
+    private inner class PlaybackControl(initialProfile: ReceiveDelayProfile) {
         val running = AtomicBoolean(true)
         val invalidation = PlaybackInvalidation()
         var writingRevision = 0L
+        var requestedProfile = initialProfile
 
-        fun invalidate(focusInterrupted: Boolean = false) {
+        fun invalidate(profile: ReceiveDelayProfile? = null) {
             inputQueue.budget.stats.count(AudioReceiveCounter.GLOBAL_INVALIDATIONS)
-            invalidation.invalidateAll(focusInterrupted)
-            inputQueue.clear()
+            invalidation.invalidateAll(profile) { inputQueue.clear() }
         }
 
-        val focusRequest =
-            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(voicePlaybackAudioAttributes())
-                .setAcceptsDelayedFocusGain(false)
-                .setOnAudioFocusChangeListener { change -> onFocusChange(this, change) }
-                .build()
         val session =
             PlaybackSession(
                 inputQueue,
-                PlaybackStreams(inputQueue, mutableSetOf(), participantGains),
+                PlaybackStreams(inputQueue, mutableSetOf(), participantGains, ReceivePolicy(delayProfile = initialProfile)),
                 {
                     outputFactory?.invoke()
                         ?: AndroidPlaybackOutput(
                             preferredDevice, ::onOutputRouteChanged, routeGuard, ::onUnsafeOutputRoute, inputQueue.budget.stats,
                         )
                 },
-                {
-                    val granted = audioManager.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-                    if (granted) {
-                        inputQueue.budget.stats.observer?.onEvent(AudioDiagnosticEventKind.FOCUS_GAINED)
-                        prepareOutputRoute()
-                    }
-                    granted
-                },
-                { audioManager.abandonAudioFocusRequest(focusRequest) },
-                reference,
-                { publishStatus(it) },
-                { running.get() && !userMuted.get() && !routeSwitching && invalidation.permitsWrite(writingRevision) },
+                reference = reference,
+                onStatus = ::publishStatus,
+                canWrite = { running.get() && !userMuted.get() && !routeSwitching && invalidation.permitsWrite(writingRevision) },
+                prepareOutputRoute = prepareOutputRoute,
             )
     }
 

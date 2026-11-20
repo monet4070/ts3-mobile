@@ -6,7 +6,7 @@ internal class PlaybackStreams(
     private val inputQueue: VoiceReceiveQueue,
     private val discontinuityClients: MutableSet<Int>,
     private val participantGains: Map<Int, Float>,
-    private val policy: ReceivePolicy = ReceivePolicy(),
+    private var policy: ReceivePolicy = ReceivePolicy(),
     private val decoderFactory: () -> OpusPacketDecoder = { NativeOpusDecoder() },
 ) : AutoCloseable {
     private val talkers = mutableMapOf<Int, TalkerJitterPipeline>()
@@ -37,10 +37,11 @@ internal class PlaybackStreams(
     fun drainAvailable(
         limit: Int,
         now: Long,
+        canPoll: () -> Boolean = { true },
     ): Int {
         var count = 0
         while (count < limit) {
-            ingest(inputQueue.poll(now) ?: break)
+            ingest(inputQueue.poll(now, canPoll) ?: break)
             count++
         }
         return count
@@ -108,11 +109,13 @@ internal class PlaybackStreams(
         oldestMixedArrival = null
     }
 
-    fun reset() {
+    fun reset(profile: ReceiveDelayProfile? = null) {
         talkers.values.forEach(TalkerJitterPipeline::close)
         talkers.clear()
         mixer.reset()
         discontinuityClients.clear()
+        oldestMixedArrival = null
+        if (profile != null) policy = policy.copy(delayProfile = profile)
     }
 
     override fun close() {

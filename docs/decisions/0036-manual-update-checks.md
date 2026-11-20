@@ -1,7 +1,9 @@
-# ADR 0034: User-initiated GitHub update checks
+# ADR 0036: User-initiated GitHub update checks
 
 - Date: 2026-11-09
-- Status: implemented and locally verified; not published
+- Status: implemented, verified and shipped in 1.1.0 (versionCode 15, 2026-11-09).
+  Renumbered from 0034 to 0036 on 2026-11-11 because 0034 already names the
+  session-bound connection-monitoring decision.
 
 ## Scope and architecture
 
@@ -60,7 +62,7 @@ separate from deterministic tests. Run formatting, Lint, compilation, JVM tests 
 applicable Android checks, then record actual results in a testing document.
 
 The update page separates channel settings, release status/actions and note preview.
-Close remains in the fixed header. Expanding notes opens a body reader with a fixed
+The back arrow stays in the fixed header. Expanding notes opens a body reader with a fixed
 collapse action; collapse or Back returns to the summary's retained scroll position.
 The reader choice survives recreation and resets when the release result changes.
 Markdown rendering and the reader live in separate small files rather than adding

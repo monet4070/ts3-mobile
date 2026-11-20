@@ -1,16 +1,20 @@
 package io.github.ts3mobile.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,8 +22,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
@@ -41,25 +48,36 @@ internal fun ChatConversationPicker(
             title = { Text(stringResource(R.string.chat_close_private)) },
             text = { Text(stringResource(R.string.chat_close_confirm)) },
             confirmButton = {
-                TextButton(onClick = {
+                OutlinedButton(onClick = {
                     onClose(captured)
                     closing = null
                 }) { Text(stringResource(R.string.chat_close_private)) }
             },
-            dismissButton = { TextButton(onClick = { closing = null }) { Text(stringResource(R.string.action_cancel)) } },
+            dismissButton = { OutlinedButton(onClick = { closing = null }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
-    Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        AppIcon(UiIcon.Chat, null, tint = MaterialTheme.colorScheme.primary)
+    Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f)) {
-            TextButton(onClick = { expanded = true }, modifier = Modifier.testTag("chat_conversation_picker")) {
+            val tint = MaterialTheme.colorScheme.primary
+            Row(
+                modifier =
+                    Modifier.testTag("chat_conversation_picker").heightIn(min = 48.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(if (expanded) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
+                        .clickable(role = Role.Button, onClickLabel = stringResource(R.string.chat_switch_conversation)) { expanded = true }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                AppIcon(UiIcon.Chat, null, Modifier.size(18.dp), tint = tint)
                 Text(
                     conversationTitle(state.active, state),
+                    modifier = Modifier.weight(1f, fill = false),
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                AppIcon(UiIcon.ChevronDown, null)
+                AppIcon(UiIcon.ChevronDown, null, Modifier.size(16.dp), tint = tint)
             }
             DropdownMenu(expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 360.dp)) {
                 state.conversations.forEach { conversation ->

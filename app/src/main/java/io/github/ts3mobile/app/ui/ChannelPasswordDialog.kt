@@ -3,9 +3,9 @@ package io.github.ts3mobile.app.ui
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,7 +69,7 @@ internal fun ChannelPasswordDialog(
             )
         },
         confirmButton = {
-            TextButton(
+            OutlinedButton(
                 onClick = {
                     onJoin(channelPassword)
                     onDismiss()
@@ -81,7 +81,7 @@ internal fun ChannelPasswordDialog(
             }
         },
         dismissButton = {
-            TextButton(
+            OutlinedButton(
                 onClick = {
                     onDismiss()
                     channelPassword = ""

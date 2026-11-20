@@ -19,19 +19,16 @@ TS3 Mobile is an open-source, unofficial client with a warm cream/terracotta int
 English and Simplified Chinese. Connect directly to your TeamSpeak server; there is no project account
 to register.
 
-> **Latest stable: [1.1.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0)** · **2026-11-09**, versionCode **15**.
-> Adds in-app update checks, offline audio diagnostics, identity backups, saved tuning and appearance,
-> clearer microphone controls and chat bubbles. Keep the existing app when upgrading; the package
+> **[1.2.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.2.0)** · **2026-11-20**, versionCode **16**.
+> Adds Bluetooth first-utterance protection, live playback profiles, media-friendly voice,
+> easier microphone controls and invites. Keep the existing app when upgrading; the package
 > and public signing certificate are unchanged. See [installation](docs/INSTALLATION.md),
 > [tested coverage](docs/COMPATIBILITY.md) and the [changelog](CHANGELOG.md).
 
 ## Contents
 
-1.1.0 also preserves chat reading position across tabs, adds private-message notifications,
-bookmarks the current connection/channel and distinguishes idle Bluetooth SCO release from
-headset loss. Shared output can still retire during mute changes. Real weak-network interruption
-has not yet been reproduced with the final diagnostic build; this release does not promise a
-universal audio fix. Detailed scope is in the [1.1.0 release record](docs/release/1.1.0/CHECKLIST.md).
+The [1.2.0 release notes](docs/release/1.2.0/RELEASE_NOTES.md) list the changes and validation limits.
+Stability first gives late packets more time to arrive, but cannot recover lost packets.
 
 [Features](#features) · [Installation](#installation) · [First use](#first-use) ·
 [Interface controls](#interface-controls) · [Voice and audio](#voice-and-audio) ·
@@ -133,6 +130,11 @@ tabs or focusing input releases push-to-talk to avoid unintended transmission.
 
 ## Voice and audio
 
+Use **More options → Settings → Voice playback** to choose **Balanced (default)**
+or **Stability first**, which tolerates more late packets at the cost of added delay.
+Your choice is saved locally and immediately resets voice playback without disconnecting
+from the server. Incoming voice may pause briefly; microphone settings do not change.
+
 ### Choose a microphone mode
 
 | Mode | Capture and transmission | Useful for |
@@ -165,14 +167,13 @@ drag the threshold marker while watching the input. Tuning groups gate, input ga
 and sound processing. Chat uses left/right bubbles, and search rows group names,
 channel context and Join actions.
 
-Tap the audio row's device name to choose from Android's available earpiece, speaker, headset, Bluetooth
-or USB routes. Available Bluetooth communication headsets are selected automatically at session start
-and when connected. Removing the selected device or losing an active Bluetooth output mutes listening
-to prevent speaker playback. Reconnecting selects Bluetooth again but keeps listening muted until you
-check the route and unmute manually. System/device delays still require physical-headset validation.
-1.1.0 distinguishes idle SCO release while the headset remains available:
-fresh playback obtains focus and restores Bluetooth without enabling speaker fallback. See the
-[mobile RX and Bluetooth audit](docs/testing/MOBILE_RX_AUDIT_2026-11-08_ZH.md).
+TS3 voice mixes with videos, music, and games without requesting audio focus or switching Android into
+call mode. Use media volume and the in-app per-person controls to adjust incoming voice.
+Tap the audio row's device name to choose a playback route. TS3 selects available Bluetooth media
+headsets at session start and on hot-plug, and prefers the phone microphone with Bluetooth output
+instead of opening a Bluetooth call channel. A removed device or Bluetooth route loss mutes listening
+to prevent speaker playback; check the route and unmute manually after reconnecting.
+Android and the headset still determine the actual routing and acoustic performance.
 Playback mute and microphone Off serve different purposes. Prefer headphones if speaker echo occurs;
 device AEC status is not a guarantee of equal acoustic performance on every phone.
 
@@ -278,6 +279,12 @@ minimum 60-second wait/manual retry guidance; cleanup can take longer and repeat
 bans. Reopening does not connect automatically.
 
 ## Settings and the More menu
+
+**1.2.0:** More options keeps Share invite, Away and status, Find
+channels and users, Server bookmarks, and Settings. Settings groups Voice,
+Notifications, Personalization and identity, and Help and about. Opening it does
+not disconnect. See the [development controls](docs/testing/NEXT_PHASE_FEATURES_2026-11-20_ZH.md#development-controls).
+The table and screenshots below describe stable 1.1.0.
 
 | Item | Purpose |
 | --- | --- |

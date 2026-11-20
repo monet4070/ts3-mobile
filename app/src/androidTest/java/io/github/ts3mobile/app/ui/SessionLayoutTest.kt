@@ -80,9 +80,11 @@ class SessionLayoutTest {
         }
         assertTextFits("Disconnect")
         rule.onNodeWithContentDescription("More options").assertIsDisplayed().performClick()
+        rule.onNodeWithText("Settings").performClick()
         rule.onNodeWithText("Diagnostics").performScrollTo().performClick()
         rule.onNodeWithText("Copy").assertIsDisplayed()
-        rule.onNodeWithText("Close").performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithContentDescription("Find channels and users").assertIsDisplayed()
         rule.onNodeWithContentDescription("Away and status").assertIsDisplayed()
         rule.onNodeWithText("Users").performScrollTo().performClick()

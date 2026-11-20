@@ -20,8 +20,8 @@
 | --- | --- |
 | Others cannot hear you | Microphone mode/permission, channel talk permission and input gain. Hold needs the talk button pressed; try a lower gate threshold |
 | Quiet gate still shows microphone capture | Expected: gate detection requires continuous capture. Choose Off to stop |
-| No output / wrong device | Listening/per-user mute, participant volume, Android communication volume and selected route. Bluetooth loss/removal applies a safety mute. Check the route and unmute manually after reconnecting |
-| Bluetooth differs from speaker quality | Duplex can use a communication audio path; system, headset and device capabilities vary |
+| No output / wrong device | Listening/per-user mute, participant volume, Android media volume and selected route. Bluetooth loss/removal applies a safety mute. Check the route and unmute manually after reconnecting |
+| Bluetooth headset microphone is not used | TS3 prefers the phone microphone with Bluetooth output so it does not need to switch to the headset call profile |
 | Speaker echo | Prefer headphones, lower speaker volume and inspect device AEC state. Noise suppression and echo cancellation serve different purposes |
 | Screen-off disconnect | Inspect Background voice check and vendor battery policy. Optional CPU-awake cannot guarantee survival on every device |
 | Microphone settings reset or capture mode changed | In 1.1.0, gain, noise suppression, echo cancellation and gate threshold persist after saving. Check the save status and retry if needed. Capture mode is not saved; a new service starts in Hold without capturing |
@@ -33,6 +33,7 @@ For a listening interruption, see the [1.1.0 diagnostics screen and export steps
 | Symptom | What to check |
 | --- | --- |
 | No incoming poke popup/sound | In foreground check the in-app notice. In background check notification permission, app notifications, the poke channel and DND. An in-app notice does not promise a notification sound |
+| Xiaomi puts the connection card in More notifications | The system can filter the card independently of its channel importance. After connecting, open More notifications and gently swipe the TS3 Mobile card left. Choose **Mark as important** if your version offers it. Do not turn off app notifications |
 | Poke does not open Chat | Expected: submission keeps your page and gives brief feedback; history remains in the corresponding private chat |
 | Server accepted but no read receipt | Acceptance is not a delivery/read receipt; check peer availability, permissions and identity |
 | Unknown send result | No automatic retry; verify with the peer before resending to avoid duplicates |

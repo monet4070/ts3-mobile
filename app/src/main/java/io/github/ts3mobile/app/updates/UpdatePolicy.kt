@@ -11,6 +11,12 @@ internal const val OFFICIAL_APPLICATION_ID = "io.github.ts3mobile.app"
 
 internal enum class UpdateCompatibility { MATCHING_INSTALL, DIFFERENT_INSTALL, ANDROID_TOO_OLD }
 
+/** One user-initiated check shares this budget across every request it makes. */
+internal const val UPDATE_CHECK_BUDGET_NANOS = 20_000_000_000L
+
+/** No single request may consume the whole budget, so a later request can still run. */
+internal const val UPDATE_REQUEST_CAP_NANOS = 10_000_000_000L
+
 internal fun UpdateRelease.isNewerThan(installed: InstalledAppVersion): Boolean = versionCode > installed.code
 
 internal fun UpdateRelease.compatibilityWith(installed: InstalledAppVersion): UpdateCompatibility =

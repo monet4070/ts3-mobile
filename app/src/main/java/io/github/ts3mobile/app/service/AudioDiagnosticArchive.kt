@@ -141,7 +141,7 @@ internal class AudioDiagnosticArchive(initial: AudioDiagnosticArchiveState = Aud
         const val MAX_SESSIONS = 3
         const val MAX_SAMPLES_PER_SESSION = 120
         const val MAX_EVENTS_PER_SESSION = 64
-        private const val MAX_MARKS_PER_SESSION = 16
+        const val MAX_MARKS_PER_SESSION = 16
         private const val MAX_PENDING = 1_024
 
         fun eventLimit(kind: AudioDiagnosticEvent): Int =

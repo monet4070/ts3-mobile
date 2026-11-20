@@ -14,7 +14,6 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -70,27 +69,27 @@ class AwayAndSupportTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Synchronizing with server…"))
     }
 
-    @Test fun starMenuIsAvailableWithoutAConnectionAndInvokesOnlyTheRepositoryAction() {
+    @Test fun starSettingIsAvailableWithoutAConnectionAndInvokesOnlyTheRepositoryAction() {
         val fixture = UiFixture()
         rule.setContent { fixture.Render(locale = "zh-CN") }
-        rule.onNodeWithContentDescription("更多选项").performClick()
+        rule.openAppSettings("更多选项", "设置")
         rule.onNodeWithText("给项目点个 Star").performScrollTo().assertIsDisplayed()
-        save("support-menu-light", popup = true)
+        save("support-settings-light")
         rule.onNodeWithText("给项目点个 Star").performClick()
         rule.runOnIdle {
             assertEquals(1, fixture.repositoryOpens)
             assertEquals(0, fixture.connects)
             assertTrue(fixture.awayRequests.isEmpty())
         }
-        rule.onNodeWithText("给项目点个 Star").assertDoesNotExist()
+        rule.onNodeWithText("设置").assertIsDisplayed()
     }
 
-    @Test fun starMenuFitsNarrowLargeTextAndReleasesPttBeforeOpening() {
+    @Test fun starSettingFitsNarrowLargeTextAndReleasesPttBeforeOpening() {
         val fixture = UiFixture(connected = true)
         rule.setContent { Box(Modifier.width(320.dp)) { fixture.Render(dark = true, locale = "zh-CN", fontScale = 1.8f) } }
-        rule.onNodeWithContentDescription("更多选项").performClick()
+        rule.openAppSettings("更多选项", "设置")
         rule.onNodeWithText("给项目点个 Star").performScrollTo().assertIsDisplayed()
-        save("support-menu-dark-large", popup = true)
+        save("support-settings-dark-large")
         rule.onNodeWithText("给项目点个 Star").performClick()
         rule.runOnIdle {
             assertEquals(1, fixture.repositoryOpens)
@@ -144,12 +143,8 @@ class AwayAndSupportTest {
         writeImage(name, bitmap.asAndroidBitmap())
     }
 
-    private fun save(
-        name: String,
-        popup: Boolean = false,
-    ) {
-        val node = if (popup) rule.onNode(isPopup()) else rule.onRoot()
-        writeImage(name, node.captureToImage().asAndroidBitmap())
+    private fun save(name: String) {
+        writeImage(name, rule.onRoot().captureToImage().asAndroidBitmap())
     }
 
     private fun writeImage(

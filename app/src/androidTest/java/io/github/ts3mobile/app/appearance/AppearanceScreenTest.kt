@@ -16,6 +16,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -79,9 +80,9 @@ class AppearanceScreenTest {
         rule.runOnIdle { state.value = state.value.copy(status = ThemePreferenceStatus.WRITE_FAILED) }
         rule.onNodeWithText("重试").performScrollTo().performClick()
         rule.onNodeWithText("重置外观为浅色").performScrollTo().performClick()
-        rule.onNodeWithText("关闭").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithContentDescription("返回").assertIsDisplayed()
         save("dark-zh-large-error")
-        rule.onNodeWithText("关闭").performClick()
+        rule.onNodeWithContentDescription("返回").performClick()
         rule.runOnIdle { assertEquals(listOf(1, 1, 1), listOf(retry, reset, close)) }
     }
 

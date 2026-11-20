@@ -1,6 +1,20 @@
 package io.github.ts3mobile.audio.opus
 
-internal data class ReceivePolicy(val adaptive: Boolean = true, val confirmedPacketSamples: Int? = null) {
+enum class ReceiveDelayProfile(
+    internal val initialMs: Int,
+    internal val minMs: Int,
+    internal val maxMs: Int,
+    internal val diagnosticCode: Long,
+) {
+    BALANCED(60, 40, 120, 0),
+    STABILITY(90, 70, 160, 1),
+}
+
+internal data class ReceivePolicy(
+    val adaptive: Boolean = true,
+    val confirmedPacketSamples: Int? = null,
+    val delayProfile: ReceiveDelayProfile = ReceiveDelayProfile.BALANCED,
+) {
     init {
         require(confirmedPacketSamples == null || confirmedPacketSamples in setOf(480, 960))
     }
@@ -18,9 +32,6 @@ internal data class ReceivePolicy(val adaptive: Boolean = true, val confirmedPac
         const val STABLE_PACKETS = 128
         const val MAX_PLC_SAMPLES = 2_880
         const val PCM_FIFO_CAPACITY_SAMPLES = MAX_CLIENT_SAMPLES
-        const val INITIAL_TARGET_MS = 60
-        const val MIN_TARGET_MS = 40
-        const val MAX_TARGET_MS = 120
         const val TARGET_STEP_MS = 10
         const val JITTER_PERCENTILE_INDEX = 60
         const val JITTER_MULTIPLIER = 2

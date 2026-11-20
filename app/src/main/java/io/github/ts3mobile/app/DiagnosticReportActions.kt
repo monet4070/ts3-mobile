@@ -16,7 +16,7 @@ import java.io.IOException
 /** Export formatting and provider writes run away from the UI/audio threads. */
 internal class DiagnosticReportActions(
     private val activity: ComponentActivity,
-    private val report: () -> String?,
+    private val report: suspend () -> String?,
 ) {
     private val pending by lazy { PendingDiagnosticExport(File(activity.noBackupFilesDir, "pending-diagnostic-export.json")) }
     private var preparing = false
@@ -37,6 +37,7 @@ internal class DiagnosticReportActions(
         preparing = true
         activity.lifecycleScope.launch {
             try {
+                // Awaits diagnostics initialization; the activity may already be unbound from the service.
                 val text = withContext(Dispatchers.Default) { report() } ?: throw IOException("Diagnostics unavailable")
                 withContext(Dispatchers.IO) { pending.prepare(text) }
                 saveDocument.launch("TS3-Mobile-diagnostics-${System.currentTimeMillis()}.json")
@@ -68,7 +69,7 @@ internal class DiagnosticReportActions(
         }
     }
 
-    fun mark(action: () -> Boolean) {
+    fun mark(action: suspend () -> Boolean) {
         activity.lifecycleScope.launch {
             try {
                 val marked = withContext(Dispatchers.Default) { action() }

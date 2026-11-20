@@ -9,11 +9,10 @@ internal class PlaybackSession(
     private val input: VoiceReceiveQueue,
     private val streams: PlaybackStreams,
     private val createOutput: () -> PlaybackOutput,
-    private val requestFocus: () -> Boolean,
-    private val abandonFocus: () -> Unit,
     private val reference: PlaybackReferenceSink? = null,
     private val onStatus: (PlaybackStatus) -> Unit = {},
     private val canWrite: () -> Boolean = { true },
+    private val prepareOutputRoute: () -> Unit = {},
 ) : AutoCloseable {
     @Volatile var output: PlaybackOutput? = null
         private set
@@ -28,7 +27,6 @@ internal class PlaybackSession(
     private var closed = false
     private var started = false
     private var retryAt = 0L
-    private var focusDenials = 0
     private var outputFailures = 0
     private var healthyFrames = 0L
     private var idleSince: Long? = null
@@ -38,19 +36,19 @@ internal class PlaybackSession(
     fun tick(now: Long) {
         if (!canWrite()) return
         if (closed || status == PlaybackStatus.FAILED) {
-            input.clear()
+            input.clear(canWrite)
             return
         }
         if (now < retryAt) {
-            input.clear()
+            input.clear(canWrite)
             return
         }
         try {
             if (output?.routeReady == false) {
                 streams.reset()
-                input.clear()
+                input.clear(canWrite)
                 if (started) {
-                    check(retireOutput()) { "Previous audio output could not be released" }
+                    check(retireOutput(OutputRetirement.ROUTE_UNAVAILABLE)) { "Previous audio output could not be released" }
                     status = PlaybackStatus.BUFFERING
                 }
                 return
@@ -60,32 +58,23 @@ internal class PlaybackSession(
                 streams.advanceSilence(samples)
                 idleSince = now
             }
-            streams.drainAvailable(ReceivePolicy.MAX_INPUT_PACKETS, now)
+            streams.drainAvailable(ReceivePolicy.MAX_INPUT_PACKETS, now, canWrite)
             streams.prepare(now)
             if (!started) {
                 if (!streams.readyToStart(now)) return
-                if (!requestFocus()) {
-                    stats.focusDenials.incrementAndGet()
-                    focusDenials = minOf(focusDenials + 1, PlaybackPolicy.MAX_BACKOFF_EXPONENT)
-                    retryAt = now + PlaybackPolicy.backoff(focusDenials)
-                    streams.reset()
-                    input.clear()
-                    abandonFocus()
-                    status = PlaybackStatus.RETRYING
-                    return
-                }
-                focusDenials = 0
+                prepareOutputRoute()
+                if (!canWrite()) return
                 val currentOutput =
-                    output ?: createOutput().also {
+                    output ?: observeSlowOutput(AudioDiagnosticEventKind.OUTPUT_CREATE_SLOW_MS, createOutput).also {
                         output = it
                         stats.count(AudioReceiveCounter.OUTPUTS_CREATED)
                         stats.observer?.onEvent(AudioDiagnosticEventKind.OUTPUT_CREATED)
                     }
                 if (!canWrite()) return
-                currentOutput.start()
+                observeSlowOutput(AudioDiagnosticEventKind.OUTPUT_START_SLOW_MS, currentOutput::start)
                 if (!currentOutput.routeReady || !canWrite()) {
                     streams.reset()
-                    input.clear()
+                    input.clear(canWrite)
                     return
                 }
                 val currentTimeline = PlaybackTimeline(currentOutput, reference, stats, canWrite).also { timeline = it }
@@ -105,7 +94,7 @@ internal class PlaybackSession(
             }
             if (current.state == PlaybackTimeline.State.IDLE) {
                 streams.finishTalkspurts()
-                check(retireOutput()) { "Previous audio output could not be released" }
+                check(retireOutput(OutputRetirement.DRAINED)) { "Previous audio output could not be released" }
                 idleSince = now
                 status = PlaybackStatus.BUFFERING
             }
@@ -114,8 +103,8 @@ internal class PlaybackSession(
             outputFailures++
             healthyFrames = 0
             streams.reset()
-            input.clear()
-            val released = retireOutput()
+            input.clear(canWrite)
+            val released = retireOutput(OutputRetirement.OUTPUT_FAILURE)
             if (!released || outputFailures >= PlaybackPolicy.MAX_OUTPUT_FAILURES) {
                 stats.outputRecoveryExhausted.incrementAndGet()
                 status = PlaybackStatus.FAILED
@@ -128,14 +117,14 @@ internal class PlaybackSession(
         }
     }
 
-    fun invalidate(
+    fun invalidateOutput(
         now: Long,
-        focusInterrupted: Boolean = false,
+        profile: ReceiveDelayProfile? = null,
     ) {
         if (closed) return
-        streams.reset()
-        input.clear()
-        resetOutput(now, if (focusInterrupted) now + PlaybackPolicy.INITIAL_BACKOFF_NANOS else 0)
+        streams.reset(profile)
+        resetOutput(now, 0)
+        if (profile != null) stats.observer?.onEvent(AudioDiagnosticEventKind.RECEIVE_DELAY_PROFILE, profile.diagnosticCode)
     }
 
     fun invalidateParticipants(
@@ -152,7 +141,7 @@ internal class PlaybackSession(
         now: Long,
         nextRetryAt: Long,
     ) {
-        if (!retireOutput()) {
+        if (!retireOutput(OutputRetirement.INVALIDATED)) {
             stats.outputRecoveryExhausted.incrementAndGet()
             status = PlaybackStatus.FAILED
             return
@@ -171,10 +160,24 @@ internal class PlaybackSession(
             input.clear()
             System.err.println(stats.summaryLine())
         }
-        status = if (retireOutput()) PlaybackStatus.STOPPED else PlaybackStatus.FAILED
+        status = if (retireOutput(OutputRetirement.STOPPED)) PlaybackStatus.STOPPED else PlaybackStatus.FAILED
     }
 
-    private fun retireOutput(): Boolean {
+    private inline fun <T> observeSlowOutput(
+        kind: AudioDiagnosticEventKind,
+        action: () -> T,
+    ): T {
+        val startedAt = System.nanoTime()
+        return try {
+            action()
+        } finally {
+            val durationMs = (System.nanoTime() - startedAt) / 1_000_000L
+            if (durationMs >= PlaybackPolicy.SLOW_OUTPUT_MS) stats.observer?.onEvent(kind, durationMs)
+        }
+    }
+
+    private fun retireOutput(reason: OutputRetirement): Boolean {
+        if (output != null) stats.observer?.onEvent(AudioDiagnosticEventKind.OUTPUT_RETIRED, reason.code)
         started = false
         cleanup("discard output") { timeline?.discard() }
         timeline = null
@@ -183,7 +186,6 @@ internal class PlaybackSession(
                 System.err.println("TS3_AUDIO: failed to close output: ${error.sanitizedFailureTypes()}")
             }.isSuccess
         if (released) output = null
-        cleanup("abandon focus", abandonFocus)
         return released
     }
 
@@ -198,6 +200,7 @@ internal class PlaybackSession(
 }
 
 internal object PlaybackPolicy {
+    const val SLOW_OUTPUT_MS = 30L
     const val TICK_NANOS = 10_000_000L
     const val MIN_WAIT_NANOS = 1_000_000L
     const val MAX_CATCH_UP_NANOS = 50_000_000L

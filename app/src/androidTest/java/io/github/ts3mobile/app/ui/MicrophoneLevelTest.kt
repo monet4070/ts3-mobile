@@ -7,12 +7,10 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
@@ -31,11 +29,11 @@ class MicrophoneLevelTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     private fun openSettings() {
-        rule.onNodeWithContentDescription("More options").performClick()
+        rule.openAppSettings()
         rule.onNodeWithText("Microphone settings").performClick()
     }
 
-    private fun ptt() = rule.onNode(hasContentDescription("Push to talk") and hasAnyAncestor(isDialog()))
+    private fun ptt() = rule.onNodeWithContentDescription("Push to talk")
 
     private fun sample(
         gateOpen: Boolean = false,
@@ -76,7 +74,7 @@ class MicrophoneLevelTest {
         rule.runOnIdle { assertEquals(false, fixture.transmission.last()) }
     }
 
-    @Test fun dialogDisposalAndFocusLossReleaseAccessiblePtt() {
+    @Test fun navigatingBackAndFocusLossReleaseAccessiblePtt() {
         val fixture = UiFixture(connected = true)
         rule.setContent { fixture.Render() }
         openSettings()
@@ -90,7 +88,7 @@ class MicrophoneLevelTest {
             rule.runOnUiThread { overlay?.dismiss() }
         }
         ptt().performSemanticsAction(SemanticsActions.OnClick) { it() }
-        rule.onNodeWithText("Close").performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
         rule.runOnIdle { assertEquals(false, fixture.transmission.last()) }
     }
 
@@ -132,7 +130,7 @@ class MicrophoneLevelTest {
         rule.runOnIdle { assertEquals(false, fixture.transmission.last()) }
         rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         rule.waitUntil(2_000) { fixture.microphoneLevels.subscriptionCount.value == 1 }
-        rule.onNodeWithText("Close").performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
         rule.waitUntil(2_000) { fixture.microphoneLevels.subscriptionCount.value == 0 }
     }
 
@@ -161,19 +159,19 @@ class MicrophoneLevelTest {
     @Test fun chineseLargeTextShowsPttWarningAndCloseAndCanScrollToThreshold() {
         val fixture = UiFixture(connected = true)
         rule.setContent { fixture.Render(locale = "zh-CN", fontScale = 1.8f, dark = true) }
-        rule.onNodeWithContentDescription("更多选项").performClick()
+        rule.openAppSettings("更多选项", "设置")
         rule.onNodeWithText("麦克风设置").performClick()
         rule.onNodeWithContentDescription("麦克风未开启").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("按住下方按钮讲话会将声音发送到当前频道。").performScrollTo().assertIsDisplayed()
-        rule.onNode(hasContentDescription("按住说话") and hasAnyAncestor(isDialog())).performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("关闭").assertIsDisplayed()
+        rule.onNodeWithContentDescription("按住说话").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithContentDescription("返回").assertIsDisplayed()
         val screenshot = File(rule.activity.getExternalFilesDir(null), "microphone-ui/tuning-zh-large.png")
         screenshot.parentFile?.mkdirs()
         screenshot.outputStream().use {
-            check(rule.onNode(isDialog()).captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it))
+            check(rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it))
         }
         rule.onNodeWithContentDescription("音量门控阈值").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("关闭").assertIsDisplayed()
+        rule.onNodeWithContentDescription("返回").assertIsDisplayed()
     }
 
     @Test fun bufferedCaptureCannotClaimSendingWhenTheApplicationSendBoundaryIsDisabled() {

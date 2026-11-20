@@ -1,8 +1,9 @@
 # 发布资料 / Releases
 
-**当前稳定版：[TS3 Mobile 1.1.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0)** ·
-2026-11-09 · versionCode **15** · tag `v1.1.0`。
+**[TS3 Mobile 1.2.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.2.0)** ·
+2026-11-20 · versionCode **16** · tag `v1.2.0`。
 
+- [1.2.0 中文说明](1.2.0/RELEASE_NOTES_ZH.md) / [English notes](1.2.0/RELEASE_NOTES.md)
 - [1.1.0 中文说明](1.1.0/RELEASE_NOTES_ZH.md) / [English notes](1.1.0/RELEASE_NOTES.md)
 - [1.1.0 发布验收、签名与升级范围](1.1.0/CHECKLIST.md)
 - [安装与升级](../INSTALLATION.md)、[兼容性](../COMPATIBILITY.md)、[使用指南](../USER_GUIDE_ZH.md)
@@ -45,7 +46,7 @@
 其中须包含正式 applicationId、versionName/versionCode、minSdk、实际 apkFile/apkSha256 和
 signingCertificateSha256；文件名必须与 APK 资产一致。正式版与公开 prerelease 都应提供这些资产，
 每个分发构建的 versionCode 应递增，正式版也应高于此前测试版，不以修改说明或重命名旧包代替更新。
-应用不会扫描未发布的 CI 工件。规则与验证见[ADR 0034](../decisions/0034-manual-update-checks.md)。
+应用不会扫描未发布的 CI 工件。规则与验证见[ADR 0036](../decisions/0036-manual-update-checks.md)。
 
 - APK：`ts3-mobile-1.0.0-release.apk`；校验表：`SHA256SUMS.txt`；构建信息：`BUILDINFO.json`。
 - 正式应用 ID：`io.github.ts3mobile.app`；不分发 QA/调试旁装包作为正式升级。

@@ -152,7 +152,7 @@ class TalkerJitterPipelineTest {
     }
 
     private companion object {
-        const val INITIAL_HOLD_NANOS = ReceivePolicy.INITIAL_TARGET_MS * 1_000_000L
+        const val INITIAL_HOLD_NANOS = 60_000_000L
         const val TALKER_SAMPLES = 480
     }
 }

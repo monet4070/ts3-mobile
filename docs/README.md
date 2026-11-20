@@ -11,13 +11,16 @@
 | 支持渠道 | [支持](../SUPPORT.md) | [Support](../SUPPORT.md) |
 | 隐私 | [隐私说明](../PRIVACY_ZH.md) | [Privacy](../PRIVACY.md) |
 | 安全漏洞 | [私密报告流程](../SECURITY.md) | [Security](../SECURITY.md) |
-| 稳定版发布 | [1.1.0 发布资料](release/README.md) | [Release pack](release/README.md) |
+| 稳定版发布 | [1.2.0 发布资料](release/README.md) | [Release pack](release/README.md) |
 
 维护与来源：
 
 - [开发约定](../CONTRIBUTING.md)、[架构](../ARCHITECTURE.md)、[设计决策](decisions/)
-- [使用体验与工程质量提升计划（2026-11-07）](plans/IMPROVEMENT_PLAN_2026-11-07_ZH.md)：分阶段范围、依赖、验收和交付顺序；当前为待实施规划。
-- [提升执行计划与工作量评估（2026-11-07）](plans/IMPROVEMENT_EXECUTION_PLAN_2026-11-07_ZH.md)：代码核查、收益、三点估算、分批任务与风险关卡；正在逐阶段实施。
+- [1.1.0 之后的改进与功能计划（2026-11-19）](plans/NEXT_PHASE_2026-11-19_ZH.md) 根据项目实测与 TS3 用户反馈，为通话稳定性、邀请入服、本机试麦和后台收听控制排期。
+- [收听稳定性与延迟档位（2026-11-20）](plans/AUDIO_PLAYBACK_STABILITY_2026-11-20_ZH.md)：开源对照、缓冲候选、真机验收与独立切网回归计划。
+- [邀请、试麦与通知收听开发验证（2026-11-20）](testing/NEXT_PHASE_FEATURES_2026-11-20_ZH.md)：实现范围、模拟器／覆盖安装结果与待做的真机验收。
+- [使用体验与工程质量提升计划（2026-11-07）](plans/IMPROVEMENT_PLAN_2026-11-07_ZH.md) 记录上一轮的范围、依赖和验收目标。
+- [提升执行计划与工作量评估（2026-11-07）](plans/IMPROVEMENT_EXECUTION_PLAN_2026-11-07_ZH.md) 记录上一轮的任务拆分和估算，实际完成情况见下方进度记录。
 - [提升计划执行进度（2026-11-07）](plans/IMPROVEMENT_PROGRESS_2026-11-07_ZH.md)：实际状态、阶段证据及待验收项。
 - [更新日志](../CHANGELOG.md)、[第三方许可](../THIRD_PARTY_NOTICES.md)
 - [测试记录](testing/)与[历史开发计划](plans/)保留各自日期，不自动代表最新 APK 的验收。
@@ -28,10 +31,10 @@
 - [应用内检查更新（2026-11-09）](testing/UPDATE_CHECK_2026-11-09_ZH.md)：正式版／测试版选择、版本比较、离线回归与真实 GitHub Release 冒烟。
 - [1.0.0 语音断续回归排查与修复](testing/AUDIO_PLAYBACK_REGRESSION_2026-11-05_ZH.md)记录离线复现和实机验证边界。
 - [1.0.0 / code 14 修复重发](release/1.0.0/REISSUE_2026-11-05.md)记录撤回后重用标签授权与新工件验收。
-- [历史 M11 发布计划](release/CONTINUATION_PLAN.md)保留作背景，当前稳定版入口为 1.1.0 资料。
+- [历史 M11 发布计划](release/CONTINUATION_PLAN.md)保留作背景。
 
-当前稳定版为 [1.1.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0)（2026-11-09，code 15）；
-签名、最终工件、CI 与升级范围见 [1.1.0 发布验收](release/1.1.0/CHECKLIST.md)。
+稳定版 [1.2.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.2.0)（2026-11-20，code 16）：
+见[中文更新说明](release/1.2.0/RELEASE_NOTES_ZH.md)。
 
-The current stable release is [1.1.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0)
-(2026-11-09, code 15). See [release acceptance](release/1.1.0/CHECKLIST.md) for exact evidence and limits.
+See the [release notes](release/1.2.0/RELEASE_NOTES.md) for stable
+[1.2.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.2.0) (2026-11-20, code 16).

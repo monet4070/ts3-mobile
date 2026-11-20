@@ -20,7 +20,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +47,7 @@ internal fun ConnectionForm(
     onDisconnect: () -> Unit,
     statusText: String? = null,
     onOpenBookmarks: () -> Unit = {},
+    actions: @Composable () -> Unit = {},
 ) {
     val busy = phase == ConnectionPhase.CONNECTING || phase == ConnectionPhase.RECONNECTING || phase == ConnectionPhase.DISCONNECTING
     Column(
@@ -66,7 +66,7 @@ internal fun ConnectionForm(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     SectionLabel(stringResource(R.string.section_server_details), Modifier.align(Alignment.CenterVertically))
-                    TextButton(onClick = onOpenBookmarks, enabled = !busy) {
+                    OutlinedButton(onClick = onOpenBookmarks, enabled = !busy) {
                         AppIcon(UiIcon.Bookmark, null, Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(stringResource(R.string.bookmark_open))
@@ -107,6 +107,7 @@ internal fun ConnectionForm(
                         Spacer(Modifier.weight(1f))
                         AppIcon(UiIcon.ArrowRight, null, Modifier.size(18.dp))
                     }
+                    actions()
                 }
             }
         }

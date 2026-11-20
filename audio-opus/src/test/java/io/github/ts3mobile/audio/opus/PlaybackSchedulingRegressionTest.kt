@@ -40,8 +40,6 @@ class PlaybackSchedulingRegressionTest {
             queue,
             PlaybackStreams(queue, mutableSetOf(), emptyMap()) { decoder },
             { FakePlaybackOutput().apply { recordSamples = false }.also(outputs::add) },
-            { true },
-            {},
         ).use { session ->
             while (now < ORIGIN + (PACKETS * packetMillis + 1000) * MS) {
                 now += pacer.waitNanos(now)

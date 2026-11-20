@@ -1,12 +1,25 @@
 # Privacy
 
-Last updated: 2026-11-09 · [简体中文](PRIVACY_ZH.md)
+Last updated: 2026-11-20 · [简体中文](PRIVACY_ZH.md)
 
 TS3 Mobile is an unofficial client that connects directly from the Android
 device to TeamSpeak servers selected by the user. The maintainers do not
 operate an intermediary service for those connections.
 
 ## Data handled on the device
+
+In the development build, invite previews use transient memory, not form,
+bookmark or recent-server storage. The app reads the clipboard only when you
+choose to paste or use the clipboard. External passwords, tokens and unsupported
+link values are not used; manually supplied credentials go only to the server
+or channel you confirm. Sharing uses the Android chooser and only includes the
+server address, voice port and, if selected, the channel ID. The receiving app
+manages anything you share.
+
+The development build's local microphone trial is available offline and when
+connected with the voice microphone off. It only shows the input type and measurements in
+memory. It does not encode, transmit, store or add test audio, device names or
+measurements to diagnostic reports.
 
 The app stores only the selected appearance mode (Light, Dark or System)
 and its schema version in a separate local preferences file, excluded from cloud

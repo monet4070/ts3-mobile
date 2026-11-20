@@ -4,6 +4,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -44,6 +45,7 @@ internal fun MicrophoneControl(
     isCapturing: Boolean = false,
     onMicrophoneModeChanged: (MicrophoneMode) -> Unit,
     onPushToTalkChanged: (Boolean) -> Unit,
+    microphoneVolumeShortcut: @Composable () -> Unit,
 ) {
     Surface(color = MaterialTheme.colorScheme.background) {
         Column(
@@ -56,57 +58,62 @@ internal fun MicrophoneControl(
         ) {
             MicrophoneModeSelector(mode, onMicrophoneModeChanged)
 
-            when (mode) {
-                MicrophoneMode.PUSH_TO_TALK ->
-                    PushToTalkButton(
-                        isTransmitting = isTransmitting,
-                        onPushToTalkChanged = onPushToTalkChanged,
-                    )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    when (mode) {
+                        MicrophoneMode.PUSH_TO_TALK ->
+                            PushToTalkButton(
+                                isTransmitting = isTransmitting,
+                                onPushToTalkChanged = onPushToTalkChanged,
+                            )
 
-                MicrophoneMode.OFF,
-                MicrophoneMode.CONTINUOUS,
-                MicrophoneMode.VOLUME_GATE,
-                ->
-                    Row(
-                        modifier = Modifier.heightIn(min = 58.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        AppIcon(
-                            icon =
-                                if (mode == MicrophoneMode.OFF) {
-                                    UiIcon.MicOff
-                                } else {
-                                    UiIcon.Mic
-                                },
-                            contentDescription = null,
-                            tint =
-                                if (isTransmitting) {
-                                    MaterialTheme.colorScheme.error
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                        )
-                        Text(
-                            text =
-                                stringResource(
-                                    if (mode == MicrophoneMode.OFF) {
-                                        R.string.microphone_state_off
-                                    } else if (isTransmitting && mode == MicrophoneMode.VOLUME_GATE) {
-                                        R.string.microphone_talking
-                                    } else if (isTransmitting) {
-                                        R.string.microphone_state_continuous
-                                    } else if (mode == MicrophoneMode.VOLUME_GATE && isCapturing) {
-                                        R.string.microphone_state_listening
-                                    } else if (captureDeferred) {
-                                        R.string.microphone_state_deferred
-                                    } else {
-                                        R.string.microphone_state_starting
-                                    },
-                                ),
-                            style = MaterialTheme.typography.labelLarge,
-                        )
+                        MicrophoneMode.OFF,
+                        MicrophoneMode.CONTINUOUS,
+                        MicrophoneMode.VOLUME_GATE,
+                        ->
+                            Row(
+                                modifier = Modifier.heightIn(min = 58.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                AppIcon(
+                                    icon =
+                                        if (mode == MicrophoneMode.OFF) {
+                                            UiIcon.MicOff
+                                        } else {
+                                            UiIcon.Mic
+                                        },
+                                    contentDescription = null,
+                                    tint =
+                                        if (isTransmitting) {
+                                            MaterialTheme.colorScheme.error
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                )
+                                Text(
+                                    text =
+                                        stringResource(
+                                            if (mode == MicrophoneMode.OFF) {
+                                                R.string.microphone_state_off
+                                            } else if (isTransmitting && mode == MicrophoneMode.VOLUME_GATE) {
+                                                R.string.microphone_talking
+                                            } else if (isTransmitting) {
+                                                R.string.microphone_state_continuous
+                                            } else if (mode == MicrophoneMode.VOLUME_GATE && isCapturing) {
+                                                R.string.microphone_state_listening
+                                            } else if (captureDeferred) {
+                                                R.string.microphone_state_deferred
+                                            } else {
+                                                R.string.microphone_state_starting
+                                            },
+                                        ),
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
                     }
+                }
+                microphoneVolumeShortcut()
             }
         }
     }

@@ -2,9 +2,9 @@
 
 [简体中文](USER_GUIDE_ZH.md) · [Install and upgrade](INSTALLATION.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
-This guide describes stable **1.1.0** (2026-11-09, versionCode 15). See the
-[release acceptance](release/1.1.0/CHECKLIST.md) for tested coverage and the
-[English interface tour](../README.md#interface-tour) for the connection, channels and More options screens.
+This guide covers **1.2.0** (versionCode 16). See the [release notes](release/1.2.0/RELEASE_NOTES.md)
+for the new playback profiles, Bluetooth protection, invites and listening controls. The
+[English interface tour](../README.md#interface-tour) shows the previous 1.1.0 interface.
 
 ## Connect and join
 
@@ -60,6 +60,8 @@ cleared when capture, routing or the observation ends and are not saved.
 Choose routes from those Android reports as available. Headset, Bluetooth and USB
 behavior depends on the device. AEC status reports Android's capability/activation,
 not a guarantee of acoustic quality. User actions provide per-user mute and volume.
+Below 100%, the slider approximates perceived loudness: 50% aims to sound about
+half as loud as the unadjusted 100%. The result depends on the voice and listening setup.
 Listening mute is separate from turning your microphone off.
 
 Open **More options → Appearance**: Light (the unset default),
@@ -75,7 +77,9 @@ preserved and reset may still fail. Appearance does not start the microphone.
 when one user is muted/unmuted. The shared output still retires, so an interruption
 is possible; physical listening gaps have not been quantified. See [offline evidence](testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
 
-Available Bluetooth communication headsets are selected at session start and when connected.
+Incoming voice mixes with foreground media and uses the Android media volume.
+Available Bluetooth media headsets are selected at session start and when connected.
+When Bluetooth output is selected, TS3 prefers the phone microphone to avoid activating the call profile.
 Device removal or unexpected Bluetooth fallback mutes listening. Check the selected route and
 unmute manually; reconnecting a headset keeps the safety mute. This affects listening, not the
 microphone mode. Android callback and hardware latency still need physical-headset testing.

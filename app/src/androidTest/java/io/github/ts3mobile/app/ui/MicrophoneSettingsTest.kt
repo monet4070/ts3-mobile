@@ -6,10 +6,10 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
@@ -39,7 +39,7 @@ class MicrophoneSettingsTest {
         rule.onNodeWithContentDescription("Volume gate threshold").performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { it(-35f) }
         rule.onNodeWithText("Volume gate threshold: -35 dBFS").assertIsDisplayed()
-        rule.onNodeWithText("Close").assertIsDisplayed().performClick()
+        rule.onNodeWithContentDescription("Back").assertIsDisplayed().performClick()
         rule.runOnIdle {
             val settings = fixture.state.value.microphoneSettings
             assertEquals(150, settings.volumePercent)
@@ -74,7 +74,7 @@ class MicrophoneSettingsTest {
         val fixture = UiFixture(connected = true)
         fixture.state.value = fixture.state.value.copy(echoCancellationState = EchoCancellationState.UNAVAILABLE)
         rule.setContent { fixture.Render(fontScale = 1.8f, locale = "zh-CN") }
-        rule.onNodeWithContentDescription("更多选项").performClick()
+        rule.openAppSettings("更多选项", "设置")
         rule.onNodeWithText("麦克风设置").performClick()
         rule.onNodeWithContentDescription("麦克风输入音量").performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { it(200f) }
@@ -84,9 +84,9 @@ class MicrophoneSettingsTest {
         rule.onNodeWithContentDescription("音量门控阈值").performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { it(-60f) }
         rule.onNodeWithText("音量门控阈值：-60 dBFS").assertIsDisplayed()
-        rule.onNodeWithText("关闭").assertIsDisplayed()
+        rule.onNodeWithContentDescription("返回").assertIsDisplayed()
         saveDialog("microphone-settings-zh-large-bottom")
-        rule.onNodeWithText("关闭").performClick()
+        rule.onNodeWithContentDescription("返回").performClick()
     }
 
     @Test fun echoFailureIsVisibleAndSettingsCanBeEditedWhileDisconnected() {
@@ -124,7 +124,7 @@ class MicrophoneSettingsTest {
         openSettings()
         rule.onNodeWithText("Restore tuning defaults").performScrollTo().performClick()
         rule.runOnIdle { assertEquals(MicrophoneSettings(), fixture.state.value.microphoneSettings) }
-        rule.onNodeWithText("Close").performClick()
+        rule.onNodeWithContentDescription("Back").performClick()
         rule.runOnIdle {
             assertTrue(fixture.microphonePreferenceCommits > 0)
             assertFalse(fixture.state.value.isCapturing)
@@ -133,12 +133,12 @@ class MicrophoneSettingsTest {
     }
 
     private fun openSettings() {
-        rule.onNodeWithContentDescription("More options").performClick()
+        rule.openAppSettings()
         rule.onNodeWithText("Microphone settings").performClick()
     }
 
     private fun saveDialog(name: String) {
-        val bitmap = rule.onNode(isDialog()).captureToImage().asAndroidBitmap()
+        val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
         File(rule.activity.filesDir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 }

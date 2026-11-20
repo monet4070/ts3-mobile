@@ -47,7 +47,25 @@ enum class AudioReceivePeak {
     OUTPUT_BACKLOG_SAMPLES,
 }
 
-enum class AudioDiagnosticEventKind { FOCUS_GAINED, FOCUS_INTERRUPTED, ACTUAL_ROUTE, OUTPUT_CREATED }
+enum class AudioDiagnosticEventKind {
+    FOCUS_GAINED,
+    FOCUS_INTERRUPTED,
+    ACTUAL_ROUTE,
+    OUTPUT_CREATED,
+    OUTPUT_PERFORMANCE_MODE,
+    OUTPUT_RETIRED,
+    OUTPUT_CREATE_SLOW_MS,
+    OUTPUT_START_SLOW_MS,
+    RECEIVE_DELAY_PROFILE,
+}
+
+internal enum class OutputRetirement(val code: Long) {
+    DRAINED(1),
+    ROUTE_UNAVAILABLE(2),
+    OUTPUT_FAILURE(3),
+    INVALIDATED(4),
+    STOPPED(5),
+}
 
 /** Counters are cumulative within a playback generation; peaks cover the interval since the last take. */
 data class AudioReceiveDiagnostics(
@@ -77,7 +95,7 @@ internal class PlaybackDiagnostics(private val stats: ReceiveStats) {
     private var ended = true
     private var finalSnapshot: AudioReceiveDiagnostics? = null
 
-    fun begin() {
+    fun begin(delayProfile: ReceiveDelayProfile = ReceiveDelayProfile.BALANCED) {
         val snapshot =
             synchronized(this) {
                 generation++
@@ -87,7 +105,10 @@ internal class PlaybackDiagnostics(private val stats: ReceiveStats) {
                 finalSnapshot = null
                 take(true)
             }
-        stats.observer?.onStarted(snapshot)
+        stats.observer?.let { observer ->
+            observer.onStarted(snapshot)
+            observer.onEvent(AudioDiagnosticEventKind.RECEIVE_DELAY_PROFILE, delayProfile.diagnosticCode)
+        }
     }
 
     @Synchronized fun take(active: Boolean): AudioReceiveDiagnostics =

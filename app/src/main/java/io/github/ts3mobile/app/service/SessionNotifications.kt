@@ -2,12 +2,12 @@ package io.github.ts3mobile.app.service
 
 import android.annotation.SuppressLint
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import io.github.ts3mobile.app.MainActivity
@@ -22,16 +22,8 @@ internal class SessionNotifications(
     private val onTypesApplied: (Int) -> Unit,
 ) {
     private val manager = service.getSystemService(NotificationManager::class.java)
-
-    fun createChannel() {
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                service.getString(R.string.notification_channel_name),
-                NotificationManager.IMPORTANCE_LOW,
-            ),
-        )
-    }
+    private val channelId = SessionNotificationChannel.register(manager, service.getString(R.string.notification_channel_name))
+    private val playbackActions = PlaybackNotificationActions()
 
     fun startConnecting(host: String) {
         promote(
@@ -41,12 +33,12 @@ internal class SessionNotifications(
     }
 
     /** Android still requires promotion when a rejected foreground start remains bound. */
-    fun rejectIdentityMaintenanceStart() {
+    fun rejectStart(message: Int) {
         val notification =
-            NotificationCompat.Builder(service, CHANNEL_ID)
+            NotificationCompat.Builder(service, channelId)
                 .setSmallIcon(R.drawable.ic_app)
                 .setContentTitle(service.getString(R.string.app_name))
-                .setContentText(service.getString(R.string.status_identity_maintenance))
+                .setContentText(service.getString(message))
                 .setOnlyAlertOnce(true)
                 .build()
         promote(notification, includeMicrophone = false)
@@ -66,7 +58,16 @@ internal class SessionNotifications(
         promote(build(state.copy(isCapturing = includeMicrophone)), includeMicrophone)
     }
 
-    fun stop() = service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
+    fun stop() {
+        playbackActions.clear()
+        service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
+    }
+
+    fun consumePlaybackAction(
+        id: String?,
+        state: TeamSpeakServiceState,
+        liveSafetyMuted: Boolean,
+    ): Boolean? = playbackActions.consume(id, state, liveSafetyMuted)
 
     @SuppressLint("InlinedApi")
     private fun promote(
@@ -106,24 +107,20 @@ internal class SessionNotifications(
                         -> host
                     }
             }
+        val disconnect =
+            NotificationCompat.Action(
+                0,
+                service.getString(R.string.notification_disconnect),
+                serviceAction(1, TeamSpeakService.ACTION_DISCONNECT),
+            )
+        val listening = listeningControl(state)
         val builder =
-            NotificationCompat.Builder(service, CHANNEL_ID)
+            NotificationCompat.Builder(service, channelId)
                 .setSmallIcon(R.drawable.ic_app)
                 .setContentTitle(service.getString(R.string.app_name))
                 .setContentText(text)
-                .setContentIntent(
-                    PendingIntent.getActivity(
-                        service,
-                        0,
-                        Intent(service, MainActivity::class.java),
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                    ),
-                )
-                .addAction(
-                    0,
-                    service.getString(R.string.notification_disconnect),
-                    serviceAction(1, TeamSpeakService.ACTION_DISCONNECT),
-                )
+                .setContentIntent(openApp())
+                .addAction(disconnect)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -134,8 +131,39 @@ internal class SessionNotifications(
                 serviceAction(2, TeamSpeakService.ACTION_MUTE_MICROPHONE),
             )
         }
+        listening?.let { builder.addAction(it) }
+        if (state.status.phase == ConnectionPhase.CONNECTED) {
+            builder.showConnectedControls(service, text, disconnect, listening)
+        }
         return builder.build()
     }
+
+    private fun listeningControl(state: TeamSpeakServiceState): NotificationCompat.Action? =
+        when (val action = playbackActions.render(state)) {
+            PlaybackNotificationAction.CheckRoute ->
+                NotificationCompat.Action(0, service.getString(R.string.notification_check_route), openApp())
+            is PlaybackNotificationAction.SetMuted -> {
+                val label = if (action.muted) R.string.notification_mute_playback else R.string.notification_resume_playback
+                val intent =
+                    Intent(service, TeamSpeakService::class.java)
+                        .setAction(TeamSpeakService.ACTION_SET_PLAYBACK_MUTED)
+                        .setData(Uri.fromParts("ts3-notification", action.id, null))
+                NotificationCompat.Action(
+                    0,
+                    service.getString(label),
+                    PendingIntent.getService(service, 3, intent, PendingIntent.FLAG_IMMUTABLE),
+                )
+            }
+            null -> null
+        }
+
+    private fun openApp(): PendingIntent =
+        PendingIntent.getActivity(
+            service,
+            0,
+            Intent(service, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
 
     private fun serviceAction(
         requestCode: Int,
@@ -149,8 +177,7 @@ internal class SessionNotifications(
         )
 
     companion object {
-        private const val CHANNEL_ID = "ts3_connection"
-        private const val NOTIFICATION_ID = 4103
+        const val NOTIFICATION_ID = 4103
         private val foregroundPhases =
             setOf(
                 ConnectionPhase.CONNECTING,

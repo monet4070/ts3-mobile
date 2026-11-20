@@ -2,12 +2,12 @@ package io.github.ts3mobile.app.updates
 
 import android.content.pm.PackageManager
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.ts3mobile.app.ui.UiFixture
+import io.github.ts3mobile.app.ui.openAppSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -20,7 +20,7 @@ class UpdateEntryTest {
     @Test fun disconnectedMenuOffersTheUpdatePageWithoutConnecting() {
         val fixture = UiFixture()
         rule.setContent { fixture.Render() }
-        rule.onNodeWithContentDescription("More options").performClick()
+        rule.openAppSettings()
         rule.onNodeWithText("Check for updates").performScrollTo().performClick()
         rule.runOnIdle {
             assertEquals(1, fixture.updateChecks)

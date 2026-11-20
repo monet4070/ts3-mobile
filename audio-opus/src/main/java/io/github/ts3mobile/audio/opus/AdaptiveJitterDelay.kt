@@ -4,7 +4,8 @@ import kotlin.math.abs
 import kotlin.math.ceil
 
 internal class AdaptiveJitterDelay(private val policy: ReceivePolicy) {
-    var targetMs = ReceivePolicy.INITIAL_TARGET_MS
+    private val profile = policy.delayProfile
+    var targetMs = profile.initialMs
         private set
     private var previousSequence: Long? = null
     private var previousArrival = 0L
@@ -33,15 +34,15 @@ internal class AdaptiveJitterDelay(private val policy: ReceivePolicy) {
             if (policy.adaptive && deviations.size == ReceivePolicy.JITTER_WINDOW) {
                 val ordered = deviations.sorted()
                 val percentile = ordered[ReceivePolicy.JITTER_PERCENTILE_INDEX]
-                val desiredMs = ReceivePolicy.MIN_TARGET_MS + ReceivePolicy.JITTER_MULTIPLIER * percentile
+                val desiredMs = profile.minMs + ReceivePolicy.JITTER_MULTIPLIER * percentile
                 val desired =
                     (ceil(desiredMs / ReceivePolicy.TARGET_STEP_MS) * ReceivePolicy.TARGET_STEP_MS).toInt()
-                        .coerceIn(ReceivePolicy.MIN_TARGET_MS, ReceivePolicy.MAX_TARGET_MS)
+                        .coerceIn(profile.minMs, profile.maxMs)
                 if (desired > targetMs && stable % ReceivePolicy.INCREASE_EVERY_PACKETS == 0) {
-                    targetMs = minOf(ReceivePolicy.MAX_TARGET_MS, targetMs + ReceivePolicy.TARGET_STEP_MS)
+                    targetMs = minOf(profile.maxMs, targetMs + ReceivePolicy.TARGET_STEP_MS)
                 }
                 if (desired < targetMs && stable >= ReceivePolicy.STABLE_PACKETS) {
-                    targetMs = maxOf(ReceivePolicy.MIN_TARGET_MS, targetMs - ReceivePolicy.TARGET_STEP_MS)
+                    targetMs = maxOf(profile.minMs, targetMs - ReceivePolicy.TARGET_STEP_MS)
                     stable = 0
                 }
             }
@@ -56,7 +57,7 @@ internal class AdaptiveJitterDelay(private val policy: ReceivePolicy) {
     fun noteLate() {
         stable = 0
         if (policy.adaptive && ++late >= ReceivePolicy.LATE_PACKETS_TO_INCREASE) {
-            targetMs = minOf(ReceivePolicy.MAX_TARGET_MS, targetMs + ReceivePolicy.TARGET_STEP_MS)
+            targetMs = minOf(profile.maxMs, targetMs + ReceivePolicy.TARGET_STEP_MS)
             late = 0
         }
     }

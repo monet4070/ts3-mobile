@@ -1,3 +1,6 @@
 # Copy this file to local.properties and set a machine-local Android SDK path.
 # Do not commit local.properties; it may contain a private SDK installation path.
 sdk.dir=C:\\Android\\Sdk
+
+# Bluetooth playback A/B candidate (Gradle CLI only, omitted = false):
+# ./gradlew -PbluetoothStandardOutputExperiment=true :app:assembleRelease
