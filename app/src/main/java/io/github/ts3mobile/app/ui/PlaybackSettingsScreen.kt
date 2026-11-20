@@ -9,9 +9,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +51,7 @@ internal fun PlaybackSettingsScreen(
             state.busy -> Text(stringResource(if (state.profile == null) R.string.playback_loading else R.string.playback_saving))
             state.failed && state.profile == null -> {
                 Text(stringResource(R.string.playback_read_failed), color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry_control)) }
+                OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.action_retry_control)) }
             }
             state.failed -> Text(stringResource(R.string.playback_write_failed), color = MaterialTheme.colorScheme.error)
         }
