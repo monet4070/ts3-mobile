@@ -114,17 +114,17 @@ class UpdatesScreenTest {
                 }
             }
         }
-        val closeTop = rule.onNodeWithText("关闭").fetchSemanticsNode().boundsInRoot.top
+        val backTop = rule.onNodeWithContentDescription("返回").fetchSemanticsNode().boundsInRoot.top
         rule.onNodeWithText("下载 APK").performScrollTo().assertIsDisplayed().performClick()
         rule.onNodeWithText("展开更新说明").performScrollTo().performClick()
         repeat(3) { rule.onNode(hasScrollAction()).performTouchInput { swipeUp() } }
-        rule.onNodeWithText("关闭").assertIsDisplayed()
+        rule.onNodeWithContentDescription("返回").assertIsDisplayed()
         rule.onNodeWithText("收起更新说明").assertIsDisplayed()
-        assertEquals(closeTop, rule.onNodeWithText("关闭").fetchSemanticsNode().boundsInRoot.top)
+        assertEquals(backTop, rule.onNodeWithContentDescription("返回").fetchSemanticsNode().boundsInRoot.top)
         save("updates-zh-large-dark")
         rule.onNodeWithText("收起更新说明").performClick()
         rule.onNodeWithText("展开更新说明").assertIsDisplayed()
-        rule.onNodeWithText("关闭").performClick()
+        rule.onNodeWithContentDescription("返回").performClick()
         rule.runOnIdle { assertEquals(1 to 1, downloads to closes) }
     }
 
@@ -146,15 +146,15 @@ class UpdatesScreenTest {
                 )
             }
         }
-        val closeBounds = rule.onNodeWithText("Close").fetchSemanticsNode().boundsInRoot
+        val backBounds = rule.onNodeWithContentDescription("Back").fetchSemanticsNode().boundsInRoot
         rule.onNodeWithText("Show full notes").performScrollTo()
         val expandBounds = rule.onNodeWithText("Show full notes").fetchSemanticsNode().boundsInRoot
         rule.onNodeWithText("Show full notes").performClick()
         save("updates-en-markdown-top")
         repeat(3) { rule.onNode(hasScrollAction()).performTouchInput { swipeUp() } }
         rule.onNodeWithText("Show less").assertIsDisplayed()
-        rule.onNodeWithText("Close").assertIsDisplayed()
-        assertEquals(closeBounds, rule.onNodeWithText("Close").fetchSemanticsNode().boundsInRoot)
+        rule.onNodeWithContentDescription("Back").assertIsDisplayed()
+        assertEquals(backBounds, rule.onNodeWithContentDescription("Back").fetchSemanticsNode().boundsInRoot)
         save("updates-en-markdown-reader")
         rule.onNodeWithText("Show less").performClick()
         rule.onNodeWithText("Show full notes").assertIsDisplayed()
@@ -162,7 +162,7 @@ class UpdatesScreenTest {
         save("updates-en-returned-summary")
     }
 
-    @Test fun chineseReaderCanCloseDirectlyWithoutCollapsing() {
+    @Test fun chineseReaderArrowReturnsToSummaryBeforeLeavingThePage() {
         var closes = 0
         rule.setContent {
             val base = LocalContext.current
@@ -192,7 +192,11 @@ class UpdatesScreenTest {
         rule.onNodeWithText("展开更新说明").performScrollTo().performClick()
         save("updates-zh-markdown-top")
         rule.onNodeWithText("收起更新说明").assertIsDisplayed()
-        rule.onNodeWithText("关闭").assertIsDisplayed().performClick()
+        val arrow = rule.onNodeWithContentDescription("返回")
+        arrow.assertIsDisplayed().performClick()
+        rule.onNodeWithText("展开更新说明").assertIsDisplayed()
+        rule.runOnIdle { assertEquals(0, closes) }
+        arrow.performClick()
         rule.runOnIdle { assertEquals(1, closes) }
     }
 

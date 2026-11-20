@@ -23,14 +23,21 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ts3mobile.app.chat.ChatState
+import io.github.ts3mobile.app.invite.ServerInvite
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.PrivateMessageNotificationIntent
 import io.github.ts3mobile.app.service.PrivateMessageNotifications
 import io.github.ts3mobile.app.service.TeamSpeakService
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
+import io.github.ts3mobile.app.service.allowsOfflineActions
 import io.github.ts3mobile.app.settings.MicrophonePreferenceState
+import io.github.ts3mobile.app.ui.InviteDialog
 import io.github.ts3mobile.app.ui.MainScreen
+import io.github.ts3mobile.app.ui.MicrophoneTrialDialog
+import io.github.ts3mobile.app.ui.PasteInviteAction
+import io.github.ts3mobile.app.ui.shareInvite
 import io.github.ts3mobile.app.ui.theme.ApplicationTheme
+import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ServerConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -77,6 +84,7 @@ class MainActivity : ComponentActivity() {
                 serviceBinder = binder as? TeamSpeakService.SessionBinder
                 serviceBinder?.setAppVisible(activityVisible)
                 resolveChatNotification()
+                launchPendingConnectionIfVisible()
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -86,7 +94,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) viewModel.chatNotificationEntry.accept(PrivateMessageNotificationIntent.token(intent))
+        if (savedInstanceState == null) acceptEntryIntent(intent)
         enableEdgeToEdge()
         setContent {
             ApplicationTheme {
@@ -102,6 +110,13 @@ class MainActivity : ComponentActivity() {
                 val history by viewModel.history.collectAsStateWithLifecycle()
                 val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
                 val historyError by viewModel.historyError.collectAsStateWithLifecycle()
+                val invitePreview by viewModel.inviteEntry.preview.collectAsStateWithLifecycle()
+                val connectedEndpoint = serviceState.bookmarkConnection.takeIf { serviceState.status.phase == ConnectionPhase.CONNECTED }
+                val serverInvite = connectedEndpoint?.let { ServerInvite.shareText(it.host, it.port) }
+                val channelInvite =
+                    connectedEndpoint?.let { endpoint ->
+                        serviceState.snapshot.currentChannelId?.let { ServerInvite.shareText(endpoint.host, endpoint.port, it) }
+                    }
 
                 MainScreen(
                     form = form,
@@ -192,7 +207,38 @@ class MainActivity : ComponentActivity() {
                     onUserNavigation = viewModel.chatNotificationEntry::cancel,
                     onNotificationSettings = ::openNotificationSettings,
                     microphoneLevels = serviceBinder?.microphoneLevels ?: remember { emptyFlow() },
+                    onShareServerInvite = serverInvite?.let { { shareInvite(it) } },
+                    onShareChannelInvite = channelInvite?.let { { shareInvite(it) } },
+                    microphoneTrialDialog = serviceBinder?.let { binder -> { dismiss -> MicrophoneTrialDialog(binder, dismiss) } },
+                    connectionActions = {
+                        PasteInviteAction(
+                            enabled =
+                                invitePreview == null && serviceState.status.phase.allowsOfflineActions &&
+                                    viewModel.pendingConnection == null,
+                            onInvite = viewModel.inviteEntry::accept,
+                        )
+                    },
                 )
+                invitePreview?.let { preview ->
+                    InviteDialog(
+                        preview,
+                        form.nickname,
+                        serviceState.status.phase.takeIf { serviceBinder != null },
+                        ready = viewModel.pendingConnection == null,
+                        onDismiss = viewModel.inviteEntry::dismiss,
+                        onDisconnect = { TeamSpeakService.disconnect(this) },
+                    ) { target, nickname, password, channelPassword ->
+                        if (viewModel.pendingConnection == null && activityVisible) {
+                            viewModel.inviteEntry.confirm(
+                                target,
+                                serviceBinder?.state?.value?.status?.phase,
+                                nickname,
+                                password,
+                                channelPassword,
+                            ) { requestConnection(it, fromInvite = true) }
+                        }
+                    }
+                }
             }
         }
     }
@@ -210,8 +256,16 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        viewModel.chatNotificationEntry.accept(PrivateMessageNotificationIntent.token(intent))
+        acceptEntryIntent(intent)
         resolveChatNotification()
+    }
+
+    private fun acceptEntryIntent(intent: Intent) {
+        if (intent.action == Intent.ACTION_VIEW && ServerInvite.SCHEME.equals(intent.scheme, ignoreCase = true)) {
+            intent.dataString?.let(viewModel.inviteEntry::accept)
+        } else {
+            viewModel.chatNotificationEntry.accept(PrivateMessageNotificationIntent.token(intent))
+        }
     }
 
     private fun resolveChatNotification() {
@@ -254,7 +308,11 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
-    private fun requestConnection(config: ServerConfig) {
+    private fun requestConnection(
+        config: ServerConfig,
+        fromInvite: Boolean = false,
+    ) {
+        if (viewModel.pendingConnection != null) return
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
@@ -262,19 +320,23 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            viewModel.pendingConnection = config
+            viewModel.pendingConnection = ConnectionRequest(config, fromInvite)
             viewModel.notificationPermissionResolved = false
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            TeamSpeakService.connect(this, config)
+            TeamSpeakService.connect(this, config, fromInvite)
         }
     }
 
     private fun launchPendingConnectionIfVisible() {
         if (!activityVisible || !viewModel.notificationPermissionResolved) return
-        val config = viewModel.pendingConnection ?: return
+        val request = viewModel.pendingConnection ?: return
+        val phase = serviceBinder?.state?.value?.status?.phase
+        if (request.fromInvite && phase == null) return
         viewModel.pendingConnection = null
-        TeamSpeakService.connect(this, config)
+        if (!request.fromInvite || phase?.allowsOfflineActions == true) {
+            TeamSpeakService.connect(this, request.config, request.fromInvite)
+        }
     }
 
     private fun openBatterySettings() {

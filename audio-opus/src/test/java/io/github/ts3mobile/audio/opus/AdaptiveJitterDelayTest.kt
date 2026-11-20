@@ -31,6 +31,15 @@ class AdaptiveJitterDelayTest {
         assertEquals(120, delay.targetMs)
     }
 
+    @Test fun experimentalStabilityTargetStaysWithinItsOwnBounds() {
+        val delay = AdaptiveJitterDelay(ReceivePolicy(delayProfile = ReceiveDelayProfile.STABILITY))
+        assertEquals(90, delay.targetMs)
+        repeat(100) { delay.noteLate() }
+        assertEquals(160, delay.targetMs)
+        repeat(1_500) { index -> delay.observe(index.toLong(), index * 20_000_000L, OpusPacketInfo(960)) }
+        assertEquals(70, delay.targetMs)
+    }
+
     @Test fun dtxSequenceLossAndChangingDurationsDoNotTrainAFalseJitterEstimate() {
         val delay = AdaptiveJitterDelay(ReceivePolicy())
         repeat(1000) { index ->

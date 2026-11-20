@@ -279,6 +279,20 @@ class ConnectionCoordinatorTest {
         assertTrue(chat.state.value.canSend)
     }
 
+    @Test fun inviteChannelRefusalKeepsOneConnectionWithoutRecordingEndpoint() {
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.connectAction = { host.session.listener!!.onSnapshotChanged(ownChannel(1)) }
+        host.session.joinAction = { throw IOException("fixture channel not found") }
+        coordinator.beginConnection(CONFIG.copy(defaultChannelId = 7), rememberEndpoint = false)
+        host.advance()
+        assertEquals(1, host.session.connectCalls)
+        assertEquals(listOf(7 to ""), host.session.joinedChannels)
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        assertEquals(1, host.state.value.snapshot.currentChannelId)
+        assertTrue(host.state.value.channelError is UserMessage.ChannelRestoreFailed)
+        assertTrue(host.connectionSucceeded.isEmpty())
+    }
+
     @Test fun oldManualJoinCompletionCannotReplaceNewBookmarkTargetAndPassword() {
         connectEstablished()
         host.session.joinAction = {
@@ -1545,7 +1559,7 @@ class ConnectionCoordinatorTest {
 
         override fun applySelectedPlaybackMuted() = Unit
 
-        override fun startPlayback() = Unit
+        override suspend fun startPlayback() = Unit
 
         override fun stopPlayback() {
             playbackStops++
@@ -1636,8 +1650,11 @@ class ConnectionCoordinatorTest {
             connectionAttempts += reconnecting
         }
 
-        override fun onConnectionSucceeded(config: ServerConfig) {
-            connectionSucceeded += config
+        override fun onConnectionSucceeded(
+            config: ServerConfig,
+            rememberEndpoint: Boolean,
+        ) {
+            if (rememberEndpoint) connectionSucceeded += config
         }
 
         override fun onConnectionFailure(status: ConnectionStatus) {

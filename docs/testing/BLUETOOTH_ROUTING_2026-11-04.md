@@ -1,5 +1,8 @@
 # Bluetooth routing protection — 2026-11-04
 
+This is a historical test record. For the current media-routing checks, see
+[ADR 0039](../decisions/0039-media-friendly-voice.md).
+
 ## Scope and findings
 
 The previous implementation did not automatically select Bluetooth at startup or

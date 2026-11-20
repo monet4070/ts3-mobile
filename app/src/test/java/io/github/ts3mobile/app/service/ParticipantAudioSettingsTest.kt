@@ -7,10 +7,19 @@ import org.junit.Test
 class ParticipantAudioSettingsTest {
     @Test
     fun gainRespectsMuteAndVolumeBounds() {
+        assertEquals(1f, ParticipantAudioSettings().gain)
         assertEquals(1.5f, ParticipantAudioSettings(volumePercent = 150).gain)
         assertEquals(0f, ParticipantAudioSettings(volumePercent = 150, muted = true).gain)
         assertEquals(2f, ParticipantAudioSettings(volumePercent = 500).gain)
+        assertEquals(0f, ParticipantAudioSettings(volumePercent = 0).gain)
         assertEquals(0f, ParticipantAudioSettings(volumePercent = -10).gain)
+    }
+
+    @Test
+    fun listeningAttenuationApproximatesLoudnessRatherThanAmplitude() {
+        assertEquals(0.0992f, ParticipantAudioSettings(volumePercent = 25).gain, 0.0001f)
+        assertEquals(0.3150f, ParticipantAudioSettings(volumePercent = 50).gain, 0.0001f)
+        assertEquals(0.6191f, ParticipantAudioSettings(volumePercent = 75).gain, 0.0001f)
     }
 
     @Test

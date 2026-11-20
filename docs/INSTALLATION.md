@@ -69,6 +69,8 @@ Android 覆盖安装需要相同包名、兼容签名和允许升级的 versionC
 关闭固定在顶部，更新说明支持 Markdown；完整正文的收起按钮不会随说明滚走。
 旧版本需要先手动下载一次 1.1.0，之后才能使用该入口。也可通过 GitHub Watch → Custom → Releases 订阅。
 
+<img src="images/1.1.0/zh-CN/updates.webp" alt="1.1.0 简体中文检查更新页：当前安装版本已是最新或更新" width="360">
+
 ## English
 
 Stable **1.1.0 / code 15** (2026-11-09) retains the official package and public signing
@@ -86,3 +88,5 @@ Older code 14 has no identity export control.
 From 1.1.0, More options → Check for updates offers stable releases and an optional remembered
 prerelease channel. The browser handles downloads; checks are user initiated and installation is
 never automatic. Earlier builds need one manual download to gain this feature.
+
+<img src="images/1.1.0/en/updates.webp" alt="1.1.0 update screen in English, showing that the installed version is current" width="360">

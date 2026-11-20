@@ -32,7 +32,6 @@ import io.github.ts3mobile.protocol.ConnectionPhase
 internal data class MainMenuAction(
     val label: Int,
     val icon: UiIcon,
-    val enabled: Boolean = true,
     val startsGroup: Boolean = false,
     val action: () -> Unit,
 )
@@ -72,7 +71,7 @@ internal fun MainScreenAppBar(
                         if (action.startsGroup) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         DropdownMenuItem(text = { Text(stringResource(action.label)) }, leadingIcon = {
                             AppIcon(action.icon, null)
-                        }, enabled = action.enabled, onClick = {
+                        }, onClick = {
                             expanded = false
                             action.action()
                         })

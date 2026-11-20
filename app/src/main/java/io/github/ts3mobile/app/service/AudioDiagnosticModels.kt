@@ -1,5 +1,6 @@
 package io.github.ts3mobile.app.service
 
+import io.github.ts3mobile.audio.opus.AudioDiagnosticEventKind
 import io.github.ts3mobile.audio.opus.AudioReceiveDiagnostics
 import io.github.ts3mobile.audio.opus.AudioRouteKind
 import io.github.ts3mobile.audio.opus.AudioRoutingErrorKind
@@ -21,7 +22,29 @@ internal enum class AudioDiagnosticEvent {
     ACTUAL_ROUTE,
     OUTPUT_CREATED,
     NETWORK,
+    OUTPUT_PERFORMANCE_MODE,
+    OUTPUT_RETIRED,
+    OUTPUT_CREATE_SLOW_MS,
+    OUTPUT_START_SLOW_MS,
+    RECEIVE_DELAY_PROFILE,
 }
+
+/**
+ * Exhaustive on purpose: a new audio kind becomes an app compile error instead of a
+ * runtime `valueOf` failure on the audio worker or a system focus/routing callback.
+ */
+internal fun audioDiagnosticEvent(kind: AudioDiagnosticEventKind): AudioDiagnosticEvent =
+    when (kind) {
+        AudioDiagnosticEventKind.FOCUS_GAINED -> AudioDiagnosticEvent.FOCUS_GAINED
+        AudioDiagnosticEventKind.FOCUS_INTERRUPTED -> AudioDiagnosticEvent.FOCUS_INTERRUPTED
+        AudioDiagnosticEventKind.ACTUAL_ROUTE -> AudioDiagnosticEvent.ACTUAL_ROUTE
+        AudioDiagnosticEventKind.OUTPUT_CREATED -> AudioDiagnosticEvent.OUTPUT_CREATED
+        AudioDiagnosticEventKind.OUTPUT_PERFORMANCE_MODE -> AudioDiagnosticEvent.OUTPUT_PERFORMANCE_MODE
+        AudioDiagnosticEventKind.OUTPUT_RETIRED -> AudioDiagnosticEvent.OUTPUT_RETIRED
+        AudioDiagnosticEventKind.OUTPUT_CREATE_SLOW_MS -> AudioDiagnosticEvent.OUTPUT_CREATE_SLOW_MS
+        AudioDiagnosticEventKind.OUTPUT_START_SLOW_MS -> AudioDiagnosticEvent.OUTPUT_START_SLOW_MS
+        AudioDiagnosticEventKind.RECEIVE_DELAY_PROFILE -> AudioDiagnosticEvent.RECEIVE_DELAY_PROFILE
+    }
 
 data class AudioDiagnosticStatus(
     val savedSamples: Int = 0,

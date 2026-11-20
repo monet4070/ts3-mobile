@@ -9,8 +9,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -97,7 +97,7 @@ internal fun ChatPanel(
             items(state.messages, key = { it.id }) { ChatMessageRow(it, state.active.isPrivate) }
         }
         if (state.unread > 0 && !followTail) {
-            TextButton(onClick = {
+            OutlinedButton(onClick = {
                 scope.launch { if (state.messages.isNotEmpty()) list.scrollToChatEnd(state.messages.lastIndex) }
             }, modifier = Modifier.testTag("chat_new_messages")) {
                 Text(pluralStringResource(R.plurals.chat_new_messages, state.unread, state.unread))

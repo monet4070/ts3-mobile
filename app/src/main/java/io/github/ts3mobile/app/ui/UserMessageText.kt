@@ -50,6 +50,7 @@ fun UserMessage.resolve(context: Context): String =
         UserMessage.MicrophonePermissionMissing -> context.getString(R.string.microphone_permission_missing)
         UserMessage.MicrophonePermissionForVoice -> context.getString(R.string.microphone_permission_voice)
         UserMessage.MicrophoneResumeInApp -> context.getString(R.string.microphone_resume_in_app)
+        UserMessage.MicrophoneTrialReleaseFailed -> context.getString(R.string.microphone_trial_failed)
         is UserMessage.MicrophoneFailed -> context.getString(R.string.microphone_failed, cause)
         is UserMessage.AudioRouting -> error.resolve(context)
     }

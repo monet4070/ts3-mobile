@@ -128,7 +128,7 @@ With JDK 17 and `ANDROID_HOME` configured, macOS/Linux can use:
 
 ```sh
 ./gradlew quality :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
-./gradlew :audio-opus:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.audio.opus.OpusAudioPlayerFocusTest,io.github.ts3mobile.audio.opus.AudioFocusInterruptionTest,io.github.ts3mobile.audio.opus.AudioDeviceRouterTest,io.github.ts3mobile.audio.opus.NativeOpusCodecTest,io.github.ts3mobile.audio.opus.NativeOpusCompatibilityTest,io.github.ts3mobile.audio.opus.NativeOpusReceiveTest,io.github.ts3mobile.audio.opus.NativeRnNoiseProcessorTest,io.github.ts3mobile.audio.opus.MicrophonePipelineTest,io.github.ts3mobile.audio.opus.NativeAudioLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackLifecycleTest
+./gradlew :audio-opus:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.audio.opus.OpusAudioPlayerFocusTest,io.github.ts3mobile.audio.opus.AudioDeviceRouterTest,io.github.ts3mobile.audio.opus.NativeOpusCodecTest,io.github.ts3mobile.audio.opus.NativeOpusCompatibilityTest,io.github.ts3mobile.audio.opus.NativeOpusReceiveTest,io.github.ts3mobile.audio.opus.NativeRnNoiseProcessorTest,io.github.ts3mobile.audio.opus.MicrophonePipelineTest,io.github.ts3mobile.audio.opus.NativeAudioLifecycleTest,io.github.ts3mobile.audio.opus.PlaybackLifecycleTest
 ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.ts3mobile.app.service.MicrophoneControllerTest,io.github.ts3mobile.app.ui.PlaybackFailureTest
 ```
 

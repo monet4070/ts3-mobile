@@ -78,7 +78,13 @@ internal object AudioDiagnosticFormat {
         nowMs: Long,
     ): String =
         buildString {
-            append("{\"schema\":\"ts3-mobile-audio/v1\",\"sampleIntervalMs\":5000,\"maxSessions\":3,\"maxSamplesPerSession\":120")
+            append("{\"schema\":\"ts3-mobile-audio/v1\"")
+            append(",\"sampleIntervalMs\":${AudioDiagnosticController.SAMPLE_INTERVAL_MS}")
+            append(",\"maxSessions\":${AudioDiagnosticArchive.MAX_SESSIONS}")
+            append(",\"maxSamplesPerSession\":${AudioDiagnosticArchive.MAX_SAMPLES_PER_SESSION}")
+            // Event slots are split: marks keep their own reservation, ordinary events share the rest.
+            append(",\"maxEventsPerSession\":${AudioDiagnosticArchive.MAX_EVENTS_PER_SESSION}")
+            append(",\"maxMarksPerSession\":${AudioDiagnosticArchive.MAX_MARKS_PER_SESSION}")
             append(",\"exportedAtMs\":$nowMs,\"lastPersistedAtMs\":${state.persistedMs},\"failedWrites\":${state.failedWrites}")
             append(",\"invalidRecords\":${state.invalidRecords},\"trimmedSamples\":${state.trimmedSamples}")
             append(",\"counterSemantics\":\"cumulative_within_session_not_network_loss\",\"peakSemantics\":\"since_previous_sample\"")

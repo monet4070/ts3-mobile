@@ -2,6 +2,8 @@ package io.github.ts3mobile.audio.opus
 
 import android.media.AudioDeviceInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AudioRoutingTest {
@@ -44,5 +46,13 @@ class AudioRoutingTest {
             AudioRouteKind.OTHER,
             AudioDeviceRouter.routeKindForDeviceType(Int.MIN_VALUE),
         )
+    }
+
+    @Test
+    fun selectsBluetoothMediaProfilesWithoutOfferingSco() {
+        assertEquals(AudioRouteKind.BLUETOOTH, AudioDeviceRouter.routeKindForDeviceType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP))
+        assertTrue(AudioRouteDevices.isSelectableMediaOutput(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP))
+        assertTrue(AudioRouteDevices.isSelectableMediaOutput(AudioDeviceInfo.TYPE_BLE_HEADSET))
+        assertFalse(AudioRouteDevices.isSelectableMediaOutput(AudioDeviceInfo.TYPE_BLUETOOTH_SCO))
     }
 }

@@ -1,16 +1,36 @@
 package io.github.ts3mobile.audio.opus
 
+import android.media.AudioTrack
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class BluetoothPlaybackGuardTest {
     private val guard = BluetoothPlaybackGuard()
 
+    @Test fun standardOutputExperimentChangesOnlyExpectedBluetooth() {
+        guard.select(7, true)
+        assertEquals(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY, playbackPerformanceMode(guard.expectsBluetooth(), false))
+        assertEquals(AudioTrack.PERFORMANCE_MODE_NONE, playbackPerformanceMode(guard.expectsBluetooth(), true))
+        assertEquals(PlaybackRouteDecision.WAIT_FOR_BLUETOOTH, guard.evaluate(AudioRouteKind.SPEAKER))
+        guard.select(8, false)
+        assertEquals(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY, playbackPerformanceMode(guard.expectsBluetooth(), true))
+    }
+
     @Test fun requestedBluetoothBlocksSpeakerAndUnknownRoutesUntilBluetoothIsReady() {
         guard.select(7, true)
         assertEquals(PlaybackRouteDecision.WAIT_FOR_BLUETOOTH, guard.evaluate(null))
         assertEquals(PlaybackRouteDecision.WAIT_FOR_BLUETOOTH, guard.evaluate(AudioRouteKind.SPEAKER))
         assertEquals(PlaybackRouteDecision.ALLOW, guard.evaluate(AudioRouteKind.BLUETOOTH))
+    }
+
+    @Test fun expiredMediaRouteWaitLatchesMuteInsteadOfAllowingSpeaker() {
+        guard.select(7, true)
+        val retiredRevision = guard.revision()
+        guard.beginBluetoothAttempt()
+        assertEquals(PlaybackRouteDecision.WAIT_FOR_BLUETOOTH, guard.evaluate(AudioRouteKind.SPEAKER, retiredRevision, timedOut = true))
+        assertEquals(PlaybackRouteDecision.MUTE, guard.evaluate(null, timedOut = true))
+        assertEquals(PlaybackRouteDecision.MUTE, guard.evaluate(AudioRouteKind.SPEAKER, timedOut = true))
+        assertEquals(PlaybackRouteDecision.ALLOW, guard.evaluate(AudioRouteKind.BLUETOOTH, timedOut = true))
     }
 
     @Test fun bluetoothFallbackStaysBlockedAcrossTalkspurtsAndRepeatedStateUpdates() {

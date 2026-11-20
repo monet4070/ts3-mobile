@@ -2,8 +2,12 @@
 
 [简体中文](USER_GUIDE_ZH.md) · [Install and upgrade](INSTALLATION.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
-This guide describes stable 1.1.0 (2026-11-09). Check the [README](../README.md)
-and GitHub Release for downloads and tested coverage.
+This guide describes stable **1.1.0** (2026-11-09, versionCode 15). See the
+[release acceptance](release/1.1.0/CHECKLIST.md) for tested coverage and the
+[English interface tour](../README.md#interface-tour) for the connection, channels and More options screens.
+
+For the unreleased settings page, invite, local microphone test and listening controls, see the
+[development controls](testing/NEXT_PHASE_FEATURES_2026-11-20_ZH.md#development-controls).
 
 ## Connect and join
 
@@ -59,6 +63,8 @@ cleared when capture, routing or the observation ends and are not saved.
 Choose routes from those Android reports as available. Headset, Bluetooth and USB
 behavior depends on the device. AEC status reports Android's capability/activation,
 not a guarantee of acoustic quality. User actions provide per-user mute and volume.
+Below 100%, the slider approximates perceived loudness: 50% aims to sound about
+half as loud as the unadjusted 100%. The result depends on the voice and listening setup.
 Listening mute is separate from turning your microphone off.
 
 Open **More options → Appearance**: Light (the unset default),
@@ -68,11 +74,15 @@ system. A save error means the visible choice may not survive restart; use Retry
 If reading fails, retry or explicitly reset appearance. An unreadable file is
 preserved and reset may still fail. Appearance does not start the microphone.
 
+<img src="images/1.1.0/en/appearance.webp" alt="English appearance settings on 1.1.0: Light, Dark and Follow system" width="360">
+
 1.1.0 preserves other participants' valid unmixed audio and decoders
 when one user is muted/unmuted. The shared output still retires, so an interruption
 is possible; physical listening gaps have not been quantified. See [offline evidence](testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
 
-Available Bluetooth communication headsets are selected at session start and when connected.
+Incoming voice mixes with foreground media and uses the Android media volume.
+Available Bluetooth media headsets are selected at session start and when connected.
+When Bluetooth output is selected, TS3 prefers the phone microphone to avoid activating the call profile.
 Device removal or unexpected Bluetooth fallback mutes listening. Check the selected route and
 unmute manually; reconnecting a headset keeps the safety mute. This affects listening, not the
 microphone mode. Android callback and hardware latency still need physical-headset testing.
@@ -114,6 +124,8 @@ reconnect keeps them; manual exit, a new manual session, terminal failure or pro
 death clears them. Servers and recipients may keep received content.
 
 ## Server bookmarks
+
+![English bookmark list and editor in 1.1.0, with sample servers](images/1.1.0/en/bookmarks-and-editor.webp)
 
 Choose a saved server on the connection form, or open Server bookmarks in More
 options. Each card has a Connect action. Its menu holds Fill form, Edit and Delete;
@@ -170,12 +182,15 @@ More options → Check for updates offers stable releases and an optional rememb
 Close remains at the top; Markdown notes have a fixed collapse action that returns to the prior position.
 The browser handles downloads; disconnect before installation. There is no background polling or automatic install.
 Older versions need one manual update to gain this entry.
+See [installation and the update screen](INSTALLATION.md#english).
 
 More options → Identity and backups exports verified, encrypted identity files and supports confirmed import/local rollback.
 Keep the passphrase separately. Backups exclude bookmarks/forms and do not support desktop-client identity formats.
 See [README identity instructions](../README.md) and [installation](INSTALLATION.md).
 
 ## Offline audio diagnostics
+
+<img src="images/1.1.0/en/offline-diagnostics.webp" alt="English diagnostics dialog in 1.1.0, showing local audio history and the Save file action" width="360">
 
 In 1.1.0:
 

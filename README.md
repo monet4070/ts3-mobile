@@ -8,6 +8,13 @@
 
 **Use TeamSpeak 3 on Android: join voice channels, exchange messages, reach your teammates and save your usual servers.**
 
+## Interface tour
+
+![TS3 Mobile 1.1.0 in English: connection form, Channels tab and More options menu](docs/images/1.1.0/en/interface-overview.webp)
+
+From left to right: the connection form, an example channel session, and the
+disconnected More options menu. Server and member data are synthetic.
+
 TS3 Mobile is an open-source, unofficial client with a warm cream/terracotta interface, outline icons,
 English and Simplified Chinese. Connect directly to your TeamSpeak server; there is no project account
 to register.
@@ -27,7 +34,7 @@ has not yet been reproduced with the final diagnostic build; this release does n
 universal audio fix. Detailed scope is in the [1.1.0 release record](docs/release/1.1.0/CHECKLIST.md).
 
 [Features](#features) · [Installation](#installation) · [First use](#first-use) ·
-[Interface tour](#interface-tour) · [Voice and audio](#voice-and-audio) ·
+[Interface controls](#interface-controls) · [Voice and audio](#voice-and-audio) ·
 [Channels and users](#channels-and-users) · [Chat and pokes](#chat-and-pokes) ·
 [Server bookmarks](#server-bookmarks) · [Away and background](#away-background-and-disconnect) ·
 [More menu](#settings-and-the-more-menu) · [Privacy and limits](#data-privacy-and-limits) · [FAQ](#frequently-asked-questions)
@@ -62,6 +69,7 @@ checking again; there is no background polling or automatic installation. Update
 are compared by Android versionCode, including same-name repair releases.
 The close action stays at the top. Release notes render Markdown with a six-line
 preview; the full reader keeps **Show less** visible and returns to the same page position.
+See the [1.1.0 update screen](docs/images/1.1.0/en/updates.webp) when the installed version is current.
 
 **Android 8.0 (API 26)+** is required. The universal APK contains arm64-v8a, armeabi-v7a, x86
 and x86_64. Installability does not mean every device/version has been tested; see
@@ -104,12 +112,7 @@ Server and channel passwords are different. If connection fails, check the voice
 permissions before retrying. Follow connection-limit guidance rather than repeatedly submitting the same
 refused identity.
 
-## Interface tour
-
-![Connection, channel and More-menu views with synthetic sample data](docs/images/interface-overview.png)
-
-The illustration uses the Chinese UI in different states, with sample server
-and member data. Session-dependent menu entries are disabled while disconnected.
+## Interface controls
 
 | Area | What it is for |
 | --- | --- |
@@ -129,6 +132,11 @@ Opening the chat keyboard compacts the interface while keeping the composer and 
 tabs or focusing input releases push-to-talk to avoid unintended transmission.
 
 ## Voice and audio
+
+Use **More options → Settings → Voice playback** to choose **Balanced (default)**
+or **Stability first**, which tolerates more late packets at the cost of added delay.
+Your choice is saved locally and immediately resets voice playback without disconnecting
+from the server. Incoming voice may pause briefly; microphone settings do not change.
 
 ### Choose a microphone mode
 
@@ -162,14 +170,13 @@ drag the threshold marker while watching the input. Tuning groups gate, input ga
 and sound processing. Chat uses left/right bubbles, and search rows group names,
 channel context and Join actions.
 
-Tap the audio row's device name to choose from Android's available earpiece, speaker, headset, Bluetooth
-or USB routes. Available Bluetooth communication headsets are selected automatically at session start
-and when connected. Removing the selected device or losing an active Bluetooth output mutes listening
-to prevent speaker playback. Reconnecting selects Bluetooth again but keeps listening muted until you
-check the route and unmute manually. System/device delays still require physical-headset validation.
-1.1.0 distinguishes idle SCO release while the headset remains available:
-fresh playback obtains focus and restores Bluetooth without enabling speaker fallback. See the
-[mobile RX and Bluetooth audit](docs/testing/MOBILE_RX_AUDIT_2026-11-08_ZH.md).
+TS3 voice mixes with videos, music, and games without requesting audio focus or switching Android into
+call mode. Use media volume and the in-app per-person controls to adjust incoming voice.
+Tap the audio row's device name to choose a playback route. TS3 selects available Bluetooth media
+headsets at session start and on hot-plug, and prefers the phone microphone with Bluetooth output
+instead of opening a Bluetooth call channel. A removed device or Bluetooth route loss mutes listening
+to prevent speaker playback; check the route and unmute manually after reconnecting.
+Android and the headset still determine the actual routing and acoustic performance.
 Playback mute and microphone Off serve different purposes. Prefer headphones if speaker echo occurs;
 device AEC status is not a guarantee of equal acoustic performance on every phone.
 
@@ -238,7 +245,7 @@ control appearance/sound. Returning to the app can show the retained pending not
 
 ## Server bookmarks
 
-![Bookmark cards and the add/edit form](docs/images/bookmarks-and-editor.png)
+![TS3 Mobile 1.1.0 in English: saved servers and the Edit bookmark dialog](docs/images/1.1.0/en/bookmarks-and-editor.webp)
 
 Open Choose a saved server on the form, or **More options → Server bookmarks**. Each card separates
 name, address and nickname. Connect is the primary action; its top-right ellipsis contains management
@@ -275,6 +282,12 @@ minimum 60-second wait/manual retry guidance; cleanup can take longer and repeat
 bans. Reopening does not connect automatically.
 
 ## Settings and the More menu
+
+**Unreleased builds:** More options keeps Share invite, Away and status, Find
+channels and users, Server bookmarks, and Settings. Settings groups Voice,
+Notifications, Personalization and identity, and Help and about. Opening it does
+not disconnect. See the [development controls](docs/testing/NEXT_PHASE_FEATURES_2026-11-20_ZH.md#development-controls).
+The table and screenshots below describe stable 1.1.0.
 
 | Item | Purpose |
 | --- | --- |

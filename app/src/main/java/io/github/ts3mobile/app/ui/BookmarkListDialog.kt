@@ -16,7 +16,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
@@ -70,7 +69,7 @@ internal fun BookmarkListDialog(
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.errorContainer) {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {
                             Text(stringResource(R.string.bookmark_failed), color = MaterialTheme.colorScheme.onErrorContainer)
-                            TextButton(onClick = onReload, enabled = available) { Text(stringResource(R.string.bookmark_reload)) }
+                            OutlinedButton(onClick = onReload, enabled = available) { Text(stringResource(R.string.bookmark_reload)) }
                         }
                     }
                 }
@@ -122,6 +121,6 @@ internal fun BookmarkListDialog(
                 Text(stringResource(R.string.bookmark_add))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
     )
 }

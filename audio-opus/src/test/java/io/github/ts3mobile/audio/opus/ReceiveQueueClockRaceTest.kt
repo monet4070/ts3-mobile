@@ -4,10 +4,22 @@ import io.github.ts3mobile.protocol.VoiceCodec
 import io.github.ts3mobile.protocol.VoiceFrame
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReceiveQueueClockRaceTest {
+    @Test
+    fun aRevokedWorkerCannotPollOrClearNewSpeech() {
+        val queue = VoiceReceiveQueue({ OpusPacketInfo(960) })
+        assertTrue(queue.offer(queued(1, 20 * MS)))
+
+        assertNull(queue.poll(30 * MS) { false })
+        queue.clear { false }
+
+        assertEquals(1, checkNotNull(queue.poll(30 * MS)).frame.packetId)
+    }
+
     @Test
     fun arrivalAfterWorkerTimeSnapshotIsNotAnExpiredPacket() {
         val queue = VoiceReceiveQueue({ OpusPacketInfo(960) })
@@ -78,8 +90,6 @@ class ReceiveQueueClockRaceTest {
             queue,
             PlaybackStreams(queue, mutableSetOf(), emptyMap()) { decoder },
             { routeCheckedOutput },
-            { true },
-            {},
         ).use { session ->
             repeat(PACKETS * 2 + 100) { tick ->
                 now = tick * 10 * MS

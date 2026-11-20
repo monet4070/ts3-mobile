@@ -48,6 +48,8 @@ sealed interface UserMessage {
 
     data object MicrophoneResumeInApp : UserMessage
 
+    data object MicrophoneTrialReleaseFailed : UserMessage
+
     data class MicrophoneFailed(val cause: String) : UserMessage
 
     data class AudioRouting(val error: AudioRoutingError) : UserMessage

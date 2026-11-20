@@ -7,9 +7,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,11 +64,11 @@ internal fun PresenceDialog(
                     ),
                 )
                 if (state.presence.outcome != null && state.presence.outcome.status != ControlStatus.ACCEPTED && !state.presence.pending) {
-                    TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry_control)) }
+                    OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.action_retry_control)) }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onAway(away, message) }) { Text(stringResource(R.string.presence_apply)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+        confirmButton = { OutlinedButton(onClick = { onAway(away, message) }) { Text(stringResource(R.string.presence_apply)) } },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
     )
 }

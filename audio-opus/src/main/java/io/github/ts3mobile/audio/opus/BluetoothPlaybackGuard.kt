@@ -13,6 +13,9 @@ internal class BluetoothPlaybackGuard {
     fun revision(): Long = generation
 
     @Synchronized
+    fun expectsBluetooth(): Boolean = required || bluetoothSeen
+
+    @Synchronized
     fun acknowledgeSafetyMute() {
         if (!required) bluetoothSeen = false
     }
@@ -42,12 +45,14 @@ internal class BluetoothPlaybackGuard {
     fun evaluate(
         actual: AudioRouteKind?,
         revision: Long = generation,
+        timedOut: Boolean = false,
     ): PlaybackRouteDecision {
         if (revision != generation) return PlaybackRouteDecision.WAIT_FOR_BLUETOOTH
         if (actual == AudioRouteKind.BLUETOOTH) {
             if (required || routeId == SYSTEM_AUDIO_ROUTE_ID) bluetoothSeen = true
             return PlaybackRouteDecision.ALLOW
         }
+        if (timedOut && (required || bluetoothSeen)) return PlaybackRouteDecision.MUTE
         if (actual == null && (required || bluetoothSeen)) return PlaybackRouteDecision.WAIT_FOR_BLUETOOTH
         if (bluetoothSeen) return PlaybackRouteDecision.MUTE
         return if (required) PlaybackRouteDecision.WAIT_FOR_BLUETOOTH else PlaybackRouteDecision.ALLOW

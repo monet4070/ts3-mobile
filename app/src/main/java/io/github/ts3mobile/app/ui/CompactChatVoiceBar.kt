@@ -19,6 +19,7 @@ internal fun CompactChatVoiceBar(
     state: TeamSpeakServiceState,
     onMode: (MicrophoneMode) -> Unit,
     onPtt: (Boolean) -> Unit,
+    microphoneVolumeShortcut: @Composable () -> Unit,
 ) {
     Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
@@ -51,5 +52,6 @@ internal fun CompactChatVoiceBar(
         }) {
             AppIcon(UiIcon.MicOff, stringResource(R.string.chat_stop_microphone))
         }
+        microphoneVolumeShortcut()
     }
 }

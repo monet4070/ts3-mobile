@@ -5,6 +5,8 @@ internal interface PlaybackOutput : AutoCloseable {
 
     val routeReady: Boolean get() = true
 
+    val routedKind: AudioRouteKind? get() = null
+
     fun muteImmediately() = Unit
 
     fun sampleClock(): AudioSampleClock? = null

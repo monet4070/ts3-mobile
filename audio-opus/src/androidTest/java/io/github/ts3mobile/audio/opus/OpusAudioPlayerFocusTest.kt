@@ -12,7 +12,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class OpusAudioPlayerFocusTest {
@@ -107,83 +108,35 @@ class OpusAudioPlayerFocusTest {
     }
 
     @Test
-    fun playbackPausesAndRecoversAcrossFiveFocusInterruptions() {
+    fun voiceStartsWithoutInterruptingAnExistingMediaFocusOwner() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val audioManager = context.getSystemService(AudioManager::class.java)
-        val baselineActiveTracks = activeVoicePlaybackCount(audioManager)
-        val encodedSilence =
-            NativeOpusEncoder().use { encoder ->
-                encoder.encode(ShortArray(OPUS_FRAME_SAMPLES))
-            }
-        val player = OpusAudioPlayer(context)
-        val feederRunning = AtomicBoolean(true)
-        var packetId = 0
-        val feeder =
-            Thread(
-                {
-                    try {
-                        while (feederRunning.get()) {
-                            player.submit(
-                                VoiceFrame(
-                                    clientId = TEST_CLIENT_ID,
-                                    packetId = packetId++,
-                                    codec = VoiceCodec.OPUS_VOICE,
-                                    encodedData = encodedSilence,
-                                    isWhisper = false,
-                                ),
-                            )
-                            Thread.sleep(OPUS_FRAME_DURATION_MS)
-                        }
-                    } catch (_: InterruptedException) {
-                        Thread.currentThread().interrupt()
-                    }
-                },
-                "ts3-focus-test-feeder",
-            )
-        val interrupterRequest =
-            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                .setAudioAttributes(voicePlaybackAudioAttributes())
+        val encodedSilence = NativeOpusEncoder().use { it.encode(ShortArray(OPUS_FRAME_SAMPLES)) }
+        val focusLoss = CountDownLatch(1)
+        val mediaFocus =
+            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).build())
                 .setAcceptsDelayedFocusGain(false)
-                .setOnAudioFocusChangeListener {}
+                .setOnAudioFocusChangeListener { change -> if (change < 0) focusLoss.countDown() }
                 .build()
 
         try {
-            player.start()
-            feeder.start()
-            assertTrue(
-                "Playback did not become active",
-                waitUntil { activeVoicePlaybackCount(audioManager) > baselineActiveTracks },
-            )
-
-            repeat(INTERRUPTION_CYCLES) {
-                assertEquals(
-                    AudioManager.AUDIOFOCUS_REQUEST_GRANTED,
-                    audioManager.requestAudioFocus(interrupterRequest),
-                )
-                assertTrue(
-                    "Playback stayed active after focus loss",
-                    waitUntil { activeVoicePlaybackCount(audioManager) <= baselineActiveTracks },
-                )
-
-                audioManager.abandonAudioFocusRequest(interrupterRequest)
-
-                assertTrue(
-                    "Playback did not recover after focus gain",
-                    waitUntil { activeVoicePlaybackCount(audioManager) > baselineActiveTracks },
-                )
+            assertEquals(AudioManager.AUDIOFOCUS_REQUEST_GRANTED, audioManager.requestAudioFocus(mediaFocus))
+            OpusAudioPlayer(context).use { player ->
+                player.start()
+                submitBurst(player, encodedSilence)
+                assertTrue("Voice did not play alongside media", waitUntil { player.status == PlaybackStatus.PLAYING })
+                assertTrue("TS3 interrupted the media focus owner", !focusLoss.await(FOCUS_OBSERVATION_MS, TimeUnit.MILLISECONDS))
             }
         } finally {
-            audioManager.abandonAudioFocusRequest(interrupterRequest)
-            feederRunning.set(false)
-            feeder.interrupt()
-            feeder.join(FEEDER_JOIN_TIMEOUT_MS)
-            player.close()
+            audioManager.abandonAudioFocusRequest(mediaFocus)
         }
     }
 
     private fun activeVoicePlaybackCount(audioManager: AudioManager): Int =
         audioManager.activePlaybackConfigurations.count { configuration ->
-            configuration.audioAttributes.usage == AudioAttributes.USAGE_VOICE_COMMUNICATION
+            configuration.audioAttributes.usage == AudioAttributes.USAGE_MEDIA &&
+                configuration.audioAttributes.contentType == AudioAttributes.CONTENT_TYPE_SPEECH
         }
 
     private fun submitBurst(
@@ -207,11 +160,10 @@ class OpusAudioPlayerFocusTest {
     private companion object {
         const val TEST_CLIENT_ID = 7
         const val OPUS_FRAME_SAMPLES = 960
-        const val OPUS_FRAME_DURATION_MS = 20L
         const val INTERRUPTION_CYCLES = 5
         const val WAIT_TIMEOUT_MS = 2_000L
         const val POLL_INTERVAL_MS = 20L
-        const val FEEDER_JOIN_TIMEOUT_MS = 1_000L
+        const val FOCUS_OBSERVATION_MS = 500L
         const val NANOS_PER_MILLISECOND = 1_000_000L
         const val EMPTY_OUTPUT_OBSERVATION_MS = 150L
     }

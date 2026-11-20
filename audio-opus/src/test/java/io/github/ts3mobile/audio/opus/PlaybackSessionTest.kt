@@ -27,17 +27,65 @@ class PlaybackSessionTest {
         }
     }
 
-    @Test fun losingAnActiveRouteRetiresBufferedOutputBeforeAnyFurtherWrite() {
+    @Test fun losingBluetoothRouteDuringRecoveryRetiresOutputBeforeAnyFurtherWrite() {
         Fixture().use { fixture ->
             fixture.feed(0)
             fixture.session.tick(60 * MS)
-            val output = fixture.outputs.single()
+            val output = fixture.outputs.single().apply { routedKind = AudioRouteKind.BLUETOOTH }
+            fixture.session.tick(70 * MS)
+            fixture.session.tick(80 * MS)
+            fixture.session.tick(150 * MS)
+            assertFalse(output.closed)
             val writes = output.writeCalls
             output.routeReady = false
-            fixture.feed(80 * MS)
+            fixture.feed(160 * MS)
             assertEquals(writes, output.writeCalls)
             assertTrue(output.closed)
             assertEquals(PlaybackStatus.BUFFERING, fixture.session.status)
+        }
+    }
+
+    @Test fun losingBluetoothRouteDuringColdStartupDoesNotWaitOutTheGracePeriod() {
+        Fixture().use { fixture ->
+            fixture.feed(0L)
+            fixture.session.tick(60 * MS)
+            val output =
+                fixture.outputs.single().apply {
+                    routedKind = AudioRouteKind.BLUETOOTH
+                    maxWriteSamples = 0
+                }
+            fixture.session.tick(70 * MS)
+            for (millis in 80L..200L step 10) fixture.session.tick(millis * MS)
+            assertFalse(output.closed)
+            val writes = output.writeCalls
+
+            output.routeReady = false
+            fixture.session.tick(210 * MS)
+            assertTrue(output.closed)
+            assertEquals(writes, output.writeCalls)
+            assertEquals(PlaybackStatus.BUFFERING, fixture.session.status)
+        }
+    }
+
+    @Test fun changingProfileReleasesOldOutputAndAppliesNewDelayToFreshSpeech() {
+        Fixture().use { fixture ->
+            fixture.feed(0L)
+            fixture.session.tick(60 * MS)
+            val original = fixture.outputs.single()
+            assertTrue(original.accepted.isNotEmpty())
+            val oldWriteCount = original.writeCalls
+
+            fixture.session.invalidateOutput(70 * MS, ReceiveDelayProfile.STABILITY)
+            assertTrue(original.closed)
+            assertEquals(PlaybackStatus.BUFFERING, fixture.session.status)
+            fixture.feed(80 * MS)
+            fixture.session.tick(140 * MS)
+            assertEquals(1, fixture.outputs.size)
+
+            fixture.session.tick(170 * MS)
+            assertEquals(2, fixture.outputs.size)
+            assertEquals(oldWriteCount, original.writeCalls)
+            assertTrue(fixture.outputs.last().accepted.isNotEmpty())
         }
     }
 
@@ -87,7 +135,7 @@ class PlaybackSessionTest {
             fixture.outputs.single().maxWriteSamples = Int.MAX_VALUE
             fixture.session.tick(70 * MS)
             assertTrue(fixture.outputs.single().accepted.isEmpty())
-            fixture.session.invalidate(80 * MS)
+            fixture.revokeInputAndInvalidateOutput(80 * MS)
             fixture.mayWrite = true
             fixture.blockWrites = false
             fixture.feed(90 * MS)
@@ -168,7 +216,7 @@ class PlaybackSessionTest {
             fixture.feed(2000 * MS)
             fixture.session.tick(2060 * MS)
             assertEquals(3, fixture.creations)
-            fixture.session.invalidate(2100 * MS)
+            fixture.revokeInputAndInvalidateOutput(2100 * MS)
             fixture.factoryFails = false
             fixture.feed(2100 * MS)
             fixture.session.tick(2160 * MS)
@@ -176,20 +224,19 @@ class PlaybackSessionTest {
         }
     }
 
-    @Test fun deniedFocusDoesNotRecreateDecodersDuringBackoffAndLaterRecovers() {
+    @Test fun routeInvalidationDuringPreparationPreventsOutputCreationUntilFreshVoice() {
         Fixture().use { fixture ->
-            fixture.focusAllowed = false
+            fixture.onPrepareRoute = { fixture.mayWrite = false }
             fixture.feed(0)
             fixture.session.tick(60 * MS)
-            val decoders = fixture.decoders
-            for (millis in 70L..300L step 10) fixture.feed(millis * MS)
-            assertEquals(1, fixture.focusRequests)
-            assertEquals(decoders, fixture.decoders)
             assertTrue(fixture.outputs.isEmpty())
-            fixture.focusAllowed = true
-            fixture.feed(310 * MS)
-            fixture.session.tick(370 * MS)
-            assertEquals(2, fixture.focusRequests)
+            fixture.revokeInputAndInvalidateOutput(70 * MS)
+            fixture.mayWrite = true
+            fixture.onPrepareRoute = {}
+            fixture.session.tick(80 * MS)
+            assertTrue(fixture.outputs.isEmpty())
+            fixture.feed(90 * MS)
+            fixture.session.tick(150 * MS)
             assertEquals(PlaybackStatus.PLAYING, fixture.session.status)
         }
     }
@@ -198,7 +245,7 @@ class PlaybackSessionTest {
         Fixture().use { fixture ->
             fixture.feed(0)
             fixture.session.tick(60 * MS)
-            fixture.session.invalidate(70 * MS)
+            fixture.revokeInputAndInvalidateOutput(70 * MS)
             assertTrue(fixture.outputs.single().closed)
             fixture.session.tick(200 * MS)
             assertEquals(1, fixture.outputs.size)
@@ -208,6 +255,27 @@ class PlaybackSessionTest {
             assertEquals(PlaybackStatus.STOPPED, fixture.session.status)
             assertEquals(1, fixture.outputs.size)
             assertEquals(0, fixture.queue.size)
+        }
+    }
+
+    @Test fun freshSpeechQueuedBeforeWorkerAppliesRouteChangeStillPlays() {
+        Fixture().use { fixture ->
+            fixture.feed(0)
+            fixture.session.tick(60 * MS)
+            val oldOutput = fixture.outputs.single()
+            fixture.mayWrite = false
+            fixture.queue.clear()
+            fixture.feed(70 * MS)
+
+            fixture.session.invalidateOutput(80 * MS)
+            assertTrue(oldOutput.closed)
+            assertEquals(1, fixture.queue.size)
+
+            fixture.mayWrite = true
+            fixture.session.tick(130 * MS)
+            assertEquals(2, fixture.outputs.size)
+            assertEquals(PlaybackStatus.PLAYING, fixture.session.status)
+            assertTrue(fixture.outputs.last().accepted.isNotEmpty())
         }
     }
 
@@ -227,8 +295,7 @@ class PlaybackSessionTest {
         val outputs = mutableListOf<FakePlaybackOutput>()
         var decoders = 0
         var creations = 0
-        var focusRequests = 0
-        var focusAllowed = true
+        var onPrepareRoute: () -> Unit = {}
         var factoryFails = false
         var blockWrites = false
         var mayWrite = true
@@ -251,17 +318,18 @@ class PlaybackSessionTest {
                         outputs += it
                     }
                 },
-                {
-                    focusRequests++
-                    focusAllowed
-                },
-                {},
                 canWrite = { mayWrite },
+                prepareOutputRoute = { onPrepareRoute() },
             )
 
         fun feed(now: Long) {
             queue.offer(QueuedFrame(VoiceFrame(1, sequence++, VoiceCodec.OPUS_VOICE, byteArrayOf(1), false), now))
             session.tick(now)
+        }
+
+        fun revokeInputAndInvalidateOutput(now: Long) {
+            queue.clear()
+            session.invalidateOutput(now)
         }
 
         override fun close() {

@@ -9,6 +9,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MicrophoneCapturePipelineTest {
+    @Test fun localMeasurementAppliesGainAndGateWithoutProducingAnyPackets() {
+        val pipeline = MicrophoneCapturePipeline({ error("Suppression disabled") }, null, CaptureSessionStats(), {})
+        val settings = MicrophoneSettings(volumePercent = 200, noiseSuppression = false, gateThresholdDb = -30)
+        val options = MicrophoneProcessingOptions(settings, volumeGate = true)
+        repeat(20) {
+            val packets = pipeline.process(frame(1_000), options, 0, measureLevel = true)
+            assertTrue(packets.isNullOrEmpty())
+        }
+        assertTrue(pipeline.isSpeaking)
+        assertTrue(pipeline.levelDb > -30)
+        repeat(40) {
+            val packets = pipeline.process(frame(0), options, 0, measureLevel = true)
+            assertTrue(packets.isNullOrEmpty())
+        }
+        assertFalse(pipeline.isSpeaking)
+    }
+
     @Test fun volumeAndGateChangesDoNotReconfigureNativeProcessingButRouteChangesDo() {
         var configurations = 0
         val encoded = mutableListOf<ShortArray>()

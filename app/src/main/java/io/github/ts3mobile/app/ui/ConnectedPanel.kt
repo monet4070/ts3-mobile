@@ -61,6 +61,7 @@ internal fun ConnectedContent(
     chatNotification: ChatNotificationDestination? = null,
     onChatNotificationConsumed: (String) -> Unit = {},
     onUserNavigation: () -> Unit = {},
+    microphoneVolumeShortcut: @Composable () -> Unit = {},
 ) {
     ChatSessionState(chat) { conversations ->
         var selectedTab by rememberSaveable { mutableStateOf(SessionTab.CHANNELS) }
@@ -165,7 +166,7 @@ internal fun ConnectedContent(
                 }
             }
             if (selectedTab == SessionTab.CHAT) {
-                CompactChatVoiceBar(state, onMicrophoneModeChanged, onPushToTalkChanged)
+                CompactChatVoiceBar(state, onMicrophoneModeChanged, onPushToTalkChanged, microphoneVolumeShortcut)
             } else {
                 MicrophoneControl(
                     mode = state.microphoneMode,
@@ -174,6 +175,7 @@ internal fun ConnectedContent(
                     captureDeferred = state.microphoneError == io.github.ts3mobile.app.service.UserMessage.MicrophoneResumeInApp,
                     onMicrophoneModeChanged = onMicrophoneModeChanged,
                     onPushToTalkChanged = onPushToTalkChanged,
+                    microphoneVolumeShortcut = microphoneVolumeShortcut,
                 )
             }
         }

@@ -8,8 +8,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,9 +47,9 @@ internal fun IdentityRestoreSection(
         }, enabled = enabled) {
             Text(stringResource(R.string.identity_import))
         }
-        TextButton(onClick = onRollback, enabled = enabled && hasRollback) { Text(stringResource(R.string.identity_rollback)) }
+        OutlinedButton(onClick = onRollback, enabled = enabled && hasRollback) { Text(stringResource(R.string.identity_rollback)) }
         if (useState == IdentityUseState.CONNECTION) {
-            TextButton(onClick = onEndConnection) { Text(stringResource(R.string.identity_end_connection)) }
+            OutlinedButton(onClick = onEndConnection) { Text(stringResource(R.string.identity_end_connection)) }
         }
         Text(
             stringResource(state.message()),
@@ -63,7 +63,7 @@ internal fun IdentityRestoreSection(
         if (state.active && state.preview == null &&
             state.status !in setOf(IdentityRestoreStatus.COMMITTING, IdentityRestoreStatus.CANCELLING)
         ) {
-            TextButton(onClick = {
+            OutlinedButton(onClick = {
                 passphrase = ""
                 onCancel()
             }) { Text(stringResource(R.string.action_cancel)) }
@@ -91,17 +91,17 @@ internal fun IdentityRestoreSection(
                     Text(stringResource(R.string.identity_permission_impact))
                     Text(stringResource(state.message()))
                     if (state.storeFailure in setOf(IdentityFailure.BUSY, IdentityFailure.STALE_CONFIRMATION)) {
-                        TextButton(onClick = onRefreshConfirmation, enabled = !state.working) {
+                        OutlinedButton(onClick = onRefreshConfirmation, enabled = !state.working) {
                             Text(stringResource(R.string.identity_refresh_confirmation))
                         }
                     }
                     if (useState == IdentityUseState.CONNECTION) {
-                        TextButton(onClick = onEndConnection) { Text(stringResource(R.string.identity_end_connection)) }
+                        OutlinedButton(onClick = onEndConnection) { Text(stringResource(R.string.identity_end_connection)) }
                     }
                 }
             },
             confirmButton = {
-                TextButton(
+                OutlinedButton(
                     onClick = onConfirm,
                     enabled = state.status == IdentityRestoreStatus.PREVIEW && useState == IdentityUseState.IDLE,
                 ) {
@@ -109,7 +109,7 @@ internal fun IdentityRestoreSection(
                 }
             },
             dismissButton = {
-                TextButton(onClick = onCancel, enabled = !committing) { Text(stringResource(R.string.action_cancel)) }
+                OutlinedButton(onClick = onCancel, enabled = !committing) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }

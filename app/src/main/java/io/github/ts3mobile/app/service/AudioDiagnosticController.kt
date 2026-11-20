@@ -55,7 +55,7 @@ internal class AudioDiagnosticController(
         value: Long,
     ) {
         if (session == 0L || ended) return
-        repository.event(session, AudioDiagnosticEvent.valueOf(kind.name), value)
+        repository.event(session, audioDiagnosticEvent(kind), value)
     }
 
     @Synchronized fun observe(value: AudioDiagnosticContext) {

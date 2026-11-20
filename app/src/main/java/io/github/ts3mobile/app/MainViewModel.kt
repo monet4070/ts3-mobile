@@ -1,6 +1,9 @@
 package io.github.ts3mobile.app
 
 import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.ts3mobile.app.bookmarks.BookmarkController
@@ -11,6 +14,7 @@ import io.github.ts3mobile.app.chat.ChatNotificationEntry
 import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.app.history.ServerHistoryPrefill
 import io.github.ts3mobile.app.history.successServerHistoryStore
+import io.github.ts3mobile.app.invite.InviteEntry
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.settings.ConnectionFormEdits
 import io.github.ts3mobile.app.settings.ConnectionSettingsVault
@@ -66,11 +70,14 @@ internal fun ConnectionFormState.withSelectedHistoryEntry(entry: ServerHistoryEn
     )
 }
 
+internal class ConnectionRequest(val config: ServerConfig, val fromInvite: Boolean)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     internal val chatNotificationEntry = ChatNotificationEntry()
+    internal val inviteEntry = InviteEntry()
 
     // Pending permission flow survives activity recreation; form memory is encrypted separately.
-    internal var pendingConnection: ServerConfig? = null
+    internal var pendingConnection: ConnectionRequest? by mutableStateOf(null)
     internal var notificationPermissionResolved = false
     internal var pendingMicrophoneMode: MicrophoneMode? = null
     private val bookmarkController = BookmarkController(viewModelScope, BookmarkVault(application))

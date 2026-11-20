@@ -20,20 +20,18 @@ class PlaybackInvalidationTest {
         assertNull(invalidation.take())
     }
 
-    @Test fun globalCommandsSupersedeParticipantsAndRetainFocusInterruption() {
+    @Test fun globalCommandsSupersedeParticipants() {
         val invalidation = PlaybackInvalidation()
         invalidation.invalidateParticipants(setOf(1))
-        invalidation.invalidateAll(interrupted = true)
+        invalidation.invalidateAll()
         invalidation.invalidateParticipants(setOf(2))
         invalidation.invalidateAll()
         val command = checkNotNull(invalidation.take())
         assertTrue(command.global)
-        assertTrue(command.focusInterrupted)
         assertTrue(command.clients.isEmpty())
         invalidation.invalidateParticipants(setOf(3))
         val next = checkNotNull(invalidation.take())
         assertFalse(next.global)
-        assertFalse(next.focusInterrupted)
         assertEquals(setOf(3), next.clients)
     }
 
@@ -45,6 +43,19 @@ class PlaybackInvalidationTest {
         assertFalse(invalidation.permitsWrite(applying.revision))
         val next = checkNotNull(invalidation.take())
         assertTrue(invalidation.permitsWrite(next.revision))
+    }
+
+    @Test fun latestProfileSurvivesACoalescedRouteChangeAndIsConsumedOnlyOnce() {
+        val invalidation = PlaybackInvalidation()
+        invalidation.invalidateAll(ReceiveDelayProfile.STABILITY) { assertFalse(invalidation.permitsWrite(0)) }
+        invalidation.invalidateAll(ReceiveDelayProfile.BALANCED)
+        invalidation.invalidateAll()
+        invalidation.invalidateParticipants(setOf(3))
+        assertFalse(invalidation.permitsWrite(0))
+        assertEquals(ReceiveDelayProfile.BALANCED, checkNotNull(invalidation.take()).profile)
+
+        invalidation.invalidateAll()
+        assertNull(checkNotNull(invalidation.take()).profile)
     }
 
     @Test fun emptyParticipantChangeDoesNotRetireOutput() {

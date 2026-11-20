@@ -343,7 +343,7 @@ class ConnectionExitConcurrencyTest {
 
         override fun applySelectedPlaybackMuted() = Unit
 
-        override fun startPlayback() = Unit
+        override suspend fun startPlayback() = Unit
 
         override fun stopPlayback() {
             if (playbackStopDelayMs > 0) Thread.sleep(playbackStopDelayMs)

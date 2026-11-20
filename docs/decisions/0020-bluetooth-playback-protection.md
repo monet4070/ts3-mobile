@@ -1,6 +1,6 @@
 # ADR 0020: Automatic Bluetooth selection and protected listening
 
-- Status: accepted for implementation; physical Bluetooth acceptance remains open
+- Status: historical; the communication routing and focus policy is superseded by [ADR 0039](0039-media-friendly-voice.md)
 - Date: 2026-11-04
 
 ## Problem

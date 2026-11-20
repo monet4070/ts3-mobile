@@ -14,7 +14,6 @@ class AudioDeviceRouter internal constructor(
     private val lifecycleLock = Any()
     private var started = false
     private var knownBluetoothIds: Set<Int>? = null
-    private var bluetoothSuspended = false
 
     @Volatile private var playbackActive = false
 
@@ -27,7 +26,7 @@ class AudioDeviceRouter internal constructor(
             if (started) return
             started = true
             try {
-                platform.start(::refreshDevices, ::onBluetoothRouteLost, ::onBluetoothRouteSuspended)
+                platform.start(::refreshDevices, ::onBecomingNoisy)
                 refreshDevices()
             } catch (error: RuntimeException) {
                 started = false
@@ -37,7 +36,6 @@ class AudioDeviceRouter internal constructor(
                     error.addSuppressed(cleanup)
                 }
                 knownBluetoothIds = null
-                bluetoothSuspended = false
                 playbackActive = false
                 state = AudioRoutingState.Default
                 throw error
@@ -64,37 +62,22 @@ class AudioDeviceRouter internal constructor(
         playbackActive = active
     }
 
-    /** Called only after playback has acquired focus, so another call keeps its route. */
     fun prepareForPlayback() =
         synchronized(lifecycleLock) {
-            if (!started || !bluetoothSuspended || state.safetyMuted) return
-            val routes = platform.routes()
-            if (routes.none { it.id == state.selectedRouteId && it.kind == AudioRouteKind.BLUETOOTH }) {
-                onBluetoothRouteLost()
-                return
-            }
-            switchRoute(state.selectedRouteId, routes, error = null)
+            if (started && !state.safetyMuted && !platform.isAvailable(state.selectedRouteId)) refreshDevices()
         }
 
-    private fun onBluetoothRouteSuspended() =
+    private fun onBecomingNoisy() =
         synchronized(lifecycleLock) {
-            if (!started || state.safetyMuted || bluetoothSuspended || state.selectedRoute.kind != AudioRouteKind.BLUETOOTH) return
-            val stillAvailable = platform.routes().any { it.id == state.selectedRouteId && it.kind == AudioRouteKind.BLUETOOTH }
-            if (playbackActive || !stillAvailable) {
+            if (started && playbackActive && !state.safetyMuted && state.selectedRoute.kind == AudioRouteKind.BLUETOOTH) {
                 onBluetoothRouteLost()
-                return
             }
-            bluetoothSuspended = true
-            // Retire old PCM and arm a fresh Bluetooth-only attempt, without opening SCO while idle.
-            publish(state.copy(switching = true))
-            publish(state.copy(switching = false))
         }
 
     /** Also called by playback when its actual output disagrees with Bluetooth protection. */
     fun onBluetoothRouteLost() =
         synchronized(lifecycleLock) {
             if (!started) return
-            bluetoothSuspended = false
             publish(state.copy(safetyMuted = true, error = AudioRoutingError(AudioRoutingErrorKind.BLUETOOTH_ROUTE_LOST)))
         }
 
@@ -114,7 +97,6 @@ class AudioDeviceRouter internal constructor(
             started = false
             platform.stop()
             knownBluetoothIds = null
-            bluetoothSuspended = false
             playbackActive = false
             state = AudioRoutingState.Default
         }
@@ -153,11 +135,10 @@ class AudioDeviceRouter internal constructor(
         routes: List<AudioRouteOption>,
         error: AudioRoutingError?,
     ) {
-        bluetoothSuspended = false
         publish(state.copy(routes = routes, selectedRouteId = routeId, switching = true, error = error))
         val failure =
             try {
-                if (platform.select(routeId)) null else AudioRoutingError(AudioRoutingErrorKind.SWITCH_DENIED)
+                if (platform.isAvailable(routeId)) null else AudioRoutingError(AudioRoutingErrorKind.SWITCH_DENIED)
             } catch (cause: RuntimeException) {
                 AudioRoutingError(AudioRoutingErrorKind.SWITCH_FAILED, cause.sanitizedFailureTypes())
             }

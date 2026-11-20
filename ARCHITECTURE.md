@@ -8,13 +8,14 @@ and `GitHubReleaseJson` binds release assets to their `BUILDINFO.json`. Android 
 codes decide update availability; app ID, certificate and Android compatibility are
 reported separately. Browser intents perform explicit downloads. No update work is
 started by the connection service or application startup, and no installer permission
-is added. The fixed page header owns close; the full release-note reader has its
-own scroll body and a fixed collapse action, restoring the summary scroll position.
+is added. Updates and identity backups use the shared fixed settings header.
+In the full release-note reader, either Back action restores the summary scroll
+position; the reader also has its own fixed collapse action.
 Markwon renders bounded Markdown to native text, including GFM tables/tasks and
 strikethrough; Compose supplies text scale and theme colors. Description links and
 images render labels/alt text without navigation or fetching. Explicit official
 release/download buttons retain navigation ownership. No HTML/image-loading plugin
-or WebView is used. See [ADR 0034](docs/decisions/0034-manual-update-checks.md).
+or WebView is used. See [ADR 0036](docs/decisions/0036-manual-update-checks.md).
 
 Offline audio diagnostics retain numeric receive/playback evidence without USB.
 `PlaybackDiagnostics` exposes per-generation counters and interval peaks; the service
@@ -31,9 +32,9 @@ clipboard preparation and document writes stay off the audio/UI threads. See
 
 The audio review follow-up is specified in
 [the repair plan](docs/plans/AUDIO_REVIEW_FIXES_2026-10-24_ZH.md).
-`OpusAudioPlayer` owns Android focus, routing and its worker; the serialized,
+`OpusAudioPlayer` owns playback routing and its worker; the serialized,
 JVM-testable `PlaybackSession` owns bounded output replacement and retry timing.
-The playback worker exclusively mutates the session. UI/focus/routing calls only
+The playback worker exclusively mutates the session. UI and routing calls only
 advance an atomic generation; timeline writes recheck it before submitting PCM.
 Stop invalidates first, interrupts the worker and joins only off the main thread.
 Failed retirement keeps the old control reachable and blocks a new output until
@@ -45,10 +46,14 @@ is revoked; the worker preserves other valid unmixed leases and decoders. Late
 commands retain post-unmute generations that have already reset their decoder.
 Mixed PCM, render references and output still retire together, with a fresh
 timeline/head origin and shared limiter reset; other participants' gain envelopes
-remain. Global mute/focus/routes/stop retain global protection, and participant
+remain. Global mute/routes/stop retain global protection, and participant
 commands cannot shorten a retry deadline. See
 [ADR-0032](docs/decisions/0032-participant-playback-invalidation.md) and
 [offline measurement](docs/testing/IMPROVEMENT_B12_2026-11-07_ZH.md).
+`ParticipantAudioSettings` converts slider ratios below unity to PCM gain with
+an exponent of 5/3, inverting a [loudness approximation](https://doi.org/10.1121/1.1908048)
+to target roughly -10 dB at 50%. Unity and the existing 100–200% boost are unchanged.
+The mixer still consumes amplitude gains and applies the existing ramp and shared limiter.
 Playback failure guidance is shown only for an established connection. Retirement
 errors during intentional disconnect remain diagnostic events without prompting
 the user to reconnect. `MicrophoneController` owns capture/send serialization;
@@ -76,6 +81,15 @@ foreground service, exposes immutable state to Compose, and isolates protocol
 and audio implementations behind small interfaces.
 
 ## Modules and boundaries
+
+The More menu keeps session actions and opens an in-activity Settings destination.
+The two pages share the persisted application theme and the live service binding.
+The session UI is suspended with its saveable tab/scroll state retained, so opening
+Settings does not read hidden chat or create a new connection. Private-message
+notification navigation can still return directly to chat. Microphone tuning
+commits on exit; a local test can run offline or during a connected session with
+voice capture off. A lifecycle, connection or input change stops the test.
+See [ADR 0038](docs/decisions/0038-settings-navigation.md).
 
 ```text
 Compose UI / MainActivity
@@ -144,24 +158,15 @@ obtaining sockets through an internal `Ts3jClientSocket` port. The production
 adapter delegates to ts3j; JVM facade tests use a fake port to exercise session
 replacement, stale event delivery and connection-status ordering without UDP.
 
-`OpusAudioPlayer` uses Android's voice-communication audio attributes and asks
-for audio focus only while a remote talkspurt is being played. `AudioFocusPolicy`
-classifies framework callbacks into gain, interruption and ignore signals;
-interruptions clear queued voice and mute output without changing the user's
-microphone mode. `AudioDeviceRouter` owns communication-device selection, while
-playback and capture receive legacy preferred-device hints only on Android
-versions before the communication-device API. `AudioRoutePlatform` isolates Android calls from
-the JVM-tested router: startup/new Bluetooth routes are selected automatically; device removal,
-route loss, switch refusal and timeout latch a safety mute before fallback. `BluetoothRouteMonitor`
-observes communication-device changes and legacy SCO/noisy broadcasts. `BluetoothPlaybackGuard`
-checks actual `AudioTrack` routes across output lifetimes; waiting routes discard stale voice and
-unexpected fallback silences output. Service state publishes the safety mute through the existing
-listening control. Only a manual unmute clears it; reconnecting a headset cannot resume playback.
-Idle SCO suspension while the selected headset remains available instead arms a pending Bluetooth
-attempt. The next playback obtains focus before requesting the route; a fresh guard generation
-keeps speaker/earpiece writes blocked during setup. Active loss, physical removal, timeout and
-denied recovery still latch mute. No idle SCO keepalive or repeated recovery timer is added.
-See [ADR 0020](docs/decisions/0020-bluetooth-playback-protection.md) for boundaries and verification.
+`OpusAudioPlayer` plays incoming speech on the media stream without acquiring audio focus.
+`AudioDeviceRouter` observes devices without setting Android's audio mode or communication route.
+`AudioTrack` and `AudioRecord` receive per-stream route preferences; Bluetooth media output does
+not request SCO, and capture prefers the built-in microphone with Bluetooth selected.
+`BluetoothPlaybackGuard` checks the actual `AudioTrack` route across output lifetimes. While a
+required Bluetooth route is unconfirmed, the track stays silent and stale PCM is discarded.
+Device removal, unexpected Bluetooth fallback, and output route timeout latch a safety mute.
+Only manual unmute clears it; reconnecting a headset cannot resume playback.
+See [ADR 0039](docs/decisions/0039-media-friendly-voice.md) for the trade-offs and device checks.
 
 `ChannelRestorePolicy` keeps the last channel target, including its password,
 outside the session callback implementation. A reconnect snapshot cannot replace
@@ -334,6 +339,9 @@ the connected server header owns the visible Disconnect action.
 ## Known decomposition work
 
 `MainScreen.kt` now owns only the top-level scaffold and status surfaces.
+The bottom input-volume shortcut is a UI slot rendered by both voice bars. It
+edits only the existing `VOLUME` preference and shares the settings slider and
+commit path; popup state and positioning are owned by the shortcut component.
 Connection, connected-session, channel, participant, microphone and diagnostics
 surfaces live in focused files under the same `ui` package, each below the
 preferred 300-line review boundary.
@@ -344,15 +352,23 @@ persistent diagnostics now live in focused collaborators. `ConnectionCoordinator
 owns the connection/reconnect state machine and bounded switch checks behind
 the JVM-tested `ConnectionCoordinatorHost` seam.
 
+The next-phase features add `InviteEntry` and dedicated invite dialogs,
+`LocalMicrophoneTrial` around a metering-only capture path, and guarded
+listening controls shared by the compact and expanded notification. The
+existing activity/service/coordinator only route intents, lifespan events, and
+approved requests to those boundaries.
+See [ADR 0037](docs/decisions/0037-invites-local-microphone-trial-and-notification-playback.md).
+
 The remaining first-party files near or above the preferred 300-line review
 boundary have been assessed as follows. Vendored RNNoise sources are excluded
 from this project-specific decomposition policy.
 
 | File | Current responsibility assessment | Planned extraction |
 | --- | --- | --- |
+| `MainActivity.kt` | Above the boundary: lifecycle, permissions, intent and binder wiring; previews, capture UI and action validation are separate | Move connection-entry permissions and dispatch into a lifecycle-aware helper before extending that flow |
 | `ConnectionCoordinator.kt` | Above the boundary: attempt orchestration, session listener, switch liveness and binder-facing entry points | Extract the session listener/event handling and network liveness bookkeeping next |
 | `TeamSpeakService.kt` | Above the boundary: binder, participant audio settings, routing glue and component wiring; notification handling is extracted | Extract binder-facing audio controls separately when this responsibility grows |
-| `OpusAudioPlayer.kt` | About 300 lines after A1: lifecycle/focus and bounded worker scheduling | Output construction is now in `AndroidPlaybackOutput`, partial writes/drain in `PlaybackTimeline`, and per-talker receive/mix in `PlaybackStreams`; keep public entry points compatible |
+| `OpusAudioPlayer.kt` | About 300 lines: playback lifecycle, admission and bounded worker scheduling | Keep public entry points compatible; if the file grows, extract worker scheduling into a collaborator, then validate admission and lifecycle tests before moving other responsibilities |
 | `OpusMicrophoneCapture.kt` | Near 300 lines: capture lifecycle/worker glue; DSP assembly, gain, gate/onset and session queue now live in `MicrophoneCapturePipeline`, `MicrophoneFrameProcessor`, `VolumeGate`, `CaptureVoiceBuffer` | Keep lifecycle cohesive; extract AudioRecord construction if device-specific setup grows |
 | `Ts3jSessionClient.kt` | Above the boundary: connection, disconnect, bounded control checks and voice forwarding; snapshot mapping lives in `Ts3jEventAdapter` | Extract the failure/diagnostics helpers if the facade grows again |
 | `AudioDeviceRouter.kt` | Slightly above the boundary but still one cohesive routing responsibility | Extract device classification only if routing families or platform branches grow |
@@ -383,10 +399,10 @@ complements JVM tests and device connection acceptance; see
 [the issue #3 report](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
 
 The public app API is intentionally small and internal to the Android app. The
-protocol facade pins a ts3j revision. Stable 1.0.0 (versionCode 13) includes the
-single-server feature set: endpoint history, channel/private text, poke,
-volume gate, named bookmarks, presence and channel discovery. File transfer and
-multi-server tabs remain outside this implementation. The
+protocol facade pins a ts3j revision. Stable 1.1.0 (versionCode 15) builds on the
+single-server feature set with manual update checks, offline audio diagnostics,
+encrypted identity backups, and saved microphone tuning and appearance. File
+transfer and multi-server tabs remain outside this implementation. The
 [release pack](docs/release/README.md) records signing, exact-artifact and device
 evidence. [ADR-0021](docs/decisions/0021-stable-release-acceptance.md) records the
 publication decision and remaining physical-device checks.
@@ -474,14 +490,16 @@ implementation. A0 fingerprints and synthetic fixtures precede A1 continuity.
 `PlaybackStreams` owns per-speaker receive/decode/mix; `PlaybackTimeline` owns
 PLAYING/RECOVERING/DRAINING/IDLE and `AndroidPlaybackOutput` owns Android I/O.
 Per-speaker startup buffering begins at 60 ms and now adapts within 40–120 ms.
-Temporary starvation retains output for 60 ms without adding silence or inventing
-trailing PLC. Known-gap PLC is capped at three packets and 60 ms. Natural drain
-waits for accepted sample counts using the unwrapped unsigned playback head;
+Temporary starvation retains output for 60 ms, or 500 ms while the actual output
+is Bluetooth, without adding silence or inventing trailing PLC. The Bluetooth
+grace avoids repeated SCO setup during short gaps; unavailable routes still stop
+playback immediately. Known-gap PLC is capped at three packets and 60 ms. Natural
+drain waits for accepted sample counts using the unwrapped unsigned playback head;
 remaining duration plus 100 ms bounds waiting, with a 500 ms upper limit and an
 explicit timeout counter. No new fixed lookahead is added.
 
 Writes are nonblocking, limited to eight attempts per tick, retain partial blocks
-and fail after 100 ms without completing a block. Explicit stop/mute/focus loss
+and fail after 100 ms without completing a block. Explicit stop/mute or route invalidation
 or route change serializes invalidation with writes and discards immediately.
 The worker advances an absolute 10 ms media deadline across scheduler delays up
 to 50 ms, with a minimum 1 ms wait during catch-up. Longer stalls rebase the
@@ -596,6 +614,22 @@ Targets normally apply at the next talkspurt. At an explicit empty-PCM gap,
 an increased target permits one 10 ms rebuffer per missing sequence, bounded at
 120 ms. `ReceivePolicy(adaptive = false)` retains fixed 60 ms comparison/rollback.
 No sample stretching or ordinary-speech duplication is performed.
+`ReceiveDelayProfile` keeps jitter target bounds together. Voice playback settings
+persist the Balanced (60 ms initial, 40–120 ms) or Stability first (90 ms initial,
+70–160 ms) choice in the application-owned playback DataStore. The service reads it
+before starting each playback worker. A saved change within a connection invalidates the
+old receive queue and resets the streams and output on the existing worker without
+restarting the transport, capture or routing. Diagnostics record the effective profile
+when playback starts and when the worker applies a switch; installs without a saved choice use Balanced.
+For device A/B, the opt-in `bluetoothStandardOutputExperiment` build parameter
+requests the ordinary AudioTrack path only when Bluetooth is expected. It does
+not change route admission, buffering parameters, or default builds.
+
+An already-routed Bluetooth track that has accepted PCM but has not consumed its
+first frame can wait up to 1.5 s from startup before a stalled write triggers
+recovery. Short utterances also wait for startup before the ordinary drain budget
+begins. Once the playback head advances, subsequent pending writes use the ordinary
+100 ms deadline. Route invalidation, safety mute and write errors still take precedence.
 
 `ReceivePcmBuffer` holds leased complete decodes, preserving short tails and long
 packets. The former integer-only FIFO is retired. Sequence wrap/deduplication and

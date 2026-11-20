@@ -14,11 +14,11 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
@@ -43,7 +43,7 @@ class GateControlLayoutTest {
         fixture.state.value = fixture.state.value.copy(microphoneMode = MicrophoneMode.VOLUME_GATE, isCapturing = true)
         fixture.microphoneLevels.value = sample(-45.0)
         rule.setContent { fixture.Render(locale = "zh-CN") }
-        rule.onNodeWithContentDescription("更多选项").performClick()
+        rule.openAppSettings("更多选项", "设置")
         rule.onNodeWithText("麦克风设置").performClick()
         rule.onNodeWithTag("microphone_gate_slider").performSemanticsAction(SemanticsActions.SetProgress) { it(-30f) }
         rule.onNodeWithText("音量门控阈值：-30 dBFS").assertIsDisplayed()
@@ -88,13 +88,13 @@ class GateControlLayoutTest {
     @Test fun chineseLargeTextKeepsThresholdAndLevelVisibleWithoutStartingCapture() {
         val fixture = UiFixture(connected = true)
         rule.setContent { fixture.Render(locale = "zh-CN", fontScale = 1.8f, dark = true) }
-        rule.onNodeWithContentDescription("更多选项").performClick()
+        rule.openAppSettings("更多选项", "设置")
         rule.onNodeWithText("麦克风设置").performClick()
         rule.onNodeWithTag("microphone_gate_slider").performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { it(-35f) }
         rule.onNodeWithContentDescription("麦克风未开启").assertIsDisplayed()
         rule.onNodeWithText("音量门控阈值：-35 dBFS").assertIsDisplayed()
-        rule.onNodeWithText("关闭").assertIsDisplayed()
+        rule.onNodeWithContentDescription("返回").assertIsDisplayed()
         rule.runOnIdle {
             assertFalse(fixture.state.value.isCapturing)
             assertTrue(fixture.transmission.none { it })
@@ -108,7 +108,7 @@ class GateControlLayoutTest {
         val file = File(rule.activity.getExternalFilesDir(null), "ui-hierarchy/" + name + ".png")
         file.parentFile?.mkdirs()
         file.outputStream().use {
-            check(rule.onNode(isDialog()).captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it))
+            check(rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it))
         }
     }
 }

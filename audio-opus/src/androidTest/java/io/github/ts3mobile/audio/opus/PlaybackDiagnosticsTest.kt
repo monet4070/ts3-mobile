@@ -18,6 +18,7 @@ class PlaybackDiagnosticsTest {
         val wrote = CountDownLatch(1)
         val stopped = CountDownLatch(1)
         val final = AtomicReference<AudioReceiveDiagnostics>()
+        var reportedProfile: Long? = null
         val output =
             object : PlaybackOutput {
                 override val playbackHead: Long get() = head.get()
@@ -44,7 +45,9 @@ class PlaybackDiagnosticsTest {
                 override fun onEvent(
                     kind: AudioDiagnosticEventKind,
                     value: Long,
-                ) = Unit
+                ) {
+                    if (kind == AudioDiagnosticEventKind.RECEIVE_DELAY_PROFILE) reportedProfile = value
+                }
 
                 override fun onStopped(snapshot: AudioReceiveDiagnostics) {
                     final.set(snapshot)
@@ -54,7 +57,8 @@ class PlaybackDiagnosticsTest {
         )
         val packet = NativeOpusEncoder().use { it.encode(ShortArray(960)) }
         try {
-            player.start()
+            player.start(ReceiveDelayProfile.STABILITY)
+            assertEquals(1L, reportedProfile)
             repeat(4) { player.submit(VoiceFrame(1, it, VoiceCodec.OPUS_VOICE, packet, false)) }
             assertTrue(wrote.await(3, TimeUnit.SECONDS))
             val active = player.takeReceiveDiagnostics()

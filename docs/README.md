@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | 项目介绍与版本状态 | [README](../README_ZH.md) | [README](../README.md) |
 | 日常操作 | [使用指南](USER_GUIDE_ZH.md) | [User guide](USER_GUIDE.md) |
+| 1.1.0 界面截图 | [简体中文](images/1.1.0/zh-CN/) | [English](images/1.1.0/en/) |
 | 安装、升级、签名 | [双语说明](INSTALLATION.md) | [Bilingual guide](INSTALLATION.md) |
 | 故障排查 | [常见问题](TROUBLESHOOTING_ZH.md) | [Troubleshooting](TROUBLESHOOTING.md) |
 | 设备、协议与验证覆盖 | [兼容性说明](COMPATIBILITY.md) | [Compatibility](COMPATIBILITY.md) |
@@ -15,8 +16,11 @@
 维护与来源：
 
 - [开发约定](../CONTRIBUTING.md)、[架构](../ARCHITECTURE.md)、[设计决策](decisions/)
-- [使用体验与工程质量提升计划（2026-11-07）](plans/IMPROVEMENT_PLAN_2026-11-07_ZH.md)：分阶段范围、依赖、验收和交付顺序；当前为待实施规划。
-- [提升执行计划与工作量评估（2026-11-07）](plans/IMPROVEMENT_EXECUTION_PLAN_2026-11-07_ZH.md)：代码核查、收益、三点估算、分批任务与风险关卡；正在逐阶段实施。
+- [1.1.0 之后的改进与功能计划（2026-11-19）](plans/NEXT_PHASE_2026-11-19_ZH.md) 根据项目实测与 TS3 用户反馈，为通话稳定性、邀请入服、本机试麦和后台收听控制排期。
+- [收听稳定性与延迟档位（2026-11-20）](plans/AUDIO_PLAYBACK_STABILITY_2026-11-20_ZH.md)：开源对照、缓冲候选、真机验收与独立切网回归计划。
+- [邀请、试麦与通知收听开发验证（2026-11-20）](testing/NEXT_PHASE_FEATURES_2026-11-20_ZH.md)：实现范围、模拟器／覆盖安装结果与待做的真机验收。
+- [使用体验与工程质量提升计划（2026-11-07）](plans/IMPROVEMENT_PLAN_2026-11-07_ZH.md) 记录上一轮的范围、依赖和验收目标。
+- [提升执行计划与工作量评估（2026-11-07）](plans/IMPROVEMENT_EXECUTION_PLAN_2026-11-07_ZH.md) 记录上一轮的任务拆分和估算，实际完成情况见下方进度记录。
 - [提升计划执行进度（2026-11-07）](plans/IMPROVEMENT_PROGRESS_2026-11-07_ZH.md)：实际状态、阶段证据及待验收项。
 - [更新日志](../CHANGELOG.md)、[第三方许可](../THIRD_PARTY_NOTICES.md)
 - [测试记录](testing/)与[历史开发计划](plans/)保留各自日期，不自动代表最新 APK 的验收。

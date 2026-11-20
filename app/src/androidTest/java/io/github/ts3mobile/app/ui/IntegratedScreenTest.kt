@@ -8,6 +8,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -80,7 +81,7 @@ class IntegratedScreenTest {
         rule.runOnIdle { assertEquals(1, fixture.connects) }
     }
 
-    @Test fun backgroundDialogRefreshesReleasesTransmissionAndPreservesAllActions() {
+    @Test fun backgroundPageRefreshesReleasesTransmissionAndPreservesAllActions() {
         val fixture = UiFixture(connected = true)
         rule.setContent { fixture.Render() }
         rule.onNodeWithContentDescription("Push to talk").performSemanticsAction(SemanticsActions.OnClick) { it() }
@@ -89,10 +90,13 @@ class IntegratedScreenTest {
         File(output, "background-menu-open.png").outputStream().use {
             check(rule.onNode(isPopup()).captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it))
         }
-        rule.onNodeWithText(text(R.string.background_runtime_title)).performClick()
+        rule.onNodeWithText(text(R.string.settings_title)).performClick()
+        rule.onNodeWithText(text(R.string.background_runtime_title)).performScrollTo().performClick()
+        rule.onNode(isDialog()).assertDoesNotExist()
         rule.runOnIdle {
             assertEquals(1, fixture.refreshes)
-            assertEquals(listOf(true, false), fixture.transmission)
+            assertEquals(true, fixture.transmission.first())
+            assertEquals(false, fixture.transmission.last())
         }
         rule.onNode(isToggleable()).performScrollTo().performClick()
         rule.onNodeWithText(text(R.string.background_open_battery_settings)).performScrollTo().performClick()
@@ -104,8 +108,8 @@ class IntegratedScreenTest {
             assertEquals(1, fixture.appSettings)
             assertEquals(1, fixture.copies)
         }
-        rule.onNodeWithText(text(R.string.action_close)).performClick()
-        rule.onNodeWithText(text(R.string.background_runtime_title)).assertDoesNotExist()
+        rule.onNodeWithContentDescription(text(R.string.settings_back)).performClick()
+        rule.onNodeWithText(text(R.string.settings_title)).assertIsDisplayed()
     }
 
     @Test fun deferredMicrophoneShowsTheRemotePausedState() {

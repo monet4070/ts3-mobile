@@ -6,7 +6,7 @@
 ## 报告问题
 
 先确认你使用的是哪个 Release，以及它是否包含所需功能。当前稳定版为
-[1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0)，旧 0.11.1-m10 不包含全部新功能。
+[1.1.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0)（2026-11-09，versionCode 15）。
 安装、签名与升级问题先阅读[安装说明](docs/INSTALLATION.md)。
 
 在 [GitHub Issues](https://github.com/monet4070/ts3-mobile/issues) 搜索已有问题，
@@ -14,7 +14,8 @@
 请提供应用版本/源码提交、下载来源、正式或调试包、设备型号与 Android 版本，
 以及音频路由、前后台状态、复现步骤、期望与实际结果。
 
-更多选项 → 诊断可主动复制脱敏诊断。分享前检查日志、截图和剪贴板，删除私人服务器地址、
+更多选项 → 诊断可复制脱敏报告或保存 JSON 文件；音频问题可先[标记刚才断音](docs/USER_GUIDE_ZH.md#脱离-usb-的音频诊断)。
+分享前检查日志、截图和剪贴板，删除私人服务器地址、
 密码、身份、昵称与其他成员信息；不要上传身份文件、Keystore、签名私钥或完整抓包。
 可以用 `voice.example.com`、示例昵称和虚构频道替代复现说明中的私人内容。
 
@@ -28,15 +29,16 @@
 ## English
 
 Check the release version first: the current stable release is
-[1.0.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.0.0); older 0.11.1-m10
-does not include all its features. Read [installation](docs/INSTALLATION.md) for upgrade
+[1.1.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0) (2026-11-09, versionCode 15).
+Read [installation](docs/INSTALLATION.md) for upgrade
 and certificate problems, then search [existing issues](https://github.com/monet4070/ts3-mobile/issues).
 Use Bug report for defects and Feature request for proposals.
 
 Include app version/commit, download source, release/debug package, device/Android
 version, audio route, foreground/background state and precise reproduction steps
-with expected/actual results. More options → Diagnostics lets you copy redacted
-diagnostics manually. Review logs, screenshots and clipboard text before sharing;
+with expected/actual results. More options → Diagnostics lets you copy a redacted
+report or save JSON. For audio issues, [mark interruptions](docs/USER_GUIDE.md#offline-audio-diagnostics)
+before exporting. Review logs, screenshots and clipboard text before sharing;
 remove endpoints, passwords, identities, nicknames and participant information.
 Do not attach identity files, keystores, private signing keys or raw captures.
 

@@ -2,8 +2,8 @@ package io.github.ts3mobile.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -37,7 +37,7 @@ internal fun MicrophoneTuningCapture(
             Text(stringResource(R.string.microphone_tuning_send_warning))
             PushToTalkButton(state.isTransmitting, onPushToTalkChanged)
         } else if (state.isCapturing || state.microphoneMode.requiresContinuousCapture) {
-            TextButton(onClick = { onMicrophoneModeChanged(MicrophoneMode.OFF) }) {
+            OutlinedButton(onClick = { onMicrophoneModeChanged(MicrophoneMode.OFF) }) {
                 Text(stringResource(R.string.chat_stop_microphone))
             }
         }

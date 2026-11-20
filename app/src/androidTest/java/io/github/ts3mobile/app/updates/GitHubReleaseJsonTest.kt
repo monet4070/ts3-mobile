@@ -18,16 +18,19 @@ class GitHubReleaseJsonTest {
             val draft = releaseJson("v9.0.0", "2026-11-10T01:00:00Z").put("draft", true)
             val calls = mutableListOf<String>()
             val source =
-                GitHubUpdateSource { url ->
-                    calls += url
-                    when (url) {
-                        STABLE_RELEASE_API -> stable.toString()
-                        ALL_RELEASES_API -> JSONArray(listOf(stable, draft, preview)).toString()
-                        "$RELEASES_PAGE_URL/download/v1.0.0/BUILDINFO.json" -> buildInfo(14, "v1.0.0").toString()
-                        "$RELEASES_PAGE_URL/download/v1.1.0-rc.1/BUILDINFO.json" -> buildInfo(15, "v1.1.0-rc.1").toString()
-                        else -> error("Unexpected fixture URL")
-                    }
-                }
+                GitHubUpdateSource(
+                    fetch =
+                        UpdateFetch { url, _ ->
+                            calls += url
+                            when (url) {
+                                STABLE_RELEASE_API -> stable.toString()
+                                ALL_RELEASES_API -> JSONArray(listOf(stable, draft, preview)).toString()
+                                "$RELEASES_PAGE_URL/download/v1.0.0/BUILDINFO.json" -> buildInfo(14, "v1.0.0").toString()
+                                "$RELEASES_PAGE_URL/download/v1.1.0-rc.1/BUILDINFO.json" -> buildInfo(15, "v1.1.0-rc.1").toString()
+                                else -> error("Unexpected fixture URL")
+                            }
+                        },
+                )
             assertFalse(source.latest(UpdateChannel.STABLE)!!.prerelease)
             val result = source.latest(UpdateChannel.INCLUDE_PRERELEASES)!!
             assertTrue(result.prerelease)
@@ -50,15 +53,19 @@ class GitHubReleaseJsonTest {
             val stable = releaseJson("v1.0.0", "2026-11-01T01:00:00Z")
             val preview = releaseJson("v1.1.0-rc.1", "2026-11-09T01:00:00Z", true)
             val source =
-                GitHubUpdateSource { url ->
-                    when (url) {
-                        STABLE_RELEASE_API -> stable.toString()
-                        ALL_RELEASES_API -> JSONArray(listOf(preview)).toString()
-                        "$RELEASES_PAGE_URL/download/v1.0.0/BUILDINFO.json" -> buildInfo(20).toString()
-                        "$RELEASES_PAGE_URL/download/v1.1.0-rc.1/BUILDINFO.json" -> buildInfo(19, "v1.1.0-rc.1").toString()
-                        else -> error("Unexpected fixture URL")
-                    }
-                }
+                GitHubUpdateSource(
+                    fetch =
+                        UpdateFetch { url, _ ->
+                            when (url) {
+                                STABLE_RELEASE_API -> stable.toString()
+                                ALL_RELEASES_API -> JSONArray(listOf(preview)).toString()
+                                "$RELEASES_PAGE_URL/download/v1.0.0/BUILDINFO.json" -> buildInfo(20).toString()
+                                "$RELEASES_PAGE_URL/download/v1.1.0-rc.1/BUILDINFO.json" ->
+                                    buildInfo(19, "v1.1.0-rc.1").toString()
+                                else -> error("Unexpected fixture URL")
+                            }
+                        },
+                )
             val result = source.latest(UpdateChannel.INCLUDE_PRERELEASES)!!
             assertEquals(20L, result.versionCode)
             assertFalse(result.prerelease)
@@ -74,9 +81,12 @@ class GitHubReleaseJsonTest {
 
     @Test fun stable404MeansNoReleaseWhileMissingMetadataIsAFailedCheck() =
         runBlocking {
-            assertEquals(null, GitHubUpdateSource { throw UpdateHttpException(404) }.latest(UpdateChannel.STABLE))
+            assertEquals(
+                null,
+                GitHubUpdateSource(fetch = UpdateFetch { _, _ -> throw UpdateHttpException(404) }).latest(UpdateChannel.STABLE),
+            )
             val missing = releaseJson().put("assets", JSONArray())
-            val source = GitHubUpdateSource { missing.toString() }
+            val source = GitHubUpdateSource(fetch = UpdateFetch { _, _ -> missing.toString() })
             val failure = runCatching { source.latest(UpdateChannel.STABLE) }.exceptionOrNull() as UpdateCheckException
             assertEquals(UpdateFailure.INVALID_RELEASE, failure.failure)
         }
@@ -89,12 +99,82 @@ class GitHubReleaseJsonTest {
             )) {
                 val failure =
                     runCatching {
-                        GitHubUpdateSource { json.toString() }.latest(
+                        GitHubUpdateSource(fetch = UpdateFetch { _, _ -> json.toString() }).latest(
                             UpdateChannel.STABLE,
                         )
                     }.exceptionOrNull() as UpdateCheckException
                 assertEquals(UpdateFailure.INVALID_RELEASE, failure.failure)
             }
+        }
+
+    @Test fun eachRequestSpendsTheSharedBudgetAndTheBudgetCapsTheLastOne() =
+        runBlocking {
+            val deadlines = mutableListOf<Long>()
+            var now = 1_000L
+            val stable = releaseJson("v1.0.0", "2026-11-08T01:00:00Z")
+            val source =
+                GitHubUpdateSource(
+                    fetch =
+                        UpdateFetch { url, deadline ->
+                            deadlines += deadline
+                            // A slow request consumes most of the shared budget, not just its own slot.
+                            now += 11_000_000_000L
+                            when (url) {
+                                STABLE_RELEASE_API -> stable.toString()
+                                "$RELEASES_PAGE_URL/download/v1.0.0/BUILDINFO.json" -> buildInfo(14).toString()
+                                else -> error("Unexpected fixture URL")
+                            }
+                        },
+                    clockNanos = { now },
+                )
+            source.latest(UpdateChannel.STABLE)
+            assertEquals(2, deadlines.size)
+            // The first request gets its own cap; the second is bounded by the remaining budget.
+            assertEquals(1_000L + UPDATE_REQUEST_CAP_NANOS, deadlines[0])
+            assertEquals(
+                "A later request must be capped by the shared budget, not a fresh cap",
+                1_000L + UPDATE_CHECK_BUDGET_NANOS,
+                deadlines[1],
+            )
+        }
+
+    @Test fun manifestHttpFailuresAreClassifiedByTheirStatus() =
+        runBlocking {
+            fun sourceThrowing(status: Int) =
+                GitHubUpdateSource(
+                    fetch =
+                        UpdateFetch { url, _ ->
+                            if (url == STABLE_RELEASE_API) releaseJson().toString() else throw UpdateHttpException(status)
+                        },
+                )
+            val vanished = runCatching { sourceThrowing(404).latest(UpdateChannel.STABLE) }.exceptionOrNull() as UpdateCheckException
+            assertEquals(UpdateFailure.INVALID_RELEASE, vanished.failure)
+            val gone = runCatching { sourceThrowing(410).latest(UpdateChannel.STABLE) }.exceptionOrNull() as UpdateCheckException
+            assertEquals(UpdateFailure.INVALID_RELEASE, gone.failure)
+            val server = runCatching { sourceThrowing(500).latest(UpdateChannel.STABLE) }.exceptionOrNull() as UpdateCheckException
+            assertEquals(UpdateFailure.SERVER, server.failure)
+            val transient = runCatching { sourceThrowing(408).latest(UpdateChannel.STABLE) }.exceptionOrNull() as UpdateCheckException
+            assertEquals(UpdateFailure.SERVER, transient.failure)
+        }
+
+    @Test fun aSpentBudgetStopsLaterRequestsAndSurfacesAsTimeout() =
+        runBlocking {
+            val urls = mutableListOf<String>()
+            var now = 0L
+            val source =
+                GitHubUpdateSource(
+                    fetch =
+                        UpdateFetch { url, _ ->
+                            urls += url
+                            // This single request consumes the whole check budget, not just its own cap.
+                            now = UPDATE_CHECK_BUDGET_NANOS + 1L
+                            releaseJson().toString()
+                        },
+                    clockNanos = { now },
+                )
+            val failure = runCatching { source.latest(UpdateChannel.INCLUDE_PRERELEASES) }.exceptionOrNull()
+            assertTrue("A spent budget must not be reported as a release problem", failure is java.net.SocketTimeoutException)
+            assertEquals(listOf(STABLE_RELEASE_API), urls)
         }
 
     @Test fun inconsistentBuildInformationCannotProduceADownload() {

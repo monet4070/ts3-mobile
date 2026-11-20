@@ -7,16 +7,24 @@ import android.content.pm.PackageManager
 import android.media.AudioDeviceInfo
 import android.media.AudioRecord
 import android.media.AudioRouting
+import android.os.Build
 import android.os.Process
 import io.github.ts3mobile.protocol.sanitizedFailureTypes
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
-class OpusMicrophoneCapture(
+class OpusMicrophoneCapture private constructor(
     context: Context,
     private val onFailure: (Throwable) -> Unit,
     private val onStateChanged: (MicrophoneCaptureState) -> Unit,
+    private val encodeAudio: Boolean,
 ) : MicrophoneCapture {
+    constructor(
+        context: Context,
+        onFailure: (Throwable) -> Unit,
+        onStateChanged: (MicrophoneCaptureState) -> Unit,
+    ) : this(context, onFailure, onStateChanged, encodeAudio = true)
+
     constructor(context: Context, onFailure: (Throwable) -> Unit = {}) : this(context, onFailure, {})
 
     private val applicationContext = context.applicationContext
@@ -42,6 +50,13 @@ class OpusMicrophoneCapture(
 
     override val isCapturing: Boolean
         get() = control?.running?.get() == true
+
+    val actualInputType: Int? get() = control?.takeIf { it.running.get() }?.routedDeviceType
+
+    val isInputSilenced: Boolean
+        get() =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                resources?.record?.activeRecordingConfiguration?.isClientSilenced == true
 
     override fun configure(
         settings: MicrophoneSettings,
@@ -99,13 +114,15 @@ class OpusMicrophoneCapture(
                     PackageManager.PERMISSION_GRANTED,
             ) { "Microphone permission is not granted" }
 
-            val captureResources = CaptureResources.create(preferredDevice, options.settings)
+            val captureResources = CaptureResources.create(preferredDevice, options.settings, encodeAudio)
             val newControl = CaptureControl(captureGeneration.incrementAndGet())
             newControl.routingListener =
                 AudioRouting.OnRoutingChangedListener { routing ->
                     synchronized(lifecycleLock) {
                         if (control !== newControl || !newControl.running.get()) return@synchronized
-                        val deviceId = routing.routedDevice?.id
+                        val device = routing.routedDevice
+                        newControl.routedDeviceType = device?.type
+                        val deviceId = device?.id
                         if (newControl.routedDeviceId != deviceId) {
                             newControl.routedDeviceId = deviceId
                             invalidateRouting()
@@ -118,6 +135,7 @@ class OpusMicrophoneCapture(
             try {
                 captureResources.startRecording()
                 captureResources.listen(newControl.routingListener)
+                if (!encodeAudio) newControl.routedDeviceType = captureResources.record.routedDevice?.type
             } catch (error: RuntimeException) {
                 newControl.running.set(false)
                 levelMeter.stop(newControl.generation)
@@ -198,9 +216,9 @@ class OpusMicrophoneCapture(
         val inputPcm = ShortArray(RNNOISE_FRAME_SAMPLES)
         val assembler = CaptureInputAssembler()
         val pipeline =
-            MicrophoneCapturePipeline(denoiser::processInPlace, encoder::encode, stats) { settings ->
+            MicrophoneCapturePipeline(denoiser::processInPlace, encoder?.let { it::encode }, stats) { settings ->
                 denoiser.reset()
-                encoder.reset()
+                encoder?.reset()
                 audioEffects.configure(settings.echoCancellation)
                 captureControl.echoState = audioEffects.echoState
             }
@@ -227,7 +245,7 @@ class OpusMicrophoneCapture(
                 val denoiserPcm = assembler.append(inputPcm, read) ?: continue
                 val encoded = pipeline.process(denoiserPcm, current, revision, routeRevision, levelMeter.isObserved())
                 if (encoded == null) continue
-                captureControl.frames.publish(revision, encoded, pipeline.isSpeaking)
+                if (encodeAudio) captureControl.frames.publish(revision, encoded, pipeline.isSpeaking)
                 if (pipeline.levelDb.isFinite()) {
                     levelMeter.offer(
                         captureControl.generation,
@@ -300,10 +318,15 @@ class OpusMicrophoneCapture(
         var lastState: MicrophoneCaptureState? = null
         lateinit var routingListener: AudioRouting.OnRoutingChangedListener
         var routedDeviceId: Int? = null
+
+        @Volatile var routedDeviceType: Int? = null
     }
 
-    private companion object {
+    companion object {
         const val RNNOISE_FRAME_SAMPLES = 480
-        const val STOP_JOIN_TIMEOUT_MS = 1_500L
+        private const val STOP_JOIN_TIMEOUT_MS = 1_500L
+
+        fun localMeter(context: Context): OpusMicrophoneCapture =
+            OpusMicrophoneCapture(context, onFailure = {}, onStateChanged = {}, encodeAudio = false)
     }
 }

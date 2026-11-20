@@ -1,7 +1,9 @@
 package io.github.ts3mobile.app.service
 
 import android.content.ContextWrapper
+import android.os.Looper
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.ts3mobile.app.Ts3MobileApplication
 import io.github.ts3mobile.audio.opus.AudioReceiveCounter
 import io.github.ts3mobile.audio.opus.AudioReceiveDiagnostics
 import io.github.ts3mobile.audio.opus.OpusAudioPlayer
@@ -14,10 +16,12 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -70,6 +74,18 @@ class OfflineAudioDiagnosticsTest {
             folder.deleteRecursively()
         }
     }
+
+    @Test fun theProcessOwnedArchiveIsLoadedOffTheCallerAndStaysShared() =
+        runBlocking {
+            val application = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Ts3MobileApplication
+            // The lazy load starts on first access, on the application's IO dispatcher.
+            val repository = withTimeout(5_000) { application.audioDiagnostics.await() }
+            assertSame(repository, withTimeout(5_000) { application.audioDiagnostics.await() })
+            assertTrue(repository.export().contains("\"schema\":\"ts3-mobile-audio/v1\""))
+            val onMainThread =
+                withContext(application.audioDiagnosticDispatcher) { Looper.myLooper() == Looper.getMainLooper() }
+            assertFalse("The archive read must run outside the main thread", onMainThread)
+        }
 
     @Test fun productionServiceAdapterRetainsStoppedPlayerWithoutAnyServerMicrophoneOrAudibleOutput() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

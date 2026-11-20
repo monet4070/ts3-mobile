@@ -68,7 +68,7 @@ internal interface ConnectionCoordinatorHost {
 
     fun applySelectedPlaybackMuted()
 
-    fun startPlayback()
+    suspend fun startPlayback()
 
     fun stopPlayback()
 
@@ -138,7 +138,10 @@ internal interface ConnectionCoordinatorHost {
      * Called only for the current listener once an attempt is confirmed
      * established. The service persists the connected server here.
      */
-    fun onConnectionSucceeded(config: ServerConfig) = Unit
+    fun onConnectionSucceeded(
+        config: ServerConfig,
+        rememberEndpoint: Boolean,
+    ) = Unit
 
     /**
      * Called with the failure the coordinator is acting on, after the active
@@ -223,8 +226,12 @@ internal class ConnectionCoordinator(
     @Volatile
     private var refusedEpoch: Long? = null
     private val channelRestore = ChannelRestoreTracker()
+    private var rememberEndpoint = true
 
-    fun beginConnection(config: ServerConfig): Boolean {
+    fun beginConnection(
+        config: ServerConfig,
+        rememberEndpoint: Boolean = true,
+    ): Boolean {
         if (closed) return false
         val lease = IdentityConnectionLease.acquire(identityGate) ?: return false
         // Registered first and synchronously: a connect always takes ownership away
@@ -243,6 +250,7 @@ internal class ConnectionCoordinator(
         reconnectEngine.resetAttemptCount()
         host.diagnosticsRecorder.resetSession()
         desiredConfig = config
+        this.rememberEndpoint = rememberEndpoint
         identityMaterial = null
         channelRestore.reset()
         config.defaultChannelId?.let { channelRestore.rememberManualJoin(it, config.channelPassword) }
@@ -792,7 +800,7 @@ internal class ConnectionCoordinator(
                     channelError = null,
                 )
             }
-            desiredConfig?.let { host.onConnectionSucceeded(it) }
+            desiredConfig?.let { host.onConnectionSucceeded(it, rememberEndpoint) }
             channelRestore.endRestore()
             channelRestore.seedFromCurrentChannel(host.mutableState.value.snapshot.currentChannelId)
             scheduleStableConnectionReset(listener)

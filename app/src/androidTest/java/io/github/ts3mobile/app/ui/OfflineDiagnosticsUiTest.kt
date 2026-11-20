@@ -7,8 +7,8 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import io.github.ts3mobile.app.service.AudioDiagnosticStatus
@@ -28,7 +28,7 @@ class OfflineDiagnosticsUiTest {
                 audioDiagnostics = AudioDiagnosticStatus(savedSamples = 7, sessions = 1, lastPersistedTimeMs = 1_700_000_000_000),
             )
         rule.setContent { fixture.Render() }
-        rule.onNodeWithContentDescription("More options").performClick()
+        rule.openAppSettings()
         rule.onNodeWithText("Diagnostics").performScrollTo().performClick()
         rule.onNodeWithText("Save file").performScrollTo().performClick()
         rule.onNodeWithText("Copy").performScrollTo().performClick()
@@ -45,7 +45,7 @@ class OfflineDiagnosticsUiTest {
     @Test fun freshInstallationDisablesMarkUntilAnAudioSessionExists() {
         val fixture = UiFixture()
         rule.setContent { fixture.Render() }
-        rule.onNodeWithContentDescription("More options").performClick()
+        rule.openAppSettings()
         rule.onNodeWithText("Diagnostics").performScrollTo().performClick()
         rule.onNodeWithText("Mark an audio interruption").performScrollTo().assertIsNotEnabled()
     }
@@ -60,10 +60,11 @@ class OfflineDiagnosticsUiTest {
                     ),
             )
         rule.setContent { fixture.Render(dark = true, locale = "zh-CN", fontScale = 1.8f) }
-        rule.onNodeWithContentDescription("更多选项").performClick()
+        rule.openAppSettings("更多选项", "设置")
         rule.onNodeWithText("诊断").performScrollTo().performClick()
         rule.onNodeWithText("保存文件").performScrollTo().assertIsDisplayed()
-        rule.onNode(isDialog()).captureToImage().asAndroidBitmap().let { bitmap ->
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onRoot().captureToImage().asAndroidBitmap().let { bitmap ->
             File(rule.activity.filesDir, "offline-audio-zh-large.png").outputStream().use {
                 bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
             }

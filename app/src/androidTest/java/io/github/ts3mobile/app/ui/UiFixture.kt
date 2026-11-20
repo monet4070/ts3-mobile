@@ -117,6 +117,8 @@ internal class UiFixture(connected: Boolean = false) {
         dark: Boolean = false,
         locale: String = "en",
         fontScale: Float = 1f,
+        onShareServerInvite: (() -> Unit)? = null,
+        onShareChannelInvite: (() -> Unit)? = null,
         saveBookmark: (
             ServerBookmark,
         ) -> Unit = { bookmarks.value = BookmarkState(BookmarkCodec.save(bookmarks.value.entries, it), loading = false) },
@@ -154,6 +156,8 @@ internal class UiFixture(connected: Boolean = false) {
             Ts3MobileTheme(darkTheme = dark) {
                 MainScreen(
                     onCheckUpdates = { updateChecks++ },
+                    onShareServerInvite = onShareServerInvite,
+                    onShareChannelInvite = onShareChannelInvite,
                     form = form.value,
                     history = history.value,
                     historyError = historyError.value,

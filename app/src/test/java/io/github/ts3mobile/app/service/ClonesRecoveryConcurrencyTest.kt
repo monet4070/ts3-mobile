@@ -181,7 +181,7 @@ class ClonesRecoveryConcurrencyTest {
 
         override fun applySelectedPlaybackMuted() = Unit
 
-        override fun startPlayback() = Unit
+        override suspend fun startPlayback() = Unit
 
         override fun stopPlayback() = Unit
 
@@ -208,7 +208,10 @@ class ClonesRecoveryConcurrencyTest {
             events += kind to code
         }
 
-        override fun onConnectionSucceeded(config: ServerConfig) {
+        override fun onConnectionSucceeded(
+            config: ServerConfig,
+            rememberEndpoint: Boolean,
+        ) {
             successes.incrementAndGet()
         }
     }

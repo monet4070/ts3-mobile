@@ -79,6 +79,13 @@ internal class MicrophoneController(
         pushToTalkPressed.set(false)
     }
 
+    suspend fun isInputReleasedForTrial(): Boolean =
+        withContext(captureDispatcher) {
+            transmitMutex.withLock {
+                !closed.get() && state.value.microphoneTrialAccess == MicrophoneTrialAccess.READY && microphone.isReleased
+            }
+        }
+
     fun setAppVisible(visible: Boolean) {
         appVisible.set(visible)
         if (visible) reconcile()

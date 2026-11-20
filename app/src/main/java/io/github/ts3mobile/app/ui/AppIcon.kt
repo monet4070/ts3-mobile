@@ -29,6 +29,7 @@ internal enum class UiIcon(
     Mic(R.drawable.ic_lucide_mic),
     MicOff(R.drawable.ic_lucide_mic_off),
     Sliders(R.drawable.ic_lucide_sliders_horizontal),
+    Settings(R.drawable.ic_settings),
     Users(R.drawable.ic_lucide_users_round),
     Activity(R.drawable.ic_lucide_activity),
     Check(R.drawable.ic_lucide_check),

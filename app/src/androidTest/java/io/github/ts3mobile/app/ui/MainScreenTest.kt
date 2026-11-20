@@ -108,7 +108,8 @@ class MainScreenTest {
         rule.onNodeWithText("Diagnostics").assertDoesNotExist()
         rule.onNodeWithContentDescription("More options").performClick()
         savePopupPreview("diagnostics-menu-open")
-        rule.onNodeWithText("Diagnostics").performClick()
+        rule.onNodeWithText("Settings").performClick()
+        rule.onNodeWithText("Diagnostics").performScrollTo().performClick()
         rule.onNodeWithText("Copy").performClick()
         rule.runOnIdle {
             assertEquals(

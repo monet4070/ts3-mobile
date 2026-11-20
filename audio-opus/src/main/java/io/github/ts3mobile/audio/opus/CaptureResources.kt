@@ -11,7 +11,7 @@ import kotlin.math.max
 
 internal class CaptureResources private constructor(
     val record: AudioRecord,
-    val encoder: NativeOpusEncoder,
+    val encoder: NativeOpusEncoder?,
     val denoiser: NativeRnNoiseProcessor,
     val effects: MicrophoneAudioEffects,
 ) : AutoCloseable {
@@ -41,7 +41,7 @@ internal class CaptureResources private constructor(
         val recordReleased = cleanup("release microphone") { record.release() }
         val effectsReleased = cleanup("release capture effects", effects::close)
         val denoiserReleased = cleanup("release denoiser", denoiser::close)
-        val encoderReleased = cleanup("release encoder", encoder::close)
+        val encoderReleased = encoder == null || cleanup("release encoder", encoder::close)
         released = recordReleased && effectsReleased && denoiserReleased && encoderReleased
     }
 
@@ -50,10 +50,11 @@ internal class CaptureResources private constructor(
         fun create(
             preferred: AudioDeviceInfo?,
             settings: MicrophoneSettings,
+            encodeAudio: Boolean = true,
         ): CaptureResources {
             val rollback = ArrayDeque<AutoCloseable>()
             try {
-                val encoder = NativeOpusEncoder().also(rollback::addFirst)
+                val encoder = if (encodeAudio) NativeOpusEncoder().also(rollback::addFirst) else null
                 val denoiser = NativeRnNoiseProcessor().also(rollback::addFirst)
                 val minimum = AudioRecord.getMinBufferSize(48_000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
                 check(minimum > 0) { "Unable to determine microphone buffer size" }

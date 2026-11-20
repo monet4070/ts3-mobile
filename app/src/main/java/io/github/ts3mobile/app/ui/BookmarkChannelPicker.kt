@@ -7,9 +7,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,7 +46,7 @@ internal fun BookmarkChannelPicker(
                 Text(stringResource(R.string.bookmark_channel_result_limit), style = MaterialTheme.typography.bodySmall)
                 LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     items(choices, key = { it.id }) { choice ->
-                        TextButton(
+                        OutlinedButton(
                             onClick = { onChoose(choice.id) },
                             modifier = Modifier.fillMaxWidth().testTag("bookmark_channel_${choice.id}"),
                         ) { Text(choice.path, Modifier.fillMaxWidth()) }
@@ -55,6 +55,6 @@ internal fun BookmarkChannelPicker(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+        confirmButton = { OutlinedButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
     )
 }

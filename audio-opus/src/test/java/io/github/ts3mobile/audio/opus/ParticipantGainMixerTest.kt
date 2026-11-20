@@ -92,6 +92,20 @@ class ParticipantGainMixerTest {
     }
 
     @Test
+    fun preservesAttenuationAfterTheGainRampBelowTheLimiterCeiling() {
+        val mixer = ParticipantGainMixer()
+        val samples = ShortArray(480) { index -> if (index % 2 == 0) 10_000 else -10_000 }
+        val original = ParticipantGainMixer.Input(1, samples, 1f)
+        val attenuated = original.copy(gain = 0.315f)
+
+        assertArrayEquals(samples, mixer.mix(listOf(original), samples.size))
+        repeat(2) { mixer.mix(listOf(attenuated), samples.size) }
+        val output = mixer.mix(listOf(attenuated), samples.size)
+
+        assertArrayEquals(ShortArray(samples.size) { index -> if (index % 2 == 0) 3_150 else -3_150 }, output)
+    }
+
+    @Test
     fun sumsMultipleTalkersAtUnityAndLimitsBoostedSamples() {
         val normalized =
             ParticipantGainMixer().mix(

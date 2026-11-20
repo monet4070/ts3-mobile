@@ -1,6 +1,7 @@
 # 应用内检查更新
 
-日期：2026-11-09。状态：本地实现与验证完成，尚未提交、合并或发布。
+日期：2026-11-09。状态：本地实现与验证完成，已随 1.1.0（versionCode 15，2026-11-09）发布。
+本记录保留当时的验证范围；后续加固见 [1.1.0 后续加固](POST_1_1_0_HARDENING_2026-11-11_ZH.md)。
 
 ## 用户行为
 
@@ -26,7 +27,7 @@
 
 较大的 MainActivity/MainScreen 只增加导航入口；状态、HTTPS、JSON、版本策略、独立偏好
 分别位于 `app/updates` 的小文件，不扩展连接服务。超过 300 行的入口拆分评估与后续迁移
-计划见 [ADR 0034](../decisions/0034-manual-update-checks.md)。此前 UI、蓝牙修复继续保留。
+计划见 [ADR 0036](../decisions/0036-manual-update-checks.md)。此前 UI、蓝牙修复继续保留。
 
 新偏好仅为独立 `ts3_updates` DataStore 的 `include_prereleases`，不修改既有身份、收藏、
 连接表单、麦克风或外观格式。主界面新增回调有默认值。应用 ID、版本号、签名配置、权限、

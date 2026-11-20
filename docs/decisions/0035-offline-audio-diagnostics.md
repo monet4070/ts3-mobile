@@ -1,6 +1,8 @@
 # ADR 0035: bounded offline receive/playback diagnostics
 
-Date: 2026-11-09. Status: accepted for the local development candidate; not a published release.
+Date: 2026-11-09. Status: accepted; shipped in 1.1.0 (versionCode 15). The
+post-1.1.0 hardening (asynchronous archive load, exported retention limits) is
+recorded in [the hardening note](../testing/POST_1_1_0_HARDENING_2026-11-11_ZH.md).
 
 ## Context
 

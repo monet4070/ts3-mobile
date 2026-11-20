@@ -3,6 +3,9 @@
 更新日期：2026-11-09。当前版本 **1.1.0 / versionCode 15**；确切最终包门禁、签名、
 Xiaomi 14 升级与云端 CI 以 [1.1.0 发布验收](release/1.1.0/CHECKLIST.md) 为准。
 
+[中英文界面截图](images/README.md)仅说明 1.1.0 的界面，不扩大下文的真机、通话或升级验收范围。
+The localized screenshots illustrate the UI and do not extend the tested release scope.
+
 1.1.0 集成先前离线/模拟器候选及后续 UI、蓝牙、更新检查和离线诊断。
 此前 UI/更新检查通过 421 项应用 JVM 与 23 项定向 Android 回归；离线诊断在 Xiaomi 14 /
 Android 16、移动网络、蓝牙下完成正常断开、重启恢复和文件导出，用户曾反馈暂时流畅。
