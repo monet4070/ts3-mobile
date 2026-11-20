@@ -4,7 +4,7 @@
 
 This guide covers **1.2.0** (versionCode 16). See the [release notes](release/1.2.0/RELEASE_NOTES.md)
 for the new playback profiles, Bluetooth protection, invites and listening controls. The
-[English interface tour](../README.md#interface-tour) shows the previous 1.1.0 interface.
+[English interface tour](../README.md#interface-tour) shows the 1.2.0 settings, playback profiles and microphone test.
 
 ## Connect and join
 

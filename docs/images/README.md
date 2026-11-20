@@ -1,5 +1,20 @@
 # Documentation images / 文档截图
 
+## 1.2.0 release UI / 1.2.0 正式版界面
+
+The current README tour uses [`1.2.0/en/`](1.2.0/en/) and
+[`1.2.0/zh-CN/`](1.2.0/zh-CN/). Both show the main Settings groups, Voice playback
+profiles and the local microphone test dialog. The screenshots are cropped to the
+relevant controls without the system status bar.
+
+Both sets were captured on a Xiaomi 14 running Android 16 with TS3 Mobile 1.2.0
+(versionCode 16). No server was contacted and microphone capture was not started.
+Screens with saved servers, nicknames or identities were not included.
+
+当前 README 导览使用 [`1.2.0/en/`](1.2.0/en/) 和 [`1.2.0/zh-CN/`](1.2.0/zh-CN/)。
+两套截图均只保留设置主要分组、语音播放档位及本机试麦对话框，已裁去系统状态栏。截图来自运行 1.2.0（versionCode 16）的
+小米 14（Android 16）；未连接服务器、未开启采集，也不包含已保存的服务器、昵称或身份页面。
+
 ## 1.1.0 release UI / 1.1.0 正式版界面
 
 Use [`1.1.0/en/`](1.1.0/en/) in English documentation and
