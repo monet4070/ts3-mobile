@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | 项目介绍与版本状态 | [README](../README_ZH.md) | [README](../README.md) |
 | 日常操作 | [使用指南](USER_GUIDE_ZH.md) | [User guide](USER_GUIDE.md) |
-| 1.1.0 界面截图 | [简体中文](images/1.1.0/zh-CN/) | [English](images/1.1.0/en/) |
+| 1.2.0 界面截图 | [简体中文](images/1.2.0/zh-CN/) | [English](images/1.2.0/en/) |
 | 安装、升级、签名 | [双语说明](INSTALLATION.md) | [Bilingual guide](INSTALLATION.md) |
 | 故障排查 | [常见问题](TROUBLESHOOTING_ZH.md) | [Troubleshooting](TROUBLESHOOTING.md) |
 | 设备、协议与验证覆盖 | [兼容性说明](COMPATIBILITY.md) | [Compatibility](COMPATIBILITY.md) |

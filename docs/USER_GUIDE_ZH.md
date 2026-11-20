@@ -3,7 +3,7 @@
 [English](USER_GUIDE.md) · [安装与升级](INSTALLATION.md) · [常见问题](TROUBLESHOOTING_ZH.md)
 
 本指南对应 **1.2.0**（versionCode 16）。语音播放档位、蓝牙首播保护、邀请与通知收听控制见
-[更新说明](release/1.2.0/RELEASE_NOTES_ZH.md)；[简体中文界面导览](../README_ZH.md#认识界面)保留 1.1.0 截图供参考。
+[更新说明](release/1.2.0/RELEASE_NOTES_ZH.md)；[简体中文界面导览](../README_ZH.md#认识界面)展示 1.2.0 的设置、语音档位和本机试麦。
 
 ## 连接服务器
 

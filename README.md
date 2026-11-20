@@ -10,10 +10,11 @@
 
 ## Interface tour
 
-![TS3 Mobile 1.1.0 in English: connection form, Channels tab and More options menu](docs/images/1.1.0/en/interface-overview.webp)
+| Settings | Voice playback | Local microphone test |
+| :---: | :---: | :---: |
+| ![Dedicated settings page with grouped voice and notification controls](docs/images/1.2.0/en/settings.png) | ![Voice playback with Balanced and Stability first options](docs/images/1.2.0/en/voice-playback.png) | ![Microphone settings with the local test confirmation](docs/images/1.2.0/en/microphone-test.png) |
 
-From left to right: the connection form, an example channel session, and the
-disconnected More options menu. Server and member data are synthetic.
+Captured on a Xiaomi 14 running Android 16 and the 1.2.0 release, without connecting to a server or starting the microphone test.
 
 TS3 Mobile is an open-source, unofficial client with a warm cream/terracotta interface, outline icons,
 English and Simplified Chinese. Connect directly to your TeamSpeak server; there is no project account
@@ -40,13 +41,15 @@ Stability first gives late packets more time to arrive, but cannot recover lost 
 
 | What you want to do | What the app provides |
 | --- | --- |
-| Talk with teammates | Push-to-talk, continuous, volume gate and Off; input gain, noise suppression and device AEC |
+| Talk with teammates | Push-to-talk, continuous, volume gate and Off; one-tap input gain and a local microphone test |
 | Browse and join channels | Channel hierarchy, expandable members, public/password-protected joins and local search |
+| Invite teammates | Open, paste or share server and channel invites; preview the destination before connecting |
 | Send text | Channel/private chat, separate drafts, unread counts, conversation switching and long-press copy |
 | Get someone's attention | A member-list poke icon, optional reason, in-app notices and generic background notifications |
 | Keep servers handy | Up to 50 named bookmarks, Connect, Edit, Delete, optional default channel and encrypted passwords |
-| Control listening | Playback mute, per-user mute/volume and Android's available audio devices |
-| Step away or use it in background | Away/message, reconnect handling, background checks and notification disconnect |
+| Control listening | Live playback profiles, Bluetooth first-utterance protection, playback mute and per-user volume |
+| Listen while watching or playing | Voice shares media volume without taking audio focus or switching Android into call mode |
+| Step away or use it in background | Away status, reconnect handling, background checks and notification listening/disconnect actions |
 | Keep data local | Separately encrypted identity/form/bookmarks; no ads, analytics SDK or project relay |
 
 ## Installation
@@ -58,7 +61,7 @@ Stability first gives late packets more time to arrive, but cannot recover lost 
 4. Allow installation from that source if Android asks. The app does not
    automatically check for or install later updates.
 
-Open **More options → Check for updates**. Stable releases
+Open **More options → Settings → Check for updates**. Stable releases
 are the default; **Include prereleases** is an optional, remembered choice. The page
 shows the version and release notes, and **Download APK** opens the official asset
 in your browser. Checks run only when opening the page, changing the channel or
@@ -66,7 +69,6 @@ checking again; there is no background polling or automatic installation. Update
 are compared by Android versionCode, including same-name repair releases.
 The close action stays at the top. Release notes render Markdown with a six-line
 preview; the full reader keeps **Show less** visible and returns to the same page position.
-See the [1.1.0 update screen](docs/images/1.1.0/en/updates.webp) when the installed version is current.
 
 **Android 8.0 (API 26)+** is required. The universal APK contains arm64-v8a, armeabi-v7a, x86
 and x86_64. Installability does not mean every device/version has been tested; see
@@ -75,7 +77,7 @@ and x86_64. Installability does not mean every device/version has been tested; s
 **Keep the existing app when upgrading.** An in-place update needs the same application ID and
 compatible signing. Do not fix a conflict by immediately uninstalling or clearing storage: that removes
 the local identity, bookmarks and encrypted form. 1.1.0 adds encrypted identity
-export/import and local rollback under More options → Identity and backups. An identity backup does not include bookmarks or the connection form. Separate
+export/import and local rollback under **More options → Settings → Identity and backups**. An identity backup does not include bookmarks or the connection form. Separate
 TS3 Mobile UI test packages have their own data and do not migrate into the release. See [installation
 and upgrades](docs/INSTALLATION.md) for checksums and certificates.
 
@@ -109,6 +111,13 @@ Server and channel passwords are different. If connection fails, check the voice
 permissions before retrying. Follow connection-limit guidance rather than repeatedly submitting the same
 refused identity.
 
+### Join or share an invite
+
+Open a TeamSpeak invite link or tap **Paste invite** on the connection page. TS3 shows the
+server and any channel in the link before you confirm. It does not disconnect an existing
+session or connect automatically. When connected, use **More options → Share invite** to share
+the current server or channel. Passwords and identity data are not included in shared links.
+
 ## Interface controls
 
 | Area | What it is for |
@@ -118,7 +127,7 @@ refused identity.
 | Connected server card | Server name, channel/online counts and Disconnect |
 | Audio row below the card | Left to right: route, channel/user search, Away, playback mute |
 | Channels / Users / Chat tabs | Channel tree, user list and text conversations; Chat has an unread badge |
-| Microphone controls | Mode selection, the talk button and listening/transmitting status |
+| Microphone controls | Mode selection, push-to-talk, live status and an input-volume shortcut |
 
 Icon reference: **headphones + arrow** selects a route; **magnifier** searches; **coffee cup + clock**
 opens Away; **speaker** controls listening; the member's **hand icon** opens Poke; a user's **sliders
@@ -149,23 +158,15 @@ chat keyboard open, the compact voice bar's microphone-off icon can stop capture
 
 ### Adjust input and output
 
-Open **More options → Microphone settings**. Input gain ranges from 0–200%; you can switch RNNoise and
-device echo cancellation, and adjust the gate threshold. Lower thresholds let quieter sounds trigger it.
-Lower it if soft speech is missed; raise it if background noise triggers transmission. Settings apply
-immediately. Opening the dialog does not start capture. Saved tuning survives service/process recreation.
+Tap the **microphone icon in the voice controls** to open the vertical input-volume slider.
+For input gain (0–200%), RNNoise, device echo cancellation and the live gate threshold, use
+**More options → Settings → Microphone settings**. Saved tuning survives restarting the app.
+Opening either control does not enable the microphone.
 
-The tuning dialog shows a live input level in the tuning dialog while capture is
-already active. It uses the gate's post-denoise/post-gain RMS before the limiter,
-updates at most ten times per second, and shows the actual gate/sending state.
-The dialog's **Hold to talk** sends to the current channel through normal PTT;
-release, cancel, close or switch away to stop holding. Opening settings never
-starts capture. Continuous/Gate mode has a Stop microphone action. Levels are
-cleared when capture, routing or the observation ends and are not saved.
-
-The tuning dialog places the live gate level and threshold on one scale;
-drag the threshold marker while watching the input. Tuning groups gate, input gain
-and sound processing. Chat uses left/right bubbles, and search rows group names,
-channel context and Join actions.
+Choose **Test microphone** on that page for a local level and gate check before or after connecting.
+While connected, set the microphone mode to **Off** first. The local test stops after 30 seconds and
+does not send or save audio. This is separate from **Hold to talk**, which does transmit to
+the current channel.
 
 TS3 voice mixes with videos, music, and games without requesting audio focus or switching Android into
 call mode. Use media volume and the in-app per-person controls to adjust incoming voice.
@@ -173,6 +174,8 @@ Tap the audio row's device name to choose a playback route. TS3 selects availabl
 headsets at session start and on hot-plug, and prefers the phone microphone with Bluetooth output
 instead of opening a Bluetooth call channel. A removed device or Bluetooth route loss mutes listening
 to prevent speaker playback; check the route and unmute manually after reconnecting.
+Bluetooth first-utterance protection gives a confirmed output time to wake from standby
+before rebuilding the track. It does not add a fixed delay to an output that's already ready.
 Android and the headset still determine the actual routing and acoustic performance.
 Playback mute and microphone Off serve different purposes. Prefer headphones if speaker echo occurs;
 device AEC status is not a guarantee of equal acoustic performance on every phone.
@@ -227,7 +230,7 @@ separate **Private message alerts** channel. The first two-second window creates
 a generic summary; updates to the existing notification stay silent.
 One conversation opens that chat; several open a conversation list without
 marking messages read. Stale clicks only open the app. Foreground tabs keep unread
-badges. Open **More options → Private message notifications** for system settings;
+badges. Open **More options → Settings → Private message notifications** for system settings;
 Android permission, channel settings and Do Not Disturb control delivery and sound.
 
 ### Poke a member
@@ -269,38 +272,32 @@ the microphone controls if leaving an active mic unattended.
 
 Home, switching apps and screen lock retain the session. Ordinary network loss can trigger recovery;
 background reconnect restores listening first, while stopped capture may need a return to the
-foreground. **More options → Background voice check** shows battery/wake state, system-settings links
+foreground. **More options → Settings → Background voice check** shows battery/wake state, system-settings links
 and optional CPU-awake. This cannot override all Android/vendor restrictions or guarantee indefinite
 use.
 
-Leave with Disconnect in the app or notification. Task swiping can kill the process before an exit
+The connection notification can **Mute listening**, **Resume listening** or **Disconnect**.
+If the headset disconnects and safety mute takes effect, return to the app to check the route before
+resuming. To leave, use **Disconnect** in the app or notification. Task swiping can kill the process before an exit
 callback, leaving the server to time out the session. For identity connection-limit refusals, follow the
 minimum 60-second wait/manual retry guidance; cleanup can take longer and repeated attempts may trigger
 bans. Reopening does not connect automatically.
 
 ## Settings and the More menu
 
-**1.2.0:** More options keeps Share invite, Away and status, Find
-channels and users, Server bookmarks, and Settings. Settings groups Voice,
-Notifications, Personalization and identity, and Help and about. Opening it does
-not disconnect. See the [development controls](docs/testing/NEXT_PHASE_FEATURES_2026-11-20_ZH.md#development-controls).
-The table and screenshots below describe stable 1.1.0.
+The **More options** menu keeps session actions at hand: **Share invite**, **Away and status**,
+**Find channels and users**, and **Server bookmarks**. Availability depends on the connection state.
+Open **Settings** from the same menu without leaving the server or channel.
 
-| Item | Purpose |
+| Settings section | What it contains |
 | --- | --- |
-| Away and status | Away/message and server-state synchronization; connected only |
-| Find channels and users | Search the loaded snapshot; connected only |
-| Server bookmarks | Manage saved servers, including while disconnected |
-| Microphone settings | Input gain, RNNoise, device AEC and gate threshold |
-| Background voice check | Battery restrictions, CPU-awake and Android settings |
-| Diagnostics | Inspect local connection/audio history, mark interruptions and copy or save JSON reports |
-| Check for updates | Stable/prerelease choice, Markdown notes and explicit browser download |
-| Identity and backups | Verified encrypted identity export, confirmed import and local rollback |
-| Appearance | Saved Light, Dark or System |
-| Give the project a Star | Open GitHub externally; starring remains your choice |
+| Voice | **Microphone settings** for tuning and local testing; **Voice playback** for Balanced or Stability first |
+| Notifications | **Private message notifications**, managed by Android |
+| Personalization and identity | **Appearance** and **Identity and backups** |
+| Help and about | **Background voice check**, **Diagnostics**, **Check for updates**, and the GitHub project link |
 
 The app currently defaults to the warm light interface. English or Simplified
-Chinese follows Android's system/app locale. **More options → Appearance** offers
+Chinese follows Android's system/app locale. **Settings → Appearance** offers
 Light, Dark and System; an unset preference stays Light.
 There is no in-app language switch.
 
@@ -369,7 +366,7 @@ backup and restore workflows follow below.
 
 
 Identity backups are encrypted `.ts3mbak` files in the TS3 Mobile format. In
-**More options → Identity and backups**, finish connection tasks, enter and confirm
+**More options → Settings → Identity and backups**, finish connection tasks, enter and confirm
 a 12–1,024-character passphrase, and choose a new file in the system picker.
 The page reports **Backup verified** only after closing, reopening, authenticating
 and checking the original identity. Unverified files may be incomplete: retry to
@@ -396,7 +393,7 @@ old unreadable ciphertext as evidence rather than a usable rollback.
 
 
 1.1.0 adds [offline audio diagnostics](docs/testing/OFFLINE_AUDIO_DIAGNOSTICS_2026-11-09_ZH.md).
-Use More options → Diagnostics to mark an interruption and save the report after testing, without USB.
+Use **More options → Settings → Diagnostics** to mark an interruption and save the report after testing, without USB.
 Up to 120 samples (normally about ten minutes) and 64 events are retained for each of the last three audio
 sessions, including after reopening. No audio is recorded. Abrupt exits or delayed/failed writes can lose
 the final interval. This helps collect evidence; it does not prove weak-network interruptions are fixed.
