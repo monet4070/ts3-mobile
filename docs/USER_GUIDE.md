@@ -2,12 +2,9 @@
 
 [简体中文](USER_GUIDE_ZH.md) · [Install and upgrade](INSTALLATION.md) · [Troubleshooting](TROUBLESHOOTING.md)
 
-This guide describes stable **1.1.0** (2026-11-09, versionCode 15). See the
-[release acceptance](release/1.1.0/CHECKLIST.md) for tested coverage and the
-[English interface tour](../README.md#interface-tour) for the connection, channels and More options screens.
-
-For the unreleased settings page, invite, local microphone test and listening controls, see the
-[development controls](testing/NEXT_PHASE_FEATURES_2026-11-20_ZH.md#development-controls).
+This guide covers **1.2.0** (versionCode 16). See the [release notes](release/1.2.0/RELEASE_NOTES.md)
+for the new playback profiles, Bluetooth protection, invites and listening controls. The
+[English interface tour](../README.md#interface-tour) shows the previous 1.1.0 interface.
 
 ## Connect and join
 

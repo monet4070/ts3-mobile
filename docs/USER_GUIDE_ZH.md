@@ -2,10 +2,8 @@
 
 [English](USER_GUIDE.md) · [安装与升级](INSTALLATION.md) · [常见问题](TROUBLESHOOTING_ZH.md)
 
-本指南对应 **1.1.0** 稳定版（2026-11-09，versionCode 15）。验证范围见[发布验收](release/1.1.0/CHECKLIST.md)；
-连接、频道与更多选项的截图见[简体中文界面导览](../README_ZH.md#认识界面)。
-
-尚未发布的独立设置页、邀请、本机试麦与通知收听按钮见[开发版操作](testing/NEXT_PHASE_FEATURES_2026-11-20_ZH.md#开发版操作)。
+本指南对应 **1.2.0**（versionCode 16）。语音播放档位、蓝牙首播保护、邀请与通知收听控制见
+[更新说明](release/1.2.0/RELEASE_NOTES_ZH.md)；[简体中文界面导览](../README_ZH.md#认识界面)保留 1.1.0 截图供参考。
 
 ## 连接服务器
 
