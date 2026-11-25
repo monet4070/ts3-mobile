@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.ts3mobile.app.ManualInstrumentation
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.audio.opus.AudioDiagnosticEventKind
 import io.github.ts3mobile.audio.opus.AudioDiagnosticsObserver
@@ -50,6 +51,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
+@ManualInstrumentation
 class LocalChannelFilesAndroidProbeTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 

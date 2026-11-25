@@ -26,6 +26,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.ts3mobile.app.ManualInstrumentation
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.chat.ChatBinding
 import io.github.ts3mobile.app.chat.ChatMessage
@@ -57,6 +58,7 @@ import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
+@ManualInstrumentation
 class LocalChatAttachmentAndroidProbeTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 

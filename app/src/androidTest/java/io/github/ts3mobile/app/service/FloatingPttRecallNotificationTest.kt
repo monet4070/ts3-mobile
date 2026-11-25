@@ -18,6 +18,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.ts3mobile.app.MainActivity
+import io.github.ts3mobile.app.ManualInstrumentation
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.floatingPttRecallIntent
 import io.github.ts3mobile.app.floatingPttSettingsIntent
@@ -26,6 +27,7 @@ import io.github.ts3mobile.app.probe.FloatingPttActivity
 import io.github.ts3mobile.app.probe.autoShowFloatingPtt
 import io.github.ts3mobile.protocol.SessionSnapshot
 import io.github.ts3mobile.protocol.Ts3Participant
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -36,10 +38,22 @@ import org.junit.Test
 
 class FloatingPttRecallNotificationTest {
     @get:Rule val rule = createEmptyComposeRule()
+
+    @get:Rule val notifications = NotificationCleanup(SessionNotifications.NOTIFICATION_ID)
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
     private val automation = instrumentation.uiAutomation
     private val label = context.getString(R.string.notification_show_floating_ptt)
+    private var originalAccessibilityFlags: Int? = null
+
+    @After fun restoreNotificationShadeFixture() {
+        val flags = originalAccessibilityFlags ?: return
+        try {
+            runShell("cmd statusbar collapse")
+        } finally {
+            automation.serviceInfo = automation.serviceInfo.apply { this.flags = flags }
+        }
+    }
 
     @Test fun connectedNotificationOffersAPrivateActivityAndHidesTheActionWhenIneligible() {
         assumeTrue(Build.VERSION.SDK_INT >= 34)
@@ -72,10 +86,13 @@ class FloatingPttRecallNotificationTest {
         }
     }
 
+    @ManualInstrumentation
     @Test fun tappingTheSystemNotificationRecallsTheOverlayWithoutOpeningTheMicrophone() {
         assumeTrue(Build.VERSION.SDK_INT >= 34)
         assumeTrue(InstrumentationRegistry.getArguments().getString("exercisePttRecall") == "true")
         assumeTrue(Settings.canDrawOverlays(context))
+        originalAccessibilityFlags = automation.serviceInfo.flags
+        runShell("cmd statusbar collapse")
         automation.serviceInfo =
             automation.serviceInfo.apply {
                 flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
@@ -110,6 +127,7 @@ class FloatingPttRecallNotificationTest {
         }
     }
 
+    @ManualInstrumentation
     @Test fun homeShowsTheOptedInOverlaySilentlyAndReturningHidesIt() {
         assumeTrue(Build.VERSION.SDK_INT >= 34)
         assumeTrue(InstrumentationRegistry.getArguments().getString("exercisePttRecall") == "true")

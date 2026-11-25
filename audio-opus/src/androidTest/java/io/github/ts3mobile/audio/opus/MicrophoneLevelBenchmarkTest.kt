@@ -10,6 +10,7 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 /** Synthetic, offline timing/allocation probe; no AudioRecord, speaker or network. */
+@ManualInstrumentation
 class MicrophoneLevelBenchmarkTest {
     private data class Measurement(val p95Nanos: Long, val allocations: Int, val encodedFrames: Int)
 

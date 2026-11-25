@@ -28,6 +28,7 @@ import kotlin.math.max
  * These measurements characterize a signal; they do not assert perceived quality.
  */
 @RunWith(AndroidJUnit4::class)
+@ManualInstrumentation
 class MicrophoneSignalProbeTest {
     @Test
     fun processesProvidedSpeechWithProductionDenoiser() {

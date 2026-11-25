@@ -95,15 +95,31 @@ test evidence to its dated record; do not present it as a new run. GitHub CI ski
 the paths listed in its documentation-only filters. Publishing uses the exact
 reviewed source commit and final signed APK, as described in the release pack.
 
+Keep independent features and fixes in separate, buildable commits with their
+regressions. Land each slice through CI before stacking unrelated work on it.
+
 Use `.\gradlew.bat ktlintFormat` only for a focused formatting change, then
 review the complete diff before committing it.
 
-For UI changes, run the offline Compose regression/preview suite on an Android
-emulator (no TeamSpeak server or credentials are required):
+On a disposable Android emulator, run the same discovery-based suites used by
+CI (no TeamSpeak server or credentials are required):
 
-```powershell
-.\gradlew.bat :app:connectedDebugAndroidTest
+```sh
+./gradlew :audio-opus:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=io.github.ts3mobile.audio.opus.ManualInstrumentation
+./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=io.github.ts3mobile.app.ManualInstrumentation
 ```
+
+New instrumented regressions are discovered automatically. Mark a class or
+method `ManualInstrumentation` only when it requires a dedicated fixture,
+experiment, hardware/timing run or system-policy preparation. Dedicated probe
+commands select their own classes without the exclusion; for example the
+identity crash harness still runs separately in CI.
+
+Notification tests that publish a card clear and wait for their own ID before
+and after execution. Restore any changed global state (DND, IME, overlay or
+accessibility settings) even on failure. Run tests that revoke runtime
+permissions or modify persistent channel policy on a dedicated, freshly
+prepared emulator: revocation can terminate the app and instrumentation.
 
 The preview tests write PNGs into the app's external `ui-previews` directory.
 CI also runs the main-tab chat navigation, channel/private chat, bookmark

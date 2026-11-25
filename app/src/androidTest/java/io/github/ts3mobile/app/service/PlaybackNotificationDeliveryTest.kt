@@ -15,20 +15,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
 class PlaybackNotificationDeliveryTest {
     @get:Rule val rule = createEmptyComposeRule()
+
+    @get:Rule val notifications = NotificationCleanup(SessionNotifications.NOTIFICATION_ID)
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
     private val manager = context.getSystemService(NotificationManager::class.java)
-
-    @Before fun clearThePreviousBoundFixtureNotification() {
-        manager.cancel(SessionNotifications.NOTIFICATION_ID)
-        rule.waitUntil(5_000) { manager.activeNotifications.none { it.id == SessionNotifications.NOTIFICATION_ID } }
-    }
 
     @Test fun immutableNotificationActionsMuteResumeAndShowRouteCheckWhenProtected() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

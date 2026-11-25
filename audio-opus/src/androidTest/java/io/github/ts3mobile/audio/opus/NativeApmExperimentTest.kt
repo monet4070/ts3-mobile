@@ -17,6 +17,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
+@ManualInstrumentation
 class NativeApmExperimentTest {
     @Test fun concurrentCloseCannotReleaseProcessorDuringNativeCalls() {
         val processor = NativeApmProcessor(false, false)
