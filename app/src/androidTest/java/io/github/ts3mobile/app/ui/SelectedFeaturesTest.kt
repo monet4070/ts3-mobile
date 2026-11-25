@@ -5,10 +5,13 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isToggleable
@@ -18,6 +21,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import io.github.ts3mobile.app.bookmarks.BookmarkState
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
@@ -133,14 +138,16 @@ class SelectedFeaturesTest {
         openMenu("Find channels and users")
         rule.onNodeWithText("Channel, topic or nickname").performTextInput("MORGAN")
         rule.onNodeWithText("Channel, topic or nickname").performImeAction()
-        rule.onNodeWithContentDescription("Join this user’s channel").performClick()
+        rule.onNode(hasScrollToIndexAction() and hasAnyAncestor(isDialog()))
+            .performScrollToNode(hasTestTag("discovery_user_4"))
+        rule.onNodeWithContentDescription("Join this user’s channel").performSemanticsAction(SemanticsActions.OnClick) { it() }
         rule.runOnIdle { assertEquals(listOf(2 to ""), fixture.joins) }
         openMenu("Find channels and users")
         rule.onNodeWithText("Channel, topic or nickname").performTextInput("Private")
         rule.onNodeWithText("Channel, topic or nickname").performImeAction()
-        rule.onNode(hasText("Join") and hasAnyAncestor(isDialog())).performClick()
+        rule.onNode(hasText("Join") and hasAnyAncestor(isDialog())).performSemanticsAction(SemanticsActions.OnClick) { it() }
         rule.onNodeWithText("Channel password").performTextInput("fixture-password")
-        rule.onNode(hasText("Join") and hasAnyAncestor(isDialog())).performClick()
+        rule.onNode(hasText("Join") and hasAnyAncestor(isDialog())).performSemanticsAction(SemanticsActions.OnClick) { it() }
         rule.runOnIdle { assertEquals(3 to "fixture-password", fixture.joins.last()) }
     }
 

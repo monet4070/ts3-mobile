@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
@@ -53,15 +54,13 @@ class PrivateChatPanelTest {
         // Exercise the accessible send action independently of IME window
         // movement; keyboard geometry has its own layout regression below.
         rule.onNodeWithTag("chat_send").assertIsEnabled().performSemanticsAction(SemanticsActions.OnClick) { it() }
-        // Native IME/window animation can outlive Compose idling on a narrow screen.
-        rule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { rule.onNodeWithText("Server accepted").assertIsDisplayed() }.isSuccess
-        }
-        rule.onNodeWithText("Server accepted").assertIsDisplayed()
         rule.runOnIdle {
             assertEquals(listOf(TextTarget.Private(2, "fixture-2")), fixture.sentTargets)
             assertEquals(listOf(" Private 中文😀 | \\ "), fixture.sentBodies)
         }
+        rule.hideKeyboardAndWait()
+        rule.onNodeWithTag("chat_messages").performScrollToIndex(0)
+        rule.onNodeWithText("Server accepted").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun duplicateIdentityClientsRemainVisibleAndPrivateSendStaysUnconfirmed() {

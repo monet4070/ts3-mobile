@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
@@ -59,13 +60,11 @@ class ChatPanelTest {
         // geometry regression below retains its real visibility assertions.
         rule.onNodeWithTag("chat_send").assertIsEnabled().performSemanticsAction(SemanticsActions.OnClick) { it() }
         savePreview("chat-send-keyboard")
-        // IME/window animation is outside Compose idling; retain a bounded visibility assertion.
-        rule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { rule.onNodeWithText("Server accepted").assertIsDisplayed() }.isSuccess
-        }
-        rule.onNodeWithText("Server accepted").assertIsDisplayed()
         rule.runOnIdle { assertEquals(listOf(" 中文😀 | \\ "), fixture.sentBodies) }
-        rule.onNodeWithText(" 中文😀 | \\ ").performTouchInput { longClick() }
+        rule.hideKeyboardAndWait()
+        rule.onNodeWithTag("chat_messages").performScrollToIndex(0)
+        rule.onNodeWithText("Server accepted").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(" 中文😀 | \\ ").performScrollTo().performTouchInput { longClick() }
         rule.onNodeWithText("Copy message").performClick()
         rule.runOnIdle {
             val clipboard = rule.activity.getSystemService(ClipboardManager::class.java)

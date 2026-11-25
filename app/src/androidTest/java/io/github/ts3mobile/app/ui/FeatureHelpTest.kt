@@ -56,7 +56,7 @@ class FeatureHelpTest {
         rule.onNodeWithText("Accept or share an invite").assertIsDisplayed()
         rule.onNodeWithText("Check why voice cuts out").performScrollTo().assertIsDisplayed()
         click("Browse and save channel files")
-        rule.onNodeWithText("Connect first to try this in the app.").assertIsDisplayed()
+        rule.onNodeWithText("Connect first to try this in the app.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Next").assertDoesNotExist()
         rule.onNodeWithText("Go to the connection screen").assertDoesNotExist()
         click("Close tip")
