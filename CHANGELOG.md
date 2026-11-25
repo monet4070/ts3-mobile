@@ -17,7 +17,7 @@ each distributed update.
   若曾改址并连到不受信任的服务器，请核对收藏，必要时联系管理员更换相关口令。
   此修复不会撤回历史认证，也不会批量更改既有收藏或独立连接表单。
 
-## Unreleased — Development Preview
+## Unreleased — 1.3.0 Candidate (versionCode 17)
 
 - Channel files and chat attachments support explicit, read-only downloads. The Users list shows avatars in the existing leading tile and opens a preview on tap.
   Channel member rows keep their voice status icons without an avatar action.

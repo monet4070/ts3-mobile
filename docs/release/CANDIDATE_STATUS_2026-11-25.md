@@ -1,8 +1,8 @@
-# 待发布候选状态 / Candidate status · 2026-11-25
+# 1.3.0 待发布候选 / Candidate status · 2026-11-25
 
 GitHub 最新稳定版仍为 [1.2.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.2.0)
-（2026-11-20，versionCode 16）。下表记录工作区的变更，不代表 `v1.2.0` 安装包获得了这些功能。
-The public stable APK is unchanged. No new version, production signature, tag or Release has been issued.
+（2026-11-20，versionCode 16）。`codex/release-1.3.0` 候选含兼容新功能，因此使用 `1.3.0` 而不是热修版本号；Android `versionCode` 为 `17`。
+These changes are not in the public stable APK. The candidate is not production-signed, tagged or published.
 
 | 能力 / Feature | 待发布标准构建 / Standard candidate | 边界 / Limits |
 | --- | --- | --- |
