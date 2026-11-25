@@ -54,6 +54,11 @@ overlay under the existing immutable tag.
 
 ## Handshake-width fix candidate
 
+For TS3 Mobile 1.3.0, keep `0002` as an opt-in candidate and ship the original
+`ts3mobile-1`. The encoder probe is not a live handshake check. Promote only
+after maintained-fork review and repeated real-server interoperability on a
+separately tagged dependency; never replace `ts3mobile-1` in place.
+
 `0002-handshake-unsigned-width.patch` adjusts only the fixed-width unsigned value
 encoding in the existing handshake. The companion Java probe checks the numeric
 encoder without running a network handshake. It is not packaged in the artifact.
