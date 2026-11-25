@@ -32,6 +32,7 @@ internal enum class AudioDiagnosticEvent {
     ACTUAL_INPUT_DEVICE,
     SYSTEM_MICROPHONE_MUTE,
     FIRST_WRITE_TO_HEAD_US,
+    PLAYBACK_GENERATIONS_MISSED,
 }
 
 /**

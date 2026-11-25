@@ -6,6 +6,8 @@ import io.github.ts3mobile.app.identity.IdentityStoreFixture
 import io.github.ts3mobile.app.identity.IdentityUseGate
 import io.github.ts3mobile.app.identity.IdentityUseState
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
+import io.github.ts3mobile.protocol.ChannelMoveNotSubmittedException
+import io.github.ts3mobile.protocol.ChannelMoveUnconfirmedException
 import io.github.ts3mobile.protocol.ConnectionFailureCategory
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
@@ -279,6 +281,72 @@ class ConnectionCoordinatorTest {
         assertTrue(chat.state.value.canSend)
     }
 
+    @Test fun unconfirmedManualMoveClearsPendingAndOnlyTheMatchingSnapshotClearsItsWarning() {
+        connectEstablished()
+        val listener = checkNotNull(host.session.listener)
+        listener.onSnapshotChanged(ownChannel(1))
+        host.session.joinAction = { throw ChannelMoveUnconfirmedException() }
+
+        coordinator.joinChannel(7, "")
+        host.advance()
+
+        assertEquals(UserMessage.ChannelMoveUnconfirmed(7), host.state.value.channelError)
+        assertNull(host.state.value.switchingChannelId)
+        assertEquals(1, host.state.value.snapshot.currentChannelId)
+        listener.onSnapshotChanged(ownChannel(2))
+        assertEquals(UserMessage.ChannelMoveUnconfirmed(7), host.state.value.channelError)
+        listener.onSnapshotChanged(ownChannel(7))
+        assertNull(host.state.value.channelError)
+        assertEquals(7, chat.state.value.binding?.channelId)
+        assertEquals(listOf(7 to ""), host.session.joinedChannels)
+
+        host.session.joinAction = { throw ChannelMoveNotSubmittedException() }
+        coordinator.joinChannel(9, "")
+        host.advance()
+        assertEquals(UserMessage.ChannelMoveNotSubmitted, host.state.value.channelError)
+        assertEquals(7, host.state.value.snapshot.currentChannelId)
+        coordinator.requestDisconnect()
+        host.advance()
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+    }
+
+    @Test fun unconfirmedRestoreDoesNotAutomaticallyRepeatOnTheNextConnectedAttempt() {
+        host.network.value = true
+        host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
+        host.session.connectAction = { host.session.listener!!.onSnapshotChanged(ownChannel(1)) }
+        host.session.joinAction = { throw ChannelMoveUnconfirmedException() }
+        coordinator.beginConnection(CONFIG.copy(defaultChannelId = 7))
+        host.advance()
+
+        assertEquals(UserMessage.ChannelMoveUnconfirmed(7), host.state.value.channelError)
+        assertNull(host.state.value.switchingChannelId)
+        assertEquals(1, chat.state.value.binding?.channelId)
+        val failed = ConnectionStatus(ConnectionPhase.ERROR, retryable = true)
+        host.session.listener?.onStatusChanged(failed)
+        host.advance()
+
+        assertEquals(2, host.session.connectCalls)
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        assertEquals(listOf(7 to ""), host.session.joinedChannels)
+    }
+
+    @Test fun snapshotBeforeUnconfirmedReplyStillConfirmsTheActualMove() {
+        connectEstablished()
+        host.session.listener?.onSnapshotChanged(ownChannel(1))
+        host.session.joinAction = { channelId ->
+            host.session.listener?.onSnapshotChanged(ownChannel(channelId))
+            throw ChannelMoveUnconfirmedException()
+        }
+
+        coordinator.joinChannel(7, "")
+        host.advance()
+
+        assertNull(host.state.value.channelError)
+        assertNull(host.state.value.switchingChannelId)
+        assertEquals(7, host.state.value.snapshot.currentChannelId)
+        assertEquals(listOf(7 to ""), host.session.joinedChannels)
+    }
+
     @Test fun inviteChannelRefusalKeepsOneConnectionWithoutRecordingEndpoint() {
         host.session.emittedStatusOnConnect = ConnectionStatus(ConnectionPhase.CONNECTED)
         host.session.connectAction = { host.session.listener!!.onSnapshotChanged(ownChannel(1)) }
@@ -436,6 +504,46 @@ class ConnectionCoordinatorTest {
         assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
         assertTrue(host.stopSelfRequested)
         assertTrue(host.removeForegroundNotificationCalls >= 1)
+    }
+
+    @Test
+    fun captureReleaseFailureAbortsManualAttemptUntilInputCanBeReleased() {
+        host.microphoneStopAction = { error("fixture capture still held") }
+        assertTrue(coordinator.beginConnection(CONFIG))
+        host.advance()
+        host.runPendingTeardowns()
+
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        assertEquals(UserMessage.MicrophoneFailed("IllegalStateException"), host.state.value.statusMessage)
+        assertFalse(host.state.value.status.retryable)
+        assertEquals(0, host.identityCalls)
+        assertEquals(0, host.session.connectCalls)
+        assertEquals(1, host.timeline.count { it == "stopMicrophone" })
+        assertEquals(1, host.playbackStops)
+        assertEquals(1, host.routingStops)
+        assertTrue(host.stopSelfRequested)
+
+        host.microphoneStopAction = {}
+        connectEstablished()
+    }
+
+    @Test
+    fun captureReleaseFailureEndsRecoveryWithoutOpeningAnotherSession() {
+        connectEstablished()
+        host.microphoneStopAction = { error("fixture capture still held") }
+        host.network.value = false
+        coordinator.onNetworkChanged(false)
+        host.advance()
+        host.runPendingTeardowns()
+        host.network.value = true
+        coordinator.onNetworkChanged(true)
+        advance(100L)
+
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        assertEquals(UserMessage.MicrophoneFailed("IllegalStateException"), host.state.value.statusMessage)
+        assertEquals(1, host.session.connectCalls)
+        assertEquals(1, host.routingStops)
+        assertTrue(host.stopSelfRequested)
     }
 
     @Test
@@ -1004,6 +1112,24 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun captureReleaseFailureDoesNotSkipRemainingExitCleanup() {
+        connectEstablished()
+        host.microphoneStopAction = { error("fixture capture still held") }
+
+        coordinator.requestDisconnect()
+        host.advance()
+        host.runPendingTeardowns()
+
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(1, host.session.closeCalls)
+        assertEquals(1, host.timeline.count { it == "stopMicrophone" })
+        assertEquals(1, host.playbackStops)
+        assertEquals(1, host.routingStops)
+        assertTrue(host.diagnostics.contains(DiagnosticEventKind.EXIT_CLEANUP_FAILED))
+        assertTrue(host.stopSelfRequested)
+    }
+
+    @Test
     fun audioCleanupThatConsumesTheBudgetDoesNotSkipTheProtocolExit() {
         connectEstablished()
         host.microphoneStopAction = { host.nowMs += EXIT_BUDGET_MS }
@@ -1513,6 +1639,7 @@ class ConnectionCoordinatorTest {
         var stopSelfRequested = false
         var removeForegroundNotificationCalls = 0
         var playbackStops = 0
+        var routingStops = 0
         var microphoneStops = 0
         var manualSessionStarts = 0
         var nowMs = 0L
@@ -1555,7 +1682,9 @@ class ConnectionCoordinatorTest {
 
         override fun startAudioRouting() = Unit
 
-        override fun stopAudioRouting() = Unit
+        override fun stopAudioRouting() {
+            routingStops++
+        }
 
         override fun applySelectedPlaybackMuted() = Unit
 

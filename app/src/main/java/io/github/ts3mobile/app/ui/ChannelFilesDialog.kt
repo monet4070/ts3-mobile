@@ -31,7 +31,11 @@ internal fun ChannelFilesDialog(
     files: ChannelFiles,
     onDismiss: () -> Unit,
 ) {
-    val (transfer, chooseDestination) = rememberVerifiedFileTransfer(files)
+    val (transfer, chooseDestination) = rememberVerifiedFileTransfer(files, files::isCurrent)
+    val dismiss = {
+        transfer.dismiss()
+        onDismiss()
+    }
     var directory by remember(files) { mutableStateOf("/") }
     var refresh by remember(files) { mutableIntStateOf(0) }
     var entries by remember(files) { mutableStateOf<List<ChannelFileEntry>?>(null) }
@@ -56,7 +60,7 @@ internal fun ChannelFilesDialog(
 
     val locked = transfer.locked
     InputDialog(
-        onDismissRequest = { if (!transfer.saving) onDismiss() },
+        onDismissRequest = { if (!transfer.saving) dismiss() },
         title = { FeatureTitle(UiIcon.Folder, stringResource(R.string.channel_files_probe_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -121,7 +125,7 @@ internal fun ChannelFilesDialog(
                     )
             }
         },
-        dismissButton = { FeatureAction(UiIcon.Close, stringResource(R.string.action_close), onDismiss, enabled = !transfer.saving) },
+        dismissButton = { FeatureAction(UiIcon.Close, stringResource(R.string.action_close), dismiss, enabled = !transfer.saving) },
     )
 }
 
@@ -131,7 +135,9 @@ internal fun FileTransferFeedback(
     listingFailure: ChannelFileFailure? = null,
 ) {
     val failure = listingFailure ?: transfer.failure
+    val saveIssue = transfer.saveIssue
     when {
+        saveIssue != null -> FeatureNotice(UiIcon.Info, stringResource(saveIssue.documentMessage()), error = true)
         failure != null -> FeatureNotice(UiIcon.Info, stringResource(failure.fileMessage()), error = true)
         transfer.downloading -> FeatureNotice(UiIcon.Download, stringResource(R.string.channel_files_downloading))
         transfer.saving -> FeatureNotice(UiIcon.Refresh, stringResource(R.string.channel_files_saving))

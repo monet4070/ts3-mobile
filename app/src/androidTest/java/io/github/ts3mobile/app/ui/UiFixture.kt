@@ -26,7 +26,6 @@ import io.github.ts3mobile.app.history.ServerHistoryEntry
 import io.github.ts3mobile.app.service.ParticipantAudioSettings
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
-import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import io.github.ts3mobile.app.withSelectedHistoryEntry
 import io.github.ts3mobile.audio.opus.MicrophoneLevel
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
@@ -154,7 +153,7 @@ internal class UiFixture(connected: Boolean = false) {
             LocalConfiguration provides config,
             LocalDensity provides Density(LocalDensity.current.density, fontScale),
         ) {
-            Ts3MobileTheme(darkTheme = dark) {
+            TestVerifiedFileTheme(darkTheme = dark) {
                 MainScreen(
                     openChannelFiles = openChannelFiles,
                     onCheckUpdates = { updateChecks++ },

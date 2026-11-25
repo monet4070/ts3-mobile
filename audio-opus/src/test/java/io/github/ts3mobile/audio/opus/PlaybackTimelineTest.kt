@@ -170,6 +170,50 @@ class PlaybackTimelineTest {
         assertThrows(IllegalStateException::class.java) {
             timeline.tick(null, PlaybackTimeline.WRITE_TIMEOUT_NANOS)
         }
+        assertEquals(11, output.writeCalls)
+    }
+
+    @Test fun lateWakeWithHeadProgressWritesOnlyTheFreshUnsubmittedSuffix() {
+        val output = FakePlaybackOutput().apply { writeResults.addAll(listOf(2, 0)) }
+        val timeline = PlaybackTimeline(output)
+        timeline.start(0L)
+        timeline.tick(shortArrayOf(1, 2, 3, 4), 0L, 0L)
+        output.playbackHead = 2
+        timeline.tick(null, 110 * MILLIS)
+        assertEquals(listOf<Short>(1, 2, 3, 4), output.accepted)
+        assertEquals(2L, timeline.playedFrames)
+        assertTrue(timeline.acceptsPcm)
+    }
+
+    @Test fun expiredSuffixIsNeverUsedToProbeAnOtherwiseHealthyOutput() {
+        val output = FakePlaybackOutput().apply { writeResults.addAll(listOf(2, 0)) }
+        val stats = ReceiveStats()
+        val timeline = PlaybackTimeline(output, receiveStats = stats)
+        val mixedAt = PlaybackTimeline.MAX_PCM_AGE_NANOS - 100 * MILLIS
+        timeline.start(mixedAt)
+        timeline.tick(shortArrayOf(1, 2, 3, 4), mixedAt, 0L)
+        timeline.tick(null, mixedAt + 110 * MILLIS)
+        assertEquals(2, output.writeCalls)
+        assertEquals(2L, stats.counters()[AudioReceiveCounter.OUTPUT_EXPIRED_PCM_SAMPLES])
+        assertTrue(timeline.acceptsPcm)
+        val resumedAt = mixedAt + 120 * MILLIS
+        timeline.tick(shortArrayOf(5, 6), resumedAt, resumedAt)
+        assertEquals(listOf<Short>(1, 2, 5, 6), output.accepted)
+    }
+
+    @Test fun droppingExpiredMediaDoesNotResetTheBudgetForAnOutputThatStillCannotWrite() {
+        val output = FakePlaybackOutput().apply { writeResults.addAll(listOf(2, 0)) }
+        val timeline = PlaybackTimeline(output)
+        val mixedAt = PlaybackTimeline.MAX_PCM_AGE_NANOS - 100 * MILLIS
+        timeline.start(mixedAt)
+        timeline.tick(shortArrayOf(1, 2, 3, 4), mixedAt, 0L)
+        output.maxWriteSamples = 0
+        timeline.tick(null, mixedAt + 110 * MILLIS)
+        val resumedAt = mixedAt + 120 * MILLIS
+        assertThrows(IllegalStateException::class.java) {
+            timeline.tick(shortArrayOf(5, 6), resumedAt, resumedAt)
+        }
+        assertEquals(3, output.writeCalls)
     }
 
     @Test

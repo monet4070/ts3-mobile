@@ -111,8 +111,6 @@ internal class AudioDiagnosticController(
 
     fun serviceStopped() {
         sampling?.cancel()
-        sampleNow(force = true)
-        // onStopped owns the final sample/END, including a worker retiring after onDestroy.
     }
 
     private fun accept(
@@ -123,8 +121,10 @@ internal class AudioDiagnosticController(
         if (snapshot.generation != generation) {
             if (snapshot.generation < generation) return
             if (session != 0L && !ended) repository.end(session, AudioDiagnosticEvent.SERVICE_STOPPED)
+            val missed = snapshot.generation - generation - 1
             generation = snapshot.generation
             session = repository.begin()
+            if (missed > 0) repository.event(session, AudioDiagnosticEvent.PLAYBACK_GENERATIONS_MISSED, missed)
             lastSampleElapsed = elapsedMs()
             ended = false
         }

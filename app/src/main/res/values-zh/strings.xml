@@ -106,6 +106,8 @@
     <string name="status_clones_limit_exit_guidance">下次退出请先点击应用内或通知栏的“断开连接”，等待断开完成后再划掉应用，避免旧连接暂留。</string>
     <string name="channel_join_failed">切换频道失败：%1$s</string>
     <string name="channel_restore_failed">恢复频道失败：%1$s</string>
+    <string name="channel_move_not_submitted">尚未发送频道切换请求。</string>
+    <string name="channel_move_unconfirmed">服务器未确认切换。请核对当前频道后再试。</string>
     <string name="microphone_permission_continuous">需要麦克风权限才能开启常开或音量门控模式</string>
     <string name="microphone_permission_missing">没有麦克风权限</string>
     <string name="microphone_permission_voice">需要麦克风权限才能发送语音</string>
@@ -425,6 +427,11 @@
     <string name="channel_files_too_large">文件超过 20 MiB 的下载上限。</string>
     <string name="channel_files_session_changed">频道或连接已变更。</string>
     <string name="channel_files_failed">无法完成文件操作。</string>
+    <string name="channel_files_source_unavailable">已验证的文件已不可用，需重新下载后再保存。</string>
+    <string name="channel_files_picker_unavailable">无法打开文件保存选择器。</string>
+    <string name="channel_files_partial_target">文件未保存完毕，目标位置可能留有不完整文件。请选择新位置重试。</string>
+    <string name="channel_files_save_expired_target">原频道的保存操作已失效。所选位置可能留有空文件或不完整文件。</string>
+    <string name="channel_files_source_unavailable_target">已验证的文件已不可用，目标位置可能留有空文件或不完整文件。</string>
     <string name="server_image_server_icon">预览服务器图标</string>
     <string name="server_image_channel_icon">预览频道图标</string>
     <string name="server_image_avatar">预览头像</string>
@@ -532,6 +539,7 @@
     <string name="diagnostics_save">保存文件</string>
     <string name="diagnostics_saved">诊断文件已保存</string>
     <string name="diagnostics_export_failed">诊断导出失败，请重试</string>
+    <string name="diagnostics_export_busy">请先完成当前诊断导出。</string>
     <string name="diagnostics_audio_title">本地音频记录</string>
     <string name="diagnostics_audio_retention">保留最近 3 次会话，每次约 10 分钟的分时数据。重开应用仍可导出；不记录声音。突然退出可能丢失末尾数据。</string>
     <string name="diagnostics_audio_sessions">已保留会话</string>

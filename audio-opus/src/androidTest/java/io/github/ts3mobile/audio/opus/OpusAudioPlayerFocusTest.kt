@@ -13,10 +13,42 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class OpusAudioPlayerFocusTest {
+    @Test
+    fun closeRejectsAStartThatResumesAfterConfigurationWasRead() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val player = OpusAudioPlayer(instrumentation.targetContext)
+        val configured = CountDownLatch(1)
+        val resume = CountDownLatch(1)
+        val start =
+            FutureTask {
+                val profile = ReceiveDelayProfile.STABILITY
+                configured.countDown()
+                check(resume.await(5, TimeUnit.SECONDS))
+                player.start(profile)
+            }
+        Thread(start, "fixture-late-playback-start").start()
+        try {
+            assertTrue(configured.await(5, TimeUnit.SECONDS))
+            instrumentation.runOnMainSync { player.close() }
+            resume.countDown()
+            start.get(5, TimeUnit.SECONDS)
+            assertEquals(0L, player.takeReceiveDiagnostics().generation)
+            assertEquals(PlaybackStatus.STOPPED, player.status)
+            OpusAudioPlayer(instrumentation.targetContext).use { replacement ->
+                replacement.start()
+                assertEquals(1L, replacement.takeReceiveDiagnostics().generation)
+            }
+        } finally {
+            resume.countDown()
+            player.close()
+        }
+    }
+
     @Test
     fun bluetoothSelectionBlocksActualSpeakerUntilAnExplicitRouteChangeAndFreshVoice() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

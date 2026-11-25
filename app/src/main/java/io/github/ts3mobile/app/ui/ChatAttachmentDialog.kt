@@ -71,9 +71,13 @@ internal fun ChatAttachmentDialog(
     download: AttachmentDownload?,
     onDismiss: () -> Unit,
 ) {
-    val (transfer, chooseDestination) = rememberVerifiedFileTransfer(file)
+    val (transfer, chooseDestination) = rememberVerifiedFileTransfer(file) { download?.isCurrent() == true }
+    val dismiss = {
+        transfer.dismiss()
+        onDismiss()
+    }
     InputDialog(
-        onDismissRequest = { if (!transfer.saving) onDismiss() },
+        onDismissRequest = { if (!transfer.saving) dismiss() },
         title = { FeatureTitle(UiIcon.FileText, stringResource(R.string.chat_attachment_title)) },
         text = {
             Column(
@@ -111,6 +115,6 @@ internal fun ChatAttachmentDialog(
                 )
             }
         },
-        dismissButton = { FeatureAction(UiIcon.Close, stringResource(R.string.action_close), onDismiss, enabled = !transfer.saving) },
+        dismissButton = { FeatureAction(UiIcon.Close, stringResource(R.string.action_close), dismiss, enabled = !transfer.saving) },
     )
 }

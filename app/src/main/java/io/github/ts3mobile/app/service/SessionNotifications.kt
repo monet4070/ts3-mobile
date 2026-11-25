@@ -8,6 +8,9 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import io.github.ts3mobile.app.MainActivity
@@ -16,6 +19,7 @@ import io.github.ts3mobile.app.floatingPttRecallIntent
 import io.github.ts3mobile.app.ui.resolve
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
+import java.util.UUID
 
 /** Foreground types cover playback, capture and explicit floating PTT preparation. */
 internal class SessionNotifications(
@@ -25,6 +29,23 @@ internal class SessionNotifications(
     private val manager = service.getSystemService(NotificationManager::class.java)
     private val channelId = SessionNotificationChannel.register(manager, service.getString(R.string.notification_channel_name))
     private val playbackActions = PlaybackNotificationActions()
+    private val handler = Handler(Looper.getMainLooper())
+    private val callbackToken = Any()
+    private var stopped = false
+    private val delivery =
+        LatestNotificationDelivery<Notification>(
+            schedule = { task, delay ->
+                handler.postAtTime({ synchronized(this) { task.run() } }, callbackToken, SystemClock.uptimeMillis() + delay)
+            },
+            cancel = { handler.removeCallbacksAndMessages(callbackToken) },
+            deliver = { manager.notify(NOTIFICATION_ID, it) },
+            confirmed = { expected ->
+                manager.activeNotifications.any { posted ->
+                    posted.id == NOTIFICATION_ID && posted.notification.extras.getString(REVISION) == expected.extras.getString(REVISION)
+                }
+            },
+            onUndelivered = { System.err.println("TS3_NOTIFICATION: final update was not confirmed") },
+        )
     private val recallIntent by lazy {
         PendingIntent.getActivity(service, 4, service.floatingPttRecallIntent(), PendingIntent.FLAG_IMMUTABLE)
     }
@@ -39,6 +60,7 @@ internal class SessionNotifications(
     }
 
     /** Android still requires promotion when a rejected foreground start remains bound. */
+    @Synchronized
     fun rejectStart(message: Int) {
         val notification =
             NotificationCompat.Builder(service, channelId)
@@ -52,16 +74,20 @@ internal class SessionNotifications(
     }
 
     @Synchronized
-    fun update(state: TeamSpeakServiceState) {
+    fun update(readState: () -> TeamSpeakServiceState) {
+        if (stopped) return
+        val state = readState()
         if (state.status.phase !in foregroundPhases || state.serverLabel == null) return
-        manager.notify(NOTIFICATION_ID, build(state))
+        delivery.offer(build(state).withRevision())
     }
 
     @Synchronized
     fun updateType(
-        state: TeamSpeakServiceState,
+        readState: () -> TeamSpeakServiceState,
         includeMicrophone: Boolean,
     ) {
+        if (stopped) return
+        val state = readState()
         if (pttPrepared || state.status.phase !in foregroundPhases || state.serverLabel == null) return
         promote(build(state.copy(isCapturing = includeMicrophone)), includeMicrophone)
     }
@@ -72,6 +98,7 @@ internal class SessionNotifications(
         ready: Boolean,
         inputReleased: () -> Boolean,
     ) {
+        if (stopped) return
         if (ready) {
             check(state.floatingPttTarget() != null && state.serverLabel != null)
             val channel = manager.getNotificationChannel(channelId)
@@ -85,7 +112,14 @@ internal class SessionNotifications(
     }
 
     @Synchronized
+    fun suspendUpdates() {
+        stopped = true
+        delivery.clear()
+    }
+
+    @Synchronized
     fun stop() {
+        suspendUpdates()
         pttPrepared = false
         playbackActions.clear()
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
@@ -105,9 +139,14 @@ internal class SessionNotifications(
         val types =
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or
                 if (includeMicrophone) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
-        ServiceCompat.startForeground(service, NOTIFICATION_ID, notification, types)
+        val posted = notification.withRevision()
+        ServiceCompat.startForeground(service, NOTIFICATION_ID, posted, types)
+        stopped = false
+        delivery.offer(posted, alreadyPosted = true)
         onTypesApplied(types)
     }
+
+    private fun Notification.withRevision(): Notification = apply { extras.putString(REVISION, UUID.randomUUID().toString()) }
 
     private fun build(
         state: TeamSpeakServiceState,
@@ -218,6 +257,7 @@ internal class SessionNotifications(
 
     companion object {
         const val NOTIFICATION_ID = 4103
+        private const val REVISION = "io.github.ts3mobile.app.notification.revision"
         private val foregroundPhases =
             setOf(
                 ConnectionPhase.CONNECTING,

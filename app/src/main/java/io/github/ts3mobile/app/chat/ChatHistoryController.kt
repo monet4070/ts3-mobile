@@ -29,13 +29,14 @@ internal class ChatHistoryController(
     private data class Pending(val ticket: Long, val record: ChatHistoryRecord)
 
     private val operations = Mutex()
+    private val admission = Any()
     private val queue = Channel<Pending>(64)
     private val status = MutableStateFlow(ChatHistoryStatus())
     val state = status.asStateFlow()
 
     init {
         scope.launch {
-            reload()
+            change { store.enabled() }
             for (first in queue) {
                 delay(60)
                 val batch = mutableListOf(first)
@@ -54,13 +55,15 @@ internal class ChatHistoryController(
         ticket: Long,
         record: ChatHistoryRecord,
     ) {
-        if (ticket != ticket()) return
-        if (queue.trySend(Pending(ticket, record)).isFailure) {
-            status.update { if (it.generation == ticket) it.copy(dropped = true) else it }
+        synchronized(admission) {
+            if (ticket != ticket()) return
+            if (queue.trySend(Pending(ticket, record)).isFailure) {
+                status.update { if (it.generation == ticket) it.copy(dropped = true) else it }
+            }
         }
     }
 
-    suspend fun reload(): Boolean = change { store.enabled() }
+    suspend fun reload(): Boolean = change { store.recover() }
 
     suspend fun setEnabled(enabled: Boolean): Boolean =
         change {
@@ -102,9 +105,7 @@ internal class ChatHistoryController(
     private suspend fun change(operation: suspend () -> Boolean): Boolean =
         operations.withLock {
             withContext(NonCancellable) {
-                val current = status.value
-                val editing = current.copy(busy = true, generation = current.generation + 1)
-                status.value = editing
+                val editing = invalidatePending()
                 try {
                     val enabled = operation()
                     status.value = ChatHistoryStatus(ready = true, enabled = enabled, generation = editing.generation)
@@ -117,5 +118,14 @@ internal class ChatHistoryController(
                     false
                 }
             }
+        }
+
+    private fun invalidatePending(): ChatHistoryStatus =
+        synchronized(admission) {
+            val current = status.value
+            val editing = current.copy(busy = true, generation = current.generation + 1)
+            status.value = editing
+            while (queue.tryReceive().isSuccess) Unit
+            editing
         }
 }

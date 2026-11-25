@@ -9,11 +9,12 @@ import java.nio.file.StandardCopyOption
 
 /** One bounded, already-redacted report survives the document picker's Activity/process recreation. */
 internal class PendingDiagnosticExport(private val file: File) {
+    private val temporary get() = File(file.parentFile, "${file.name}.tmp")
+
     fun prepare(report: String) {
         val bytes = report.toByteArray(Charsets.UTF_8)
         if (bytes.isEmpty() || bytes.size > MAX_BYTES) throw IOException("Diagnostic report exceeds export bound")
         file.parentFile?.mkdirs()
-        val temporary = File(file.parentFile, "${file.name}.tmp")
         FileOutputStream(temporary).use {
             it.write(bytes)
             it.fd.sync()
@@ -32,6 +33,7 @@ internal class PendingDiagnosticExport(private val file: File) {
 
     fun clear() {
         if (file.exists() && !file.delete()) throw IOException("Could not remove prepared diagnostic report")
+        if (temporary.exists() && !temporary.delete()) throw IOException("Could not remove temporary diagnostic report")
     }
 
     companion object {

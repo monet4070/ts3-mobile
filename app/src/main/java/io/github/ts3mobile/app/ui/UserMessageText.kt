@@ -44,6 +44,8 @@ fun UserMessage.resolve(context: Context): String =
         is UserMessage.ChannelJoinFailed -> context.getString(R.string.channel_join_failed, cause)
         UserMessage.ChannelTargetChanged -> context.getString(R.string.channel_target_changed)
         is UserMessage.ChannelRestoreFailed -> context.getString(R.string.channel_restore_failed, cause)
+        UserMessage.ChannelMoveNotSubmitted -> context.getString(R.string.channel_move_not_submitted)
+        is UserMessage.ChannelMoveUnconfirmed -> context.getString(R.string.channel_move_unconfirmed)
         UserMessage.MicrophonePermissionForContinuous ->
             context.getString(R.string.microphone_permission_continuous)
 

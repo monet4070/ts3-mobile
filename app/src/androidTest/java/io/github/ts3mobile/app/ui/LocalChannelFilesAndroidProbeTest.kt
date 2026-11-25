@@ -224,7 +224,7 @@ class LocalChannelFilesAndroidProbeTest {
             }
         rule.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-                currentFiles.value?.let { ChannelFilesDialog(it) { currentFiles.value = null } }
+                TestVerifiedFileSaveHost { currentFiles.value?.let { ChannelFilesDialog(it) { currentFiles.value = null } } }
             }
         }
     }

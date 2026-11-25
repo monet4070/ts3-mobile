@@ -78,6 +78,8 @@ internal class DiagnosticJournal(
                 }
             } catch (_: IOException) {
                 failedWrites++
+            } catch (_: SecurityException) {
+                failedWrites++
             }
         }
     }
@@ -120,6 +122,8 @@ internal class DiagnosticJournal(
                     Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
                 }
             } catch (_: IOException) {
+                synchronized(this) { failedWrites++ }
+            } catch (_: SecurityException) {
                 synchronized(this) { failedWrites++ }
             }
         }

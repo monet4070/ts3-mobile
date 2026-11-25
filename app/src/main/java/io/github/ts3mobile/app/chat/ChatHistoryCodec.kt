@@ -22,7 +22,7 @@ internal object ChatHistoryCodec {
         val kept = mutableListOf<ChatHistoryRecord>()
         var bytes = HEADER_BYTES
         for (record in records.asReversed()) {
-            if (record.receivedAtMs !in (nowMs - LIFETIME_MS)..nowMs) continue
+            if (record.receivedAtMs < nowMs - LIFETIME_MS) continue
             if (kept.size == MAX_RECORDS) break
             bytes += record.encodedSize()
             if (bytes > MAX_BYTES) break

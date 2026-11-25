@@ -121,14 +121,14 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
     override fun onCreate() {
         super.onCreate()
-        sessionDiagnostics = SessionDiagnostics(applicationContext, serviceScope)
+        val app = application as Ts3MobileApplication
+        sessionDiagnostics = SessionDiagnostics(applicationContext, serviceScope, app.sessionDiagnosticWriter)
         sessionDiagnostics.start(state)
         historyStore = successServerHistoryStore(applicationContext)
         notifications =
             SessionNotifications(this) { types ->
                 sessionDiagnostics.record(DiagnosticEventKind.FOREGROUND_TYPES, types.toLong())
             }
-        val app = application as Ts3MobileApplication
         identities = app.identities
         chatController = SessionChatController(serviceScope, history = app.chatHistory)
         sessionControls =
@@ -163,6 +163,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 updateNotification = ::updateNotification,
                 conciseMessage = { conciseMessage(it) },
                 recordEvent = { sessionDiagnostics.record(it) },
+                trialInputReleased = { microphoneTrial.isInputReleased },
             )
         connectedPtt =
             ConnectedPttPreparation(microphoneController, { !sessionGeneration.isDisconnectRequested }) { ready ->
@@ -294,19 +295,21 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     override fun onDestroy() {
         connectedPtt?.disarm()
         destroyed = true
+        notifications.suspendUpdates()
         // A queued exit teardown must not touch a destroyed service.
         mainHandler.removeCallbacksAndMessages(null)
         // Destruction's asynchronous capture release outlives coordinator.close(). Keep
         // process ownership until the final Android audio/notification cleanup completes.
         val teardownOwner = identities.gate.beginConnection()
+        audioPlayer.close()
         connectionCoordinator.close()
         backgroundRuntime.close()
         audioDiagnostics?.close()
         audioDeviceReadout.close()
         // A pending installation is bound to this service: waiters must fail instead of hanging.
         audioDiagnosticsAttachment.failIfPending()
-        sessionDiagnostics.close()
         networkMonitor.close()
+        sessionDiagnostics.close()
         sessionControls.close()
         pokeAlerts.close()
         privateMessageAlerts.close()
@@ -322,7 +325,6 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 }
             }
         }
-        audioPlayer.close()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -342,11 +344,11 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     }
 
     override fun updateNotification() {
-        if (!destroyed) notifications.update(mutableState.value)
+        if (!destroyed) notifications.update { mutableState.value }
     }
 
     private fun updateForegroundType(includeMicrophone: Boolean) {
-        if (!destroyed) notifications.updateType(mutableState.value, includeMicrophone)
+        if (!destroyed) notifications.updateType({ mutableState.value }, includeMicrophone)
     }
 
     override fun onConnectionSucceeded(
@@ -413,8 +415,9 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 System.err.println("TS3_AUDIO: receive delay preference unavailable; using Balanced")
                 ReceiveDelayProfile.BALANCED
             }
+        if (destroyed) return
         audioPlayer.start(profile)
-        audioDiagnostics?.sampleNow()
+        if (!destroyed) audioDiagnostics?.sampleNow()
     }
 
     override fun stopPlayback() {

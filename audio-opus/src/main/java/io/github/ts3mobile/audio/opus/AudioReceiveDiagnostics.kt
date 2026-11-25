@@ -34,6 +34,7 @@ enum class AudioReceiveCounter {
     PARTICIPANT_INVALIDATIONS,
     ROUTE_CALLBACKS,
     DIAGNOSTIC_READ_FAILURES,
+    OUTPUT_EXPIRED_PCM_SAMPLES,
 }
 
 enum class AudioReceivePeak {

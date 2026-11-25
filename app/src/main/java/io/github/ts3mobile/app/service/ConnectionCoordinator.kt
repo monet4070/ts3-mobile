@@ -6,6 +6,7 @@ import io.github.ts3mobile.app.chat.ChatHistoryAccount
 import io.github.ts3mobile.app.chat.SessionChatController
 import io.github.ts3mobile.app.identity.IdentityConnectionLease
 import io.github.ts3mobile.app.identity.IdentityUseGate
+import io.github.ts3mobile.protocol.ChannelMoveUnconfirmedException
 import io.github.ts3mobile.protocol.ConnectionFailureCategory
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
@@ -191,8 +192,7 @@ internal class ConnectionCoordinator(
     @Volatile
     private var connectedOnce = false
 
-    override var desiredConfig: ServerConfig? = null
-        private set
+    private var desiredConfig: ServerConfig? = null
 
     @Volatile
     private var identityLease: IdentityConnectionLease? = null
@@ -295,7 +295,7 @@ internal class ConnectionCoordinator(
                 // coroutine happens to acquire the session mutex first.
                 synchronized(exitLock) { exitJob }?.join()
                 if (!isEpochActive(epoch)) return@prepare
-                host.stopMicrophoneCapture()
+                if (!releaseCaptureForAttempt(epoch)) return@prepare
                 when (val result = performConnectionAttempt(config, epoch, reconnecting = false)) {
                     AttemptResult.Success,
                     AttemptResult.Stale,
@@ -428,7 +428,9 @@ internal class ConnectionCoordinator(
                     if (host.mutableState.value.status.phase != ConnectionPhase.CONNECTED) {
                         throw NotConnectedException()
                     }
-                    runInterruptible { captured.joinChannel(channelId, password) }
+                    runInterruptible {
+                        captured.joinChannelIfCurrent(channelId, password) { isListenerActive(listener) && session === captured }
+                    }
                 }
                 withChannelSession(listener, captured) {
                     channelRestore.rememberManualJoin(channelId, password)
@@ -440,19 +442,7 @@ internal class ConnectionCoordinator(
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 withChannelSession(listener, captured) {
-                    host.diagnosticsRecorder.recordChannelJoinFailure()
-                    host.refreshDiagnostics()
-                    host.mutableState.update { state ->
-                        state.copy(
-                            switchingChannelId = null,
-                            channelError =
-                                if (error is NotConnectedException) {
-                                    UserMessage.NotConnected
-                                } else {
-                                    UserMessage.ChannelJoinFailed(host.conciseMessage(error))
-                                },
-                        )
-                    }
+                    finishChannelMoveFailure(error, ChannelRestoreTarget(channelId, password), restoring = false)
                     syncChatContext(listener)
                 }
             }
@@ -469,9 +459,10 @@ internal class ConnectionCoordinator(
      * liveness check, never a blind reconnect.
      */
     fun onNetworkChanged(state: DefaultNetworkState) {
+        val epoch = host.sessionGeneration.activeEpoch
         when (monitor.networkChanged(state)) {
             NetworkTransition.PENDING, NetworkTransition.UNCHANGED -> Unit
-            NetworkTransition.UNAVAILABLE -> onNetworkUnavailable()
+            NetworkTransition.UNAVAILABLE -> if (epoch != null) onNetworkUnavailable(state, epoch)
             NetworkTransition.SWITCHED -> verifySessionAfterNetworkSwitch(state.generation)
         }
     }
@@ -495,9 +486,12 @@ internal class ConnectionCoordinator(
         )
     }
 
-    private fun onNetworkUnavailable() {
-        if (host.mutableState.value.status.phase == ConnectionPhase.CONNECTED) {
-            activeListener?.takeIf { it.connected }?.let { listener ->
+    private fun onNetworkUnavailable(
+        state: DefaultNetworkState,
+        epoch: Long,
+    ) {
+        if (host.mutableState.value.status.phase == ConnectionPhase.CONNECTED && monitor.networkState == state) {
+            activeListener?.takeIf { it.epoch == epoch && it.connected }?.let { listener ->
                 onEstablishedSessionEnded(
                     listener,
                     ConnectionStatus(
@@ -509,16 +503,20 @@ internal class ConnectionCoordinator(
             }
         }
         if (host.mutableState.value.status.phase == ConnectionPhase.RECONNECTING) {
-            host.mutableState.update { current ->
-                current.withStatus(
-                    ConnectionStatus(
-                        ConnectionPhase.RECONNECTING,
-                        retryable = true,
-                    ),
-                    UserMessage.WaitingForNetwork,
-                )
-            }
-            host.updateNotification()
+            val updated =
+                host.sessionGeneration.withActive(epoch) {
+                    host.mutableState.update { current ->
+                        if (current.status.phase == ConnectionPhase.RECONNECTING && monitor.networkState == state) {
+                            current.withStatus(
+                                ConnectionStatus(ConnectionPhase.RECONNECTING, retryable = true),
+                                UserMessage.WaitingForNetwork,
+                            )
+                        } else {
+                            current
+                        }
+                    }
+                }
+            if (updated) host.updateNotification()
         }
     }
 
@@ -767,7 +765,7 @@ internal class ConnectionCoordinator(
             if (!isListenerActive(this)) return
             withCurrentListener {
                 val channelChanged = host.mutableState.value.snapshot.currentChannelId != snapshot.currentChannelId
-                host.mutableState.update { it.copy(snapshot = snapshot) }
+                host.mutableState.update { it.withObservedChannel(snapshot) }
                 if (channelChanged) host.invalidateFloatingPtt()
                 host.applyParticipantAudioSettings(snapshot)
                 if (connected) syncChatContext(this)
@@ -826,13 +824,15 @@ internal class ConnectionCoordinator(
         val current = host.mutableState.value
         if (current.status.phase != ConnectionPhase.CONNECTED || current.switchingChannelId != null) return null
         val channelId = current.snapshot.currentChannelId ?: return null
-        return captured.channelFiles(channelId)?.takeIf {
-            isListenerActive(listener) && session === captured &&
-                host.mutableState.value.let { latest ->
-                    latest.status.phase == ConnectionPhase.CONNECTED && latest.switchingChannelId == null &&
-                        latest.snapshot.currentChannelId == channelId
-                }
-        }
+        val files = captured.channelFiles(channelId) ?: return null
+        return object : io.github.ts3mobile.protocol.ChannelFiles by files {
+            override fun isCurrent(): Boolean =
+                isListenerActive(listener) && session === captured && files.isCurrent() &&
+                    host.mutableState.value.let { latest ->
+                        latest.status.phase == ConnectionPhase.CONNECTED && latest.switchingChannelId == null &&
+                            latest.snapshot.currentChannelId == channelId
+                    }
+        }.takeIf { it.isCurrent() }
     }
 
     fun currentServerImages(expectedToken: String): io.github.ts3mobile.protocol.ServerImages? {
@@ -891,31 +891,58 @@ internal class ConnectionCoordinator(
         status: ConnectionStatus,
         transportSession: Ts3SessionClient? = null,
     ) {
-        if (transportSession != null && session !== transportSession) return
-        if (!isEpochActive(listener.epoch) || !listenerRef.compareAndSet(listener, null)) return
-        if (!isEpochActive(listener.epoch)) return
-        chat?.pause(listener.epoch, listener.chatAttempt)
-        if (!status.retryable) chat?.clear(listener.epoch)
+        val epoch = listener.epoch
+        if (!isEpochActive(epoch)) return
+        var claimed = false
+        var shouldReconnect = false
+        var recovery: Job? = null
+        host.sessionGeneration.withActive(epoch) {
+            if (transportSession != null && session !== transportSession) return@withActive
+            if (!listenerRef.compareAndSet(listener, null)) return@withActive
+            chat?.pause(epoch, listener.chatAttempt)
+            if (!status.retryable) chat?.clear(epoch)
+            cancelConnectionObservers()
+            host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
+            host.stopMicrophoneImmediately()
+            shouldReconnect = status.retryable && connectedOnce
+            if (shouldReconnect) recovery = reconnectEngine.reserveLoss(status, epoch)
+            claimed = true
+        }
+        if (!claimed) return
+        if (shouldReconnect) {
+            recovery?.start()
+            host.updateNotification()
+        } else {
+            launchIdentityWork(epoch) { finishTerminalFailure(status, epoch) }
+        }
         if (transportSession != null) host.onTransportDisconnected()
+        host.onConnectionFailure(status)
+        host.refreshDiagnostics()
+    }
+
+    override suspend fun suspendAudioForReconnect(epoch: Long): Boolean {
+        val failure =
+            host.sessionMutex.withLock {
+                if (!isEpochActive(epoch)) return false
+                val releaseFailure = host.releaseCapture()
+                if (releaseFailure == null && isEpochActive(epoch)) runInterruptible { host.stopPlayback() }
+                releaseFailure
+            }
+        if (failure != null) finishTerminalFailure(ConnectionStatus(ConnectionPhase.ERROR), epoch, failure)
+        return failure == null && isEpochActive(epoch)
+    }
+
+    private fun cancelConnectionObservers() {
         stableConnectionJob?.cancel()
         connectedWatchJob?.cancel()
         livenessJob?.cancel()
-        host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
-        host.onConnectionFailure(status)
-        host.refreshDiagnostics()
-        host.stopMicrophoneImmediately()
-        host.stopPlayback()
-
-        if (status.retryable && connectedOnce && !host.sessionGeneration.isDisconnectRequested) {
-            reconnectEngine.launch(status, listener.epoch)
-        } else {
-            launchIdentityWork(listener.epoch) { finishTerminalFailure(status, listener.epoch) }
-        }
     }
 
-    override suspend fun suspendAudioForReconnect() {
-        host.stopMicrophoneCapture()
-        host.stopPlayback()
+    private suspend fun releaseCaptureForAttempt(epoch: Long): Boolean {
+        if (!isEpochActive(epoch)) return false
+        val failure = host.releaseCapture() ?: return isEpochActive(epoch)
+        finishTerminalFailure(ConnectionStatus(ConnectionPhase.ERROR), epoch, failure)
+        return false
     }
 
     private fun onConnectionRefused(
@@ -960,19 +987,27 @@ internal class ConnectionCoordinator(
     override suspend fun finishTerminalFailure(
         status: ConnectionStatus,
         epoch: Long,
+    ) = finishTerminalFailure(status, epoch, captureFailure = null)
+
+    private suspend fun finishTerminalFailure(
+        status: ConnectionStatus,
+        epoch: Long,
+        captureFailure: UserMessage.MicrophoneFailed?,
     ) {
         if (!isEpochActive(epoch)) return
-        chat?.clear(epoch)
-        activeListener?.takeIf { it.epoch == epoch }?.let { listenerRef.compareAndSet(it, null) }
-        stableConnectionJob?.cancel()
-        connectedWatchJob?.cancel()
-        livenessJob?.cancel()
         host.sessionMutex.withLock {
             if (!isEpochActive(epoch)) return@withLock
+            val ownsCleanup =
+                host.sessionGeneration.withActive(epoch) {
+                    chat?.clear(epoch)
+                    activeListener?.takeIf { it.epoch == epoch }?.let { listenerRef.compareAndSet(it, null) }
+                    cancelConnectionObservers()
+                }
+            if (!ownsCleanup) return@withLock
             session?.close()
             session = null
             // New attempts acquire this same mutex before starting shared audio.
-            host.stopMicrophoneCapture()
+            val releaseFailure = captureFailure ?: host.releaseCapture()
             runInterruptible {
                 host.stopPlayback()
                 host.stopAudioRouting()
@@ -980,10 +1015,12 @@ internal class ConnectionCoordinator(
             val updated =
                 host.sessionGeneration.withActive(epoch) {
                     host.mutableState.update { current ->
-                        current.withStatus(status.copy(retryable = false), failureMessageFor(status, reconnecting = false)).copy(
+                        val message = captureFailure ?: failureMessageFor(status, reconnecting = false)
+                        current.withStatus(status.copy(retryable = false), message).copy(
                             snapshot = SessionSnapshot.Empty,
                             isTransmitting = false,
                             switchingChannelId = null,
+                            microphoneError = releaseFailure ?: current.microphoneError,
                         )
                     }
                 }
@@ -1065,7 +1102,11 @@ internal class ConnectionCoordinator(
             try {
                 host.sessionMutex.withLock {
                     if (!isListenerActive(listener) || !listener.connected || session !== captured) return@launchIdentityWork
-                    runInterruptible { captured.joinChannel(target.channelId, target.password) }
+                    runInterruptible {
+                        captured.joinChannelIfCurrent(target.channelId, target.password) {
+                            isListenerActive(listener) && session === captured
+                        }
+                    }
                 }
                 withChannelSession(listener, captured) {
                     host.mutableState.update { it.copy(switchingChannelId = null, channelError = null) }
@@ -1073,14 +1114,7 @@ internal class ConnectionCoordinator(
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 withChannelSession(listener, captured) {
-                    host.diagnosticsRecorder.recordChannelJoinFailure()
-                    host.refreshDiagnostics()
-                    host.mutableState.update {
-                        it.copy(
-                            switchingChannelId = null,
-                            channelError = UserMessage.ChannelRestoreFailed(host.conciseMessage(error)),
-                        )
-                    }
+                    finishChannelMoveFailure(error, target, restoring = true)
                 }
             } finally {
                 withChannelSession(listener, captured) {
@@ -1089,6 +1123,27 @@ internal class ConnectionCoordinator(
                 }
             }
         }
+    }
+
+    private fun finishChannelMoveFailure(
+        error: Throwable,
+        target: ChannelRestoreTarget,
+        restoring: Boolean,
+    ) {
+        val observed = host.mutableState.value.snapshot.currentChannelId
+        if (error is ChannelMoveUnconfirmedException) {
+            if (observed == target.channelId) {
+                channelRestore.rememberManualJoin(target.channelId, target.password)
+            } else {
+                channelRestore.useObservedChannel(observed)
+            }
+        }
+        val message = channelMoveMessage(error, target.channelId, observed, restoring) { host.conciseMessage(error) }
+        if (message != null) {
+            host.diagnosticsRecorder.recordChannelJoinFailure()
+            host.refreshDiagnostics()
+        }
+        host.mutableState.update { it.copy(switchingChannelId = null, channelError = message) }
     }
 
     private fun withChannelSession(

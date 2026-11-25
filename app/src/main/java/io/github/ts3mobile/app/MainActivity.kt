@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ts3mobile.app.chat.ChatState
+import io.github.ts3mobile.app.documents.DocumentSavesViewModel
 import io.github.ts3mobile.app.invite.ServerInvite
 import io.github.ts3mobile.app.probe.ConnectedPttProbeHost
 import io.github.ts3mobile.app.probe.autoShowFloatingPtt
@@ -33,12 +34,12 @@ import io.github.ts3mobile.app.service.TeamSpeakService
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.service.allowsOfflineActions
 import io.github.ts3mobile.app.settings.MicrophonePreferenceState
+import io.github.ts3mobile.app.ui.ApplicationDocumentTheme
 import io.github.ts3mobile.app.ui.InviteDialog
 import io.github.ts3mobile.app.ui.MainScreen
 import io.github.ts3mobile.app.ui.MicrophoneTrialDialog
 import io.github.ts3mobile.app.ui.PasteInviteAction
 import io.github.ts3mobile.app.ui.shareInvite
-import io.github.ts3mobile.app.ui.theme.ApplicationTheme
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ServerConfig
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,8 +47,10 @@ import kotlinx.coroutines.flow.emptyFlow
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MainViewModel>()
+    private val documentSaves by viewModels<DocumentSavesViewModel>()
     private var serviceBinder by mutableStateOf<TeamSpeakService.SessionBinder?>(null)
-    private val diagnosticReports = DiagnosticReportActions(this) { serviceBinder?.redactedDiagnosticsJson() }
+    private val diagnosticReports =
+        DiagnosticReportActions(this, { documentSaves.diagnostics }) { serviceBinder?.redactedDiagnosticsJson() }
     private var isBound = false
     private var pushToTalkPressed = false
     private var activityVisible = false
@@ -96,10 +99,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        diagnosticReports.restorePicker()
         if (savedInstanceState == null) acceptEntryIntent(intent)
         enableEdgeToEdge()
         setContent {
-            ApplicationTheme {
+            ApplicationDocumentTheme(documentSaves) {
                 val fallbackState = remember { MutableStateFlow(TeamSpeakServiceState()) }
                 val serviceState by (serviceBinder?.state ?: fallbackState)
                     .collectAsStateWithLifecycle()

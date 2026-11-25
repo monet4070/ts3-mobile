@@ -32,6 +32,10 @@ internal class ChannelRestoreTracker {
         }
     }
 
+    fun useObservedChannel(channelId: Int?) {
+        lastChannel = lastChannel?.takeIf { it.channelId == channelId } ?: channelId?.let { ChannelRestoreTarget(it, "") }
+    }
+
     fun rememberManualJoin(
         channelId: Int,
         password: String,

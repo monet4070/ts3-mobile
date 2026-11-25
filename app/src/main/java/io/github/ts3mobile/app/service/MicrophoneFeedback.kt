@@ -40,6 +40,10 @@ internal class MicrophoneFeedback(
         state.update { it.copy(microphoneError = UserMessage.MicrophonePermissionForContinuous) }
     }
 
+    fun trialReleaseFailed() {
+        state.update { it.copy(isTransmitting = false, microphoneError = UserMessage.MicrophoneTrialReleaseFailed) }
+    }
+
     fun refreshPermission(granted: Boolean) {
         if (!granted) return
         state.update {

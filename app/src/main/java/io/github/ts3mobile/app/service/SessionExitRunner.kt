@@ -64,7 +64,7 @@ internal class SessionExitRunner(
                     // audio only after any old operation releases the session mutex.
                     host.sessionMutex.lock()
                     try {
-                        stopAudio()
+                        if (stopAudio()) cleanupFailed = true
                         audioStopped = true
                     } finally {
                         host.sessionMutex.unlock()
@@ -89,7 +89,7 @@ internal class SessionExitRunner(
                 if (!audioStopped) {
                     withContext(NonCancellable) {
                         try {
-                            stopAudio()
+                            if (stopAudio()) cleanupFailed = true
                         } catch (_: Throwable) {
                             cleanupFailed = true
                         }
@@ -114,7 +114,7 @@ internal class SessionExitRunner(
 
     private suspend fun stopAudio() =
         coroutineScope {
-            val capture = async { host.stopMicrophoneCapture() }
+            val capture = async { host.releaseCapture() }
             val playback =
                 async {
                     runInterruptible {
@@ -126,8 +126,9 @@ internal class SessionExitRunner(
                         }
                     }
                 }
-            capture.await()
+            val captureFailure = capture.await()
             playback.await()
+            captureFailure != null
         }
 
     private fun DisconnectOutcome.toDiagnosticKind(): DiagnosticEventKind =

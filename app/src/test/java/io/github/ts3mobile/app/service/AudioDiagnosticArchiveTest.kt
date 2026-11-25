@@ -86,6 +86,41 @@ class AudioDiagnosticArchiveTest {
         assertFalse(report.contains("secret.invalid"))
     }
 
+    @Test fun everyCutOfAnAppendLeavesOnlyTheCompleteLegacyCheckpointVisible() {
+        val archive = AudioDiagnosticArchive()
+        val id = archive.begin(1_000)
+        val file = temporary.newFile()
+        val storage = AudioDiagnosticStorage(file)
+        val first = archive.checkpoint()
+        storage.write(first, 2_000)
+        archive.saved(first, 2_000)
+        val committed = file.readText()
+        archive.sample(sample(id, 2_500, 3))
+        archive.end(id, 3_000)
+        storage.write(archive.checkpoint(), 3_100)
+        val complete = file.readText()
+        val append = complete.removePrefix(committed)
+        val reopen = {
+            AudioDiagnosticArchive(storage.read()).apply { recoverInterrupted() }.state()
+        }
+        assertEquals(3_000L, reopen().sessions.single().endedMs)
+        for (length in 1 until append.length) {
+            file.writeText(committed + append.take(length))
+            val state = reopen()
+            assertEquals("byte $length", 2_000L, state.persistedMs)
+            assertTrue(state.samples.isEmpty())
+            assertTrue(state.events.any { it.kind == AudioDiagnosticEvent.PREVIOUS_RUN_INTERRUPTED })
+            assertTrue(state.invalidRecords > 0)
+        }
+        file.writeText(committed + append.substringBeforeLast("M\t") + "M\t0\t0\tbad\t0\n")
+        assertTrue(reopen().events.any { it.kind == AudioDiagnosticEvent.PREVIOUS_RUN_INTERRUPTED })
+        val recovered = AudioDiagnosticArchive(storage.read()).apply { recoverInterrupted() }
+        val next = recovered.begin(4_000)
+        storage.write(recovered.checkpoint(), 4_100)
+        assertEquals(next, storage.read().sessions.last().id)
+        assertEquals(4_100L, storage.read().persistedMs)
+    }
+
     @Test fun maximumNumericExportFitsClipboardTransactionAndFileRotationBound() {
         val archive = AudioDiagnosticArchive()
         val buckets = io.github.ts3mobile.protocol.VoiceTimingCollector.delayUpperBoundsUs.size + 1
@@ -161,6 +196,8 @@ class AudioDiagnosticArchiveTest {
     @Test fun oversizedOrUnknownSchemaIsReportedWithoutEchoingPrivateText() {
         val file = temporary.newFile()
         file.writeText("private-secret")
+        assertEquals(1L, AudioDiagnosticStorage(file).read().invalidRecords)
+        file.writeText("${AudioDiagnosticFormat.HEADER}\n")
         assertEquals(1L, AudioDiagnosticStorage(file).read().invalidRecords)
         file.writeBytes(ByteArray(AudioDiagnosticStorage.MAX_FILE_BYTES.toInt() + 1))
         assertEquals(1L, AudioDiagnosticStorage(file).read().invalidRecords)

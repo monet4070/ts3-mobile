@@ -63,7 +63,7 @@ internal fun BookmarkEditor(
     var submitted by remember(original.id) { mutableStateOf<ServerBookmark?>(null) }
     var choosingChannel by remember(original.id) { mutableStateOf(false) }
     LaunchedEffect(state.entries, state.busy, state.failed, submitted) {
-        val expected = submitted?.forStorage()?.copy(revision = original.revision + 1)
+        val expected = submitted?.normalizedForSave()?.copy(revision = original.revision + 1)
         if (expected != null && !state.busy && !state.failed && state.entries.any { it == expected }) onDismiss()
     }
     val entry = draft.entry

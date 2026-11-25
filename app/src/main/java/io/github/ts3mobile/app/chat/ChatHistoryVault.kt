@@ -19,6 +19,8 @@ private val Context.chatHistoryPreferences by preferencesDataStore(name = "ts3_c
 internal interface ChatHistoryStore {
     suspend fun enabled(): Boolean
 
+    suspend fun recover(): Boolean
+
     suspend fun setEnabled(enabled: Boolean)
 
     suspend fun append(records: List<ChatHistoryRecord>)
@@ -42,6 +44,17 @@ internal class ChatHistoryVault(
     )
 
     override suspend fun enabled(): Boolean = withContext(dispatcher) { store.data.first()[ENABLED] == true }
+
+    override suspend fun recover(): Boolean =
+        withContext(dispatcher) {
+            val updated =
+                store.edit { preferences ->
+                    if (preferences[ENABLED] == true) {
+                        preferences[PAYLOAD] = encrypt(decode(preferences[PAYLOAD]))
+                    }
+                }
+            updated[ENABLED] == true
+        }
 
     override suspend fun setEnabled(enabled: Boolean) {
         withContext(dispatcher) {
@@ -81,18 +94,21 @@ internal class ChatHistoryVault(
                     if (retained.isEmpty()) {
                         preferences.remove(PAYLOAD)
                     } else {
-                        val bytes = ChatHistoryCodec.encode(retained)
-                        preferences[PAYLOAD] =
-                            try {
-                                cipher.encrypt(bytes)
-                            } finally {
-                                bytes.fill(0)
-                            }
+                        preferences[PAYLOAD] = encrypt(retained)
                     }
                 }
             }
             retained
         }
+
+    private fun encrypt(records: List<ChatHistoryRecord>): String {
+        val bytes = ChatHistoryCodec.encode(records)
+        return try {
+            cipher.encrypt(bytes)
+        } finally {
+            bytes.fill(0)
+        }
+    }
 
     private fun decode(payload: String?): List<ChatHistoryRecord> {
         if (payload == null) return emptyList()

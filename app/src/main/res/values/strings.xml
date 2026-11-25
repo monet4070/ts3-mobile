@@ -109,6 +109,8 @@
     <string name="status_clones_limit_exit_guidance">Next time, tap “Disconnect” in the app or its notification and wait for it to finish before swiping the app away. This helps prevent a leftover connection.</string>
     <string name="channel_join_failed">Could not switch channel: %1$s</string>
     <string name="channel_restore_failed">Could not restore the channel: %1$s</string>
+    <string name="channel_move_not_submitted">The channel move was not sent.</string>
+    <string name="channel_move_unconfirmed">The server did not confirm the move. Check the current channel before trying again.</string>
     <string name="microphone_permission_continuous">Microphone permission is required for always-on or gate mode</string>
     <string name="microphone_permission_missing">No microphone permission</string>
     <string name="microphone_permission_voice">Microphone permission is required to send voice</string>
@@ -457,6 +459,11 @@
     <string name="channel_files_too_large">This file exceeds the 20 MiB download limit.</string>
     <string name="channel_files_session_changed">The channel or connection changed.</string>
     <string name="channel_files_failed">Could not complete the file operation.</string>
+    <string name="channel_files_source_unavailable">The verified file is no longer available. Download it again before saving.</string>
+    <string name="channel_files_picker_unavailable">Could not open a destination picker.</string>
+    <string name="channel_files_partial_target">Could not finish saving. The destination may contain an incomplete file. Choose a new destination to retry.</string>
+    <string name="channel_files_save_expired_target">The original channel save is no longer valid. The selected location may contain an empty or incomplete file.</string>
+    <string name="channel_files_source_unavailable_target">The verified file is no longer available. An empty or incomplete file may remain at the destination.</string>
     <string name="server_image_server_icon">Preview server icon</string>
     <string name="server_image_channel_icon">Preview channel icon</string>
     <string name="server_image_avatar">Preview avatar</string>
@@ -564,6 +571,7 @@
     <string name="diagnostics_save">Save file</string>
     <string name="diagnostics_saved">Diagnostics file saved</string>
     <string name="diagnostics_export_failed">Could not export diagnostics. Please try again.</string>
+    <string name="diagnostics_export_busy">Finish the current diagnostics export before starting another.</string>
     <string name="diagnostics_audio_title">Local audio history</string>
     <string name="diagnostics_audio_retention">Retains the latest 3 sessions with about 10 minutes of samples each. Available after reopening. No audio is recorded. Abrupt exits may lose the final interval.</string>
     <string name="diagnostics_audio_sessions">Retained sessions</string>

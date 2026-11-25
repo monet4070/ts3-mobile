@@ -48,6 +48,54 @@ class MicrophoneControllerTest {
             assertFalse(preparation.arm(leavingMainActivity = true) {})
         }
 
+    @Test fun retainedTrialInputBlocksFloatingCaptureUntilTheSourceCloses() {
+        lateinit var trial: MicrophoneTrial
+        Fixture(trialInputReleased = { trial.isInputReleased }).use { fixture ->
+            val source = fixture.bindFloatingSource()
+            var allowRelease = false
+            trial =
+                MicrophoneTrial(fixture.scope) {
+                    object : MicrophoneTrialSource {
+                        override val isCapturing = true
+                        override val isSilenced = false
+
+                        override fun start(settings: MicrophoneSettings) = Unit
+
+                        override fun reading() = MicrophoneTrialState(MicrophoneTrialPhase.RUNNING)
+
+                        override fun close() {
+                            check(allowRelease) { "Fixture trial still owns input" }
+                        }
+                    }
+                }
+            fixture.controller.setMode(MicrophoneMode.OFF)
+            fixture.controller.setAppVisible(true)
+            trial.start(MicrophoneSettings())
+            val preparation = fixture.preparation()
+            assertTrue(preparation.arm(leavingMainActivity = true) {})
+
+            assertFalse(trial.stop())
+            fixture.controller.setAppVisible(false)
+            assertTrue(preparation.isValid)
+            assertNull(preparation.press())
+            assertFalse(preparation.selectMode(MicrophoneMode.PUSH_TO_TALK))
+            assertFalse(preparation.selectMode(MicrophoneMode.CONTINUOUS))
+            assertEquals(UserMessage.MicrophoneTrialReleaseFailed, fixture.state.value.microphoneError)
+            assertEquals(0, fixture.capture.starts)
+            assertNull(source.pollEncodedFrame())
+
+            allowRelease = true
+            assertTrue(trial.stop())
+            assertTrue(preparation.selectMode(MicrophoneMode.PUSH_TO_TALK))
+            val press = checkNotNull(preparation.press())
+            assertEquals(1, fixture.capture.starts)
+            assertTrue(source.isTransmitting)
+            preparation.release(press)
+            assertFalse(source.isTransmitting)
+            assertNull(source.pollEncodedFrame())
+        }
+    }
+
     @Test fun selectingFloatingModesStartsCaptureWithoutAnotherButtonAndRevokesOldCapture() =
         Fixture().use { fixture ->
             val source = fixture.bindFloatingSource()
@@ -323,7 +371,10 @@ class MicrophoneControllerTest {
             assertTrue(fixture.state.value.microphoneError is UserMessage.MicrophoneFailed)
         }
 
-    private class Fixture(dispatcher: CoroutineDispatcher = Dispatchers.Unconfined) : AutoCloseable {
+    private class Fixture(
+        dispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
+        trialInputReleased: () -> Boolean = { true },
+    ) : AutoCloseable {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = MutableStateFlow(TeamSpeakServiceState(status = ConnectionStatus(ConnectionPhase.CONNECTED)))
         val foreground = mutableListOf<Boolean>()
@@ -346,6 +397,7 @@ class MicrophoneControllerTest {
                 captureFactory = { _, failure, changed -> FakeCapture(failure, changed).also { capture = it } },
                 permissionGranted = { permission },
                 captureDispatcher = dispatcher,
+                trialInputReleased = trialInputReleased,
             )
 
         fun preparation() = ConnectedPttPreparation(controller, { true }, { foreground += it })

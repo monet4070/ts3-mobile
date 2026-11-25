@@ -19,31 +19,33 @@ internal class AudioDiagnosticStorage(private val file: File) {
         var failures = 0L
         var persisted = 0L
         var trimmed = 0L
+        var pending = PendingCheckpoint()
         try {
-            file.useLines { lines ->
-                val iterator = lines.iterator()
-                if (!iterator.hasNext() || iterator.next() != AudioDiagnosticFormat.HEADER) {
-                    return AudioDiagnosticArchiveState(invalidRecords = 1)
-                }
-                iterator.forEach { line ->
-                    try {
-                        val f = line.split('\t')
-                        when (f.first()) {
-                            "S" -> AudioDiagnosticFormat.parseSession(f).let { sessions[it.id] = it }
-                            "P" -> samples.add(AudioDiagnosticFormat.parseSample(f))
-                            "E" -> events.add(AudioDiagnosticFormat.parseEvent(f))
-                            "M" -> {
-                                require(f.size == 5)
-                                failures = positiveOrZero(f[1])
-                                invalid = maxOf(invalid, positiveOrZero(f[2]))
-                                persisted = positiveOrZero(f[3])
-                                trimmed = positiveOrZero(f[4])
-                            }
-                            else -> invalid++
-                        }
-                    } catch (_: IllegalArgumentException) {
-                        invalid++
+            val payload = file.readText()
+            val lastNewline = payload.lastIndexOf('\n')
+            if (lastNewline < 0) return AudioDiagnosticArchiveState(invalidRecords = 1)
+            if (lastNewline != payload.lastIndex) invalid++
+            val lines = payload.substring(0, lastNewline).lineSequence().iterator()
+            if (lines.next() != AudioDiagnosticFormat.HEADER) return AudioDiagnosticArchiveState(invalidRecords = 1)
+            if (!lines.hasNext()) return AudioDiagnosticArchiveState(invalidRecords = 1)
+            lines.forEach { line ->
+                val fields = line.split('\t')
+                if (fields.first() == "M") {
+                    val metadata = parseMarker(fields)
+                    if (metadata != null && !pending.corrupt) {
+                        pending.sessions.forEach { sessions[it.id] = it }
+                        samples.addAll(pending.samples)
+                        events.addAll(pending.events)
+                        failures = metadata[0]
+                        invalid = maxOf(invalid, metadata[1])
+                        persisted = metadata[2]
+                        trimmed = metadata[3]
+                    } else {
+                        invalid += pending.rows + 1
                     }
+                    pending = PendingCheckpoint()
+                } else {
+                    pending.add(fields)
                 }
             }
         } catch (_: IOException) {
@@ -51,6 +53,7 @@ internal class AudioDiagnosticStorage(private val file: File) {
         } catch (_: SecurityException) {
             invalid++
         }
+        invalid += pending.rows
         val retained = sessions.values.toList().takeLast(AudioDiagnosticArchive.MAX_SESSIONS)
         val ids = retained.map { it.id }.toSet()
         val sampleCounts = mutableMapOf<Long, Int>()
@@ -113,7 +116,34 @@ internal class AudioDiagnosticStorage(private val file: File) {
         }
     }
 
-    private fun positiveOrZero(value: String): Long = value.toLong().also { require(it >= 0) }
+    private fun parseMarker(fields: List<String>): List<Long>? {
+        if (fields.size != 5) return null
+        return fields.drop(1).map { it.toLongOrNull()?.takeIf { value -> value >= 0 } ?: return null }
+    }
+
+    private class PendingCheckpoint {
+        val sessions = mutableListOf<AudioDiagnosticSession>()
+        val samples = mutableListOf<AudioDiagnosticSample>()
+        val events = mutableListOf<AudioDiagnosticEntry>()
+        var rows = 0L
+            private set
+        var corrupt = false
+            private set
+
+        fun add(fields: List<String>) {
+            rows++
+            try {
+                when (fields.first()) {
+                    "S" -> sessions.add(AudioDiagnosticFormat.parseSession(fields))
+                    "P" -> samples.add(AudioDiagnosticFormat.parseSample(fields))
+                    "E" -> events.add(AudioDiagnosticFormat.parseEvent(fields))
+                    else -> corrupt = true
+                }
+            } catch (_: IllegalArgumentException) {
+                corrupt = true
+            }
+        }
+    }
 
     companion object {
         const val MAX_FILE_BYTES = 1_048_576L

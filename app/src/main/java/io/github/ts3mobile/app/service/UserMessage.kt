@@ -40,6 +40,10 @@ sealed interface UserMessage {
 
     data class ChannelRestoreFailed(val cause: String) : UserMessage
 
+    data object ChannelMoveNotSubmitted : UserMessage
+
+    data class ChannelMoveUnconfirmed(val channelId: Int) : UserMessage
+
     data object MicrophonePermissionForContinuous : UserMessage
 
     data object MicrophonePermissionMissing : UserMessage

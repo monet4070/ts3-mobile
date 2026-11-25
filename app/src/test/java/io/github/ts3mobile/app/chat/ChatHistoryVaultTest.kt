@@ -14,6 +14,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 import java.util.Base64
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
@@ -102,6 +103,40 @@ class ChatHistoryVaultTest {
             assertEquals(listOf(expected), vault.read(account.ownUid))
         }
 
+    @Test fun readingAfterClockRollbackKeepsAllIdentitiesAndPreservesTheArchive() =
+        runBlocking {
+            val current = channelRecord(1)
+            val other = withAccount(channelRecord(2), account.host, account.port, "fixture-two")
+            vault.setEnabled(true)
+            vault.append(listOf(current, other))
+            val persisted = preferences.data.value
+
+            now -= 60_000
+            assertEquals(listOf(current), vault.read(account.ownUid))
+            assertEquals(persisted, preferences.data.value)
+            now += 60_000
+            val reopened = ChatHistoryVault(preferences, KeystorePayloadCipher(keys), clockMs = { now })
+            assertEquals(listOf(current), reopened.read(account.ownUid))
+            assertEquals(listOf(other), reopened.read(other.conversation.account.ownUid))
+        }
+
+    @Test fun recoveryMustCommitWithoutChangingExistingRecords() =
+        runBlocking {
+            val message = channelRecord(1)
+            vault.setEnabled(true)
+            vault.append(listOf(message))
+            val persisted = preferences.data.value
+
+            preferences.rejectWrites = true
+            assertTrue(vault.enabled())
+            assertTrue(runCatching { vault.recover() }.exceptionOrNull() is IOException)
+            assertEquals(persisted, preferences.data.value)
+
+            preferences.rejectWrites = false
+            assertTrue(vault.recover())
+            assertEquals(listOf(message), vault.read(account.ownUid))
+        }
+
     private fun channelRecord(id: Int): ChatHistoryRecord =
         ChatHistoryRecord(ChatHistoryConversation(account, ChatHistoryRoom.Channel(id)), now, false, "Fixture", "Fixture text $id", false)
 
@@ -114,9 +149,13 @@ class ChatHistoryVaultTest {
 
     private class MemoryPreferences : DataStore<Preferences> {
         override val data = MutableStateFlow(emptyPreferences())
+        var rejectWrites = false
 
         override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences =
-            transform(data.value).also { data.value = it }
+            transform(data.value).also {
+                if (rejectWrites && it != data.value) throw IOException("fixture write failed")
+                data.value = it
+            }
     }
 
     private class FixtureKeys : PayloadKeyAccess {

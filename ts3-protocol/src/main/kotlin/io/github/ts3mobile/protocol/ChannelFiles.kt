@@ -4,6 +4,8 @@ import java.nio.file.Path
 
 /** Read-only transport for the current channel; a staged file belongs to its caller. */
 interface ChannelFiles {
+    fun isCurrent(): Boolean = true
+
     suspend fun list(directory: String): ChannelFileResult<List<ChannelFileEntry>>
 
     suspend fun stageDownload(

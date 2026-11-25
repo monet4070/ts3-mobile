@@ -26,6 +26,9 @@ internal class SessionGeneration {
             generation == current && !disconnectRequested
         }
 
+    val activeEpoch: Long?
+        get() = synchronized(lock) { current.takeUnless { disconnectRequested } }
+
     /** Runs a short state mutation atomically with session registration. */
     fun withActive(
         generation: Long,

@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.nio.file.Path
 import java.util.concurrent.TimeoutException
 
 class Ts3jSessionClient : Ts3SessionClient {
@@ -131,7 +132,7 @@ class Ts3jSessionClient : Ts3SessionClient {
                 return
             }
             try {
-                client.subscribeAll()
+                client.subscribeAll { generation.isCurrent(token) }
             } catch (error: CommandException) {
                 logDiagnostic("event subscriptions unavailable: ${error.conciseMessage()}")
             }
@@ -370,7 +371,11 @@ class Ts3jSessionClient : Ts3SessionClient {
                             snapshotStore.channelLifetime(channelId) == lifetime
                     } == true && canSubmit()
                 }
-            AttachmentDownload { directory -> files.stageDownload(attachment.remotePath, directory) }
+            object : AttachmentDownload {
+                override suspend fun stage(privateDirectory: Path) = files.stageDownload(attachment.remotePath, privateDirectory)
+
+                override fun isCurrent(): Boolean = files.isCurrent()
+            }
         }
     }
 
@@ -437,6 +442,12 @@ class Ts3jSessionClient : Ts3SessionClient {
     override fun joinChannel(
         channelId: Int,
         password: String,
+    ) = joinChannelIfCurrent(channelId, password) { true }
+
+    override fun joinChannelIfCurrent(
+        channelId: Int,
+        password: String,
+        canSubmit: () -> Boolean,
     ) {
         require(channelId > 0) { "Invalid channel ID" }
         val token = generation.currentToken()
@@ -445,7 +456,7 @@ class Ts3jSessionClient : Ts3SessionClient {
                 socket?.takeIf { it.isConnected }
             }
                 ?: error("Not connected to a TeamSpeak server")
-        current.joinChannel(channelId, password)
+        current.joinChannel(channelId, password) { generation.isCurrent(token) && canSubmit() }
         val snapshotUpdated =
             generation.withCurrent(token) {
                 if (socket !== current) return@withCurrent false

@@ -1,10 +1,6 @@
 package io.github.ts3mobile.app.ui
 
-import android.content.ActivityNotFoundException
-import android.content.ContentResolver
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -13,14 +9,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.documents.DocumentPickerRequest
+import io.github.ts3mobile.app.documents.DocumentSaveResult
+import io.github.ts3mobile.app.documents.VerifiedDocument
+import io.github.ts3mobile.app.documents.VerifiedFileSaves
+import io.github.ts3mobile.app.documents.removeVerifiedStaging
 import io.github.ts3mobile.protocol.ChannelFileFailure
 import io.github.ts3mobile.protocol.ChannelFileResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -28,40 +28,43 @@ import java.nio.file.Path
 internal data class VerifiedFileTransferUi(val transfer: VerifiedFileTransfer, val chooseDestination: () -> Unit)
 
 @Composable
-internal fun rememberVerifiedFileTransfer(owner: Any): VerifiedFileTransferUi =
+internal fun rememberVerifiedFileTransfer(
+    owner: Any,
+    isCurrent: () -> Boolean,
+): VerifiedFileTransferUi =
     key(owner) {
         val scope = rememberCoroutineScope()
-        val context = LocalContext.current
-        val transfer = remember(scope, context) { VerifiedFileTransfer(scope, context.contentResolver, context.cacheDir.toPath()) }
+        val binding = LocalVerifiedFileSaves.current
+        val transfer = remember(scope, binding.files) { VerifiedFileTransfer(scope, binding.files, binding.directory.toPath(), isCurrent) }
         DisposableEffect(transfer) { onDispose { transfer.dispose() } }
-        val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream"), transfer::saveTo)
-        VerifiedFileTransferUi(transfer) { transfer.chooseDestination { name -> picker.launch(name) } }
+        VerifiedFileTransferUi(transfer) { transfer.chooseDestination(binding.launch) }
     }
 
 internal class VerifiedFileTransfer(
     private val scope: CoroutineScope,
-    private val resolver: ContentResolver,
+    private val saves: VerifiedFileSaves<Uri>,
     private val directory: Path,
+    private val isCurrent: () -> Boolean,
 ) {
-    private data class StagedFile(val name: String, val path: Path)
-
+    private val owner = Any()
     private var active = true
-    private var staged by mutableStateOf<StagedFile?>(null)
+    private var staged by mutableStateOf<VerifiedDocument?>(null)
+    private var lastSaveResult by mutableStateOf<DocumentSaveResult?>(null)
     var downloading by mutableStateOf(false)
-        private set
-    var saving by mutableStateOf(false)
-        private set
-    var saved by mutableStateOf(false)
         private set
     var failure by mutableStateOf<ChannelFileFailure?>(null)
         private set
 
-    val canSave: Boolean get() = staged != null && !saving
-    val locked: Boolean get() = downloading || saving || staged != null
+    val saving: Boolean get() = saves.isSaving(owner)
+    val saved: Boolean get() = lastSaveResult == DocumentSaveResult.SAVED
+    val saveIssue: DocumentSaveResult?
+        get() = saves.issue(owner) ?: lastSaveResult?.takeUnless { it == DocumentSaveResult.CANCELED || it == DocumentSaveResult.SAVED }
+    val canSave: Boolean get() = staged != null && saves.available || saves.canRetry(owner)
+    val locked: Boolean get() = downloading || saving || staged != null || saves.canRetry(owner)
 
     fun resetFeedback() {
         failure = null
-        saved = false
+        lastSaveResult = null
     }
 
     fun start(
@@ -73,71 +76,44 @@ internal class VerifiedFileTransfer(
         downloading = true
         scope.launch {
             try {
+                withContext(Dispatchers.IO) { Files.createDirectories(directory) }
                 when (val result = download(directory)) {
-                    is ChannelFileResult.Success -> if (active) staged = StagedFile(name, result.value) else deleteStaging(result.value)
+                    is ChannelFileResult.Success ->
+                        if (active && isCurrent()) {
+                            staged = VerifiedDocument(name, result.value, isCurrent)
+                        } else {
+                            removeVerifiedStaging(result.value)
+                            if (active) failure = ChannelFileFailure.SESSION_CHANGED
+                        }
                     is ChannelFileResult.Failed -> if (active) failure = result.reason
                 }
+            } catch (_: IOException) {
+                if (active) failure = ChannelFileFailure.IO
+            } catch (_: SecurityException) {
+                if (active) failure = ChannelFileFailure.IO
             } finally {
                 downloading = false
             }
         }
     }
 
-    fun chooseDestination(launch: (String) -> Unit) {
-        val file = staged ?: return
-        if (!active || saving) return
-        saving = true
-        try {
-            launch(file.name)
-        } catch (_: ActivityNotFoundException) {
-            saving = false
-            failure = ChannelFileFailure.IO
+    fun chooseDestination(launch: (DocumentPickerRequest) -> Boolean) {
+        if (!active) return
+        val file = staged
+        if (file == null) {
+            saves.retry(owner, launch)
+        } else if (saves.start(owner, file, { lastSaveResult = it }, launch)) {
+            staged = null
         }
     }
 
-    fun saveTo(uri: Uri?) {
-        val file = staged ?: return
-        if (!active || !saving) return
-        if (uri == null) {
-            saving = false
-            discardStaging()
-            return
-        }
-        scope.launch {
-            try {
-                runInterruptible(Dispatchers.IO) {
-                    val output = resolver.openOutputStream(uri, "w") ?: throw IOException("Document is not writable")
-                    output.use { stream -> Files.newInputStream(file.path).use { it.copyTo(stream) } }
-                }
-                saved = true
-            } catch (_: IOException) {
-                failure = ChannelFileFailure.IO
-            } catch (_: SecurityException) {
-                failure = ChannelFileFailure.IO
-            } finally {
-                saving = false
-                discardStaging()
-            }
-        }
-    }
+    fun dismiss() = saves.discardRetry(owner)
 
     fun dispose() {
         active = false
-        discardStaging()
-    }
-
-    private fun discardStaging() {
-        val file = staged ?: return
+        staged?.let { removeVerifiedStaging(it.path) }
         staged = null
-        deleteStaging(file.path)
-    }
-
-    private fun deleteStaging(path: Path) {
-        try {
-            Files.deleteIfExists(path)
-        } catch (_: IOException) {
-            System.err.println("TS3_FILE: discarding local staging failed")
-        }
+        saves.detach(owner)
     }
 }
 

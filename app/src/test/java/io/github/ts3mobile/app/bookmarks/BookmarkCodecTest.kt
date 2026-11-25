@@ -58,4 +58,30 @@ class BookmarkCodecTest {
         assertThrows(IllegalArgumentException::class.java) { entry.copy(name = "").validate() }
         assertEquals(7, entry.toConfig().defaultChannelId)
     }
+
+    @Test fun writesNormalizeNewAndEditedEntriesWithoutChangingLegacyReads() {
+        val legacy = entry.copy(host = "  voice.example.com  ", nickname = " ".repeat(8_000) + "Tester")
+        assertEquals(listOf(legacy), BookmarkCodec.decode(BookmarkCodec.encode(listOf(legacy))))
+
+        val saved = BookmarkCodec.save(emptyList(), legacy).single()
+        assertEquals("voice.example.com", saved.host)
+        assertEquals("Tester", saved.nickname)
+        assertEquals(listOf(saved), BookmarkCodec.decode(BookmarkCodec.encode(listOf(saved))))
+    }
+
+    @Test fun writerAndReaderShareTheExactArchiveLimit() {
+        val base = List(5) { entry.copy(id = "legacy-$it") }
+        val available = BookmarkCodec.MAX_ARCHIVE_BYTES - BookmarkCodec.encode(base).size
+        val boundary =
+            base.mapIndexed { index, bookmark ->
+                val padding = available / base.size + if (index == 0) available % base.size else 0
+                bookmark.copy(nickname = " ".repeat(padding) + bookmark.nickname)
+            }
+        val encoded = BookmarkCodec.encode(boundary)
+        assertEquals(BookmarkCodec.MAX_ARCHIVE_BYTES, encoded.size)
+        assertEquals(boundary, BookmarkCodec.decode(encoded))
+
+        val oversized = boundary + entry
+        assertThrows(IllegalArgumentException::class.java) { BookmarkCodec.encode(oversized) }
+    }
 }

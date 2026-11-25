@@ -45,14 +45,32 @@ internal class BookmarkVault(
             var updated = emptyList<ServerBookmark>()
             store.edit { preferences ->
                 updated = transform(decrypt(preferences[payloadKey]))
-                preferences[payloadKey] = cipher.encrypt(BookmarkCodec.encode(updated))
+                preferences[payloadKey] = encrypt(updated)
             }
             updated
         }
 
+    private fun encrypt(entries: List<ServerBookmark>): String {
+        val archive = BookmarkCodec.encode(entries)
+        return try {
+            cipher.encrypt(archive).also { require(it.length <= MAX_PAYLOAD_CHARS) { "Bookmark ciphertext exceeds its size limit" } }
+        } finally {
+            archive.fill(0)
+        }
+    }
+
     private fun decrypt(payload: String?): List<ServerBookmark> {
         if (payload == null) return emptyList()
-        require(payload.length <= 512 * 1024)
-        return BookmarkCodec.decode(cipher.decrypt(payload))
+        require(payload.length <= MAX_PAYLOAD_CHARS)
+        val archive = cipher.decrypt(payload)
+        return try {
+            BookmarkCodec.decode(archive)
+        } finally {
+            archive.fill(0)
+        }
+    }
+
+    private companion object {
+        const val MAX_PAYLOAD_CHARS = 512 * 1024
     }
 }

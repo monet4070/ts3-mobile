@@ -26,11 +26,10 @@ internal class PlaybackTimeline(
     private var drainBudgetNanos = 0L
     private var pending: ShortArray? = null
     private var pendingOffset = 0
-    private var writeStarted = 0L
+    private var writeBlockedSince: Long? = null
     private var headOrigin = 0L
     private var startedAt = 0L
     private var pendingArrival: Long? = null
-    private var extendedStartupWrite = false
     private var firstWriteAt: Long? = null
 
     fun start(now: Long = System.nanoTime()) {
@@ -40,7 +39,7 @@ internal class PlaybackTimeline(
         previousHead = output.playbackHead
         headOrigin = previousHead
         startedAt = now
-        extendedStartupWrite = false
+        writeBlockedSince = null
         firstWriteAt = null
         reference?.start()
         state = State.PLAYING
@@ -52,16 +51,13 @@ internal class PlaybackTimeline(
         originalArrivalNanos: Long? = null,
     ) {
         if (state == State.IDLE) return
+        val previouslyPlayed = playedFrames
         updatePlayedFrames()
-        if (extendedStartupWrite && playedFrames > 0L) {
-            extendedStartupWrite = false
-            writeStarted = now
-        }
+        if (playedFrames > previouslyPlayed) writeBlockedSince = null
         if (samples != null && samples.isNotEmpty()) {
             check(pending == null) { "Playback still has an incomplete write" }
             pending = samples
             pendingOffset = 0
-            writeStarted = now
             pendingArrival = originalArrivalNanos
             state = State.PLAYING
         }
@@ -113,9 +109,11 @@ internal class PlaybackTimeline(
 
     private fun writePending(now: Long) {
         val samples = pending ?: return
-        if (now - writeStarted >= WRITE_TIMEOUT_NANOS) {
-            check(awaitingBluetoothStart(now)) { "Audio output write timed out" }
-            extendedStartupWrite = true
+        if (!canWrite()) return
+        if (pendingArrival?.let { now - it >= MAX_PCM_AGE_NANOS } == true) {
+            receiveStats?.count(AudioReceiveCounter.OUTPUT_EXPIRED_PCM_SAMPLES, (samples.size - pendingOffset).toLong())
+            pending = null
+            return
         }
         repeat(MAX_WRITES_PER_TICK) {
             if (!canWrite()) return
@@ -126,8 +124,11 @@ internal class PlaybackTimeline(
             check(written in 0..remaining) { "Audio output write failed: $written" }
             if (written == 0) {
                 receiveStats?.count(AudioReceiveCounter.ZERO_WRITES)
+                val blockedSince = writeBlockedSince ?: now.also { writeBlockedSince = it }
+                check(now - blockedSince < WRITE_TIMEOUT_NANOS || awaitingBluetoothStart(now)) { "Audio output write timed out" }
                 return
             }
+            writeBlockedSince = null
             if (submittedFrames == 0L && receiveStats?.observer != null) firstWriteAt = clockNanos()
             receiveStats?.count(AudioReceiveCounter.OUTPUT_SAMPLES, written.toLong())
             pendingArrival?.let { arrival -> receiveStats?.let { it.maximum(it.maxCombinedWaitNanos, now - arrival) } }
@@ -184,6 +185,7 @@ internal class PlaybackTimeline(
         private const val DRAIN_MARGIN_NANOS = 100_000_000L
         private const val NANOS_PER_SECOND = 1_000_000_000L
         private const val SAMPLE_RATE = 48_000
+        const val MAX_PCM_AGE_NANOS = ReceivePolicy.MAX_CLIENT_SAMPLES * NANOS_PER_SECOND / SAMPLE_RATE
         private const val HEAD_MASK = 0xffff_ffffL
         private const val MAX_WRITES_PER_TICK = 8
     }

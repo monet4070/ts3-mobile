@@ -41,6 +41,7 @@ class OpusAudioPlayer internal constructor(
 
     @Volatile private var routeSwitching = false
     private val lifecycleLock = Any()
+    private var closed = false
     private val admission = PlaybackAdmission()
 
     @Volatile var status = PlaybackStatus.STOPPED
@@ -57,6 +58,7 @@ class OpusAudioPlayer internal constructor(
 
     fun start(profile: ReceiveDelayProfile) {
         synchronized(lifecycleLock) {
+            if (closed) return
             if (control?.running?.get() == true) return
             check(worker?.isAlive != true) { "Previous playback worker has not stopped" }
             check(control?.session?.retired != false) { "Previous playback output has not been released" }
@@ -66,6 +68,7 @@ class OpusAudioPlayer internal constructor(
             val active = PlaybackControl(profile)
             control = active
             publishStatus(PlaybackStatus.BUFFERING)
+            if (!active.running.get()) return
             worker =
                 Thread({ playbackLoop(active) }, "ts3-opus-playback").apply {
                     priority = Thread.MAX_PRIORITY
@@ -178,9 +181,12 @@ class OpusAudioPlayer internal constructor(
         }
     }
 
-    fun stop() {
+    fun stop() = stop(terminal = false)
+
+    private fun stop(terminal: Boolean) {
         val activeWorker =
             synchronized(lifecycleLock) {
+                if (terminal) closed = true
                 val active = control ?: return
                 admission.invalidateAll()
                 active.running.set(false)
@@ -203,7 +209,7 @@ class OpusAudioPlayer internal constructor(
         }
     }
 
-    override fun close() = stop()
+    override fun close() = stop(terminal = true)
 
     private fun onOutputRouteChanged(output: AndroidPlaybackOutput) {
         var changed = false

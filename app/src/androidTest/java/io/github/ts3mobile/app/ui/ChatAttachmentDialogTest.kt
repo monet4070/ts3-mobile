@@ -37,8 +37,10 @@ class ChatAttachmentDialogTest {
         val damagedLabel = "QA 中 A+100\uFFFDxt"
         val target = fixtureAttachmentReference(UID, 1).replace("filename=probe.txt", "filename=QA%20%E4%B8%AD%20A%2B100%25.txt")
         rule.setContent {
-            val actions = rememberChatAttachmentActions(state, ChatBinding(11, 12, 1, 4)) { _, _, _ -> null }
-            ChatRichBody("[URL=$target]$damagedLabel[/URL]", false, actions)
+            TestVerifiedFileSaveHost {
+                val actions = rememberChatAttachmentActions(state, ChatBinding(11, 12, 1, 4)) { _, _, _ -> null }
+                ChatRichBody("[URL=$target]$damagedLabel[/URL]", false, actions)
+            }
         }
         rule.onNodeWithText(damagedLabel).assertDoesNotExist()
         rule.onNodeWithText(filename).assertIsDisplayed().performTouchInput { click(center) }
@@ -52,22 +54,24 @@ class ChatAttachmentDialogTest {
         val downloads = AtomicInteger()
         val cancelled = AtomicBoolean(false)
         rule.setContent {
-            val actions =
-                rememberChatAttachmentActions(state, scope.value) { token, attempt, file ->
-                    assertEquals("fixture-token", token)
-                    assertEquals(12L, attempt)
-                    assertEquals("probe.txt", file.fileName)
-                    opens.incrementAndGet()
-                    AttachmentDownload {
-                        downloads.incrementAndGet()
-                        try {
-                            awaitCancellation()
-                        } finally {
-                            cancelled.set(true)
+            TestVerifiedFileSaveHost {
+                val actions =
+                    rememberChatAttachmentActions(state, scope.value) { token, attempt, file ->
+                        assertEquals("fixture-token", token)
+                        assertEquals(12L, attempt)
+                        assertEquals("probe.txt", file.fileName)
+                        opens.incrementAndGet()
+                        AttachmentDownload {
+                            downloads.incrementAndGet()
+                            try {
+                                awaitCancellation()
+                            } finally {
+                                cancelled.set(true)
+                            }
                         }
                     }
-                }
-            ChatRichBody("[url=${fixtureAttachmentReference(UID, 1)}]Shown name[/url]", false, actions)
+                ChatRichBody("[url=${fixtureAttachmentReference(UID, 1)}]Shown name[/url]", false, actions)
+            }
         }
         val target = rule.onNodeWithText("Shown name")
         target.assertIsDisplayed()

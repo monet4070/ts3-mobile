@@ -8,6 +8,8 @@ import io.github.ts3mobile.app.chat.ChatHistoryVault
 import io.github.ts3mobile.app.identity.IdentityRepository
 import io.github.ts3mobile.app.identity.IdentityVault
 import io.github.ts3mobile.app.service.AudioDiagnosticRepository
+import io.github.ts3mobile.app.service.DiagnosticJournal
+import io.github.ts3mobile.app.service.SessionDiagnosticWriter
 import io.github.ts3mobile.app.settings.playbackPreferences
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +27,10 @@ class Ts3MobileApplication : Application() {
     /** The archive read runs here, never on the caller's thread; see OfflineAudioDiagnosticsTest. */
     internal val audioDiagnosticDispatcher: CoroutineDispatcher = Dispatchers.IO
     private val audioDiagnosticScope = CoroutineScope(SupervisorJob() + audioDiagnosticDispatcher)
+
+    internal val sessionDiagnosticWriter by lazy {
+        SessionDiagnosticWriter(DiagnosticJournal(File(noBackupFilesDir, "session-events.tsv")), audioDiagnosticScope)
+    }
 
     /**
      * Reading up to 1 MiB of history is bounded but never belongs on the service's main thread.

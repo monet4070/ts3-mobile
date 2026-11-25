@@ -6,7 +6,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -56,13 +55,40 @@ class ChatHistoryControllerTest {
             runCurrent()
             assertTrue(history.state.value.failed)
             assertNull(history.ticket())
+            assertFalse(history.reload())
+            assertTrue(history.state.value.failed)
+            assertNull(history.ticket())
             store.failWrites = false
             assertTrue(history.reload())
-            assertNotNull(history.ticket())
+            val recoveredTicket = checkNotNull(history.ticket())
+            val recovered = record("saved after recovery")
+            history.offer(recoveredTicket, recovered)
             advanceTimeBy(200)
             runCurrent()
             assertFalse(history.state.value.failed)
-            assertTrue(history.read(account.ownUid).isEmpty())
+            assertEquals(listOf(recovered), history.read(account.ownUid))
+        }
+
+    @Test fun clearReleasesAllQueueSlotsForNewGeneration() =
+        runTest {
+            val history = ChatHistoryController(backgroundScope, FixtureHistoryStore(initiallyEnabled = true))
+            runCurrent()
+            val oldTicket = checkNotNull(history.ticket())
+            val old = record("old generation")
+            history.offer(oldTicket, old)
+            runCurrent()
+            repeat(64) { history.offer(oldTicket, old) }
+            assertFalse(history.state.value.dropped)
+
+            assertTrue(history.clear())
+            history.offer(oldTicket, old)
+            val fresh = record("new generation")
+            history.offer(checkNotNull(history.ticket()), fresh)
+            advanceTimeBy(250)
+            runCurrent()
+
+            assertFalse(history.state.value.dropped)
+            assertEquals(listOf(fresh), history.read(account.ownUid))
         }
 
     private fun record(body: String) = ChatHistoryRecord(conversation, 1L, false, null, body, false)
@@ -74,6 +100,11 @@ internal class FixtureHistoryStore(initiallyEnabled: Boolean = false) : ChatHist
     var failWrites = false
 
     override suspend fun enabled(): Boolean = optedIn
+
+    override suspend fun recover(): Boolean {
+        if (optedIn) check(!failWrites)
+        return optedIn
+    }
 
     override suspend fun setEnabled(enabled: Boolean) {
         optedIn = enabled

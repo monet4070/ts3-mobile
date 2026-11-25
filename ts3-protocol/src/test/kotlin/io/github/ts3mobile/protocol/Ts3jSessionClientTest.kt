@@ -15,9 +15,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.InetSocketAddress
+import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit.SECONDS
@@ -25,6 +27,20 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 class Ts3jSessionClientTest {
+    @Test fun readinessTimeoutClosesTheSocketWithoutPublishingConnected() {
+        val socket = FakeSocket().apply { beforeSubscription = { throw SocketTimeoutException("fixture readiness deadline") } }
+        val listener = RecordingListener()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+
+        assertThrows(SocketTimeoutException::class.java) { client.connect(testConfig(), Ts3IdentityCodec.generate(), listener) }
+
+        assertTrue(listener.statuses.none { it.phase == ConnectionPhase.CONNECTED })
+        assertEquals(ConnectionPhase.ERROR, listener.statuses.last().phase)
+        assertTrue(listener.statuses.last().retryable)
+        assertEquals(1, socket.closeCalls)
+        client.close()
+    }
+
     @Test
     fun anActiveTalkspurtRemainsReadyWhileItsQueueIsTemporarilyEmpty() {
         var active = true
@@ -618,6 +634,7 @@ class Ts3jSessionClientTest {
         var pokeCalls = 0
         var beforeTextSubmit: () -> Unit = {}
         var beforeMicrophoneUpdate: () -> Unit = {}
+        var beforeSubscription: () -> Unit = {}
 
         override fun pokeClient(
             target: TextTarget.Private,
@@ -690,7 +707,7 @@ class Ts3jSessionClientTest {
             failureOnConnect?.let { exceptionHandler?.invoke(it) }
         }
 
-        override fun subscribeAll() = Unit
+        override fun subscribeAll(canSubmit: () -> Boolean) = beforeSubscription()
 
         override val isConnected: Boolean
             get() = connected
@@ -698,7 +715,9 @@ class Ts3jSessionClientTest {
         override fun joinChannel(
             channelId: Int,
             password: String,
+            canSubmit: () -> Boolean,
         ) {
+            if (!canSubmit()) throw ChannelMoveNotSubmittedException()
             joinEntered?.countDown()
             releaseJoin?.await(2, SECONDS)
             joinedChannel = channelId

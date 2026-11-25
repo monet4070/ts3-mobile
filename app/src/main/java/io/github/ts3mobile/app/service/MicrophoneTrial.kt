@@ -52,8 +52,11 @@ internal class MicrophoneTrial(
 ) {
     private val mutableState = MutableStateFlow(MicrophoneTrialState())
     val state = mutableState.asStateFlow()
-    private var source: MicrophoneTrialSource? = null
+
+    @Volatile private var source: MicrophoneTrialSource? = null
+
     private var observer: Job? = null
+    val isInputReleased: Boolean get() = source == null
 
     fun start(settings: MicrophoneSettings) {
         if (mutableState.value.phase == MicrophoneTrialPhase.RUNNING || !stop()) return

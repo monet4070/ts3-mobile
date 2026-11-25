@@ -14,7 +14,6 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -120,7 +119,7 @@ private fun CurrentIdentitySection(
         IdentityHint(R.string.identity_explanation)
         if (snapshot?.rollback != null) IdentityHint(R.string.identity_local_rollback)
         if (useState == IdentityUseState.CONNECTION) IdentityStatusLine(R.string.identity_disconnect_first, UiIcon.Info)
-        TextButton(onClick = onRefresh, enabled = idle) { IdentityActionLabel(UiIcon.Refresh, R.string.identity_refresh) }
+        OutlinedButton(onClick = onRefresh, enabled = idle) { IdentityActionLabel(UiIcon.Refresh, R.string.identity_refresh) }
     }
 }
 

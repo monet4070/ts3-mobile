@@ -26,6 +26,16 @@ interface Ts3SessionClient : AutoCloseable {
         password: String = "",
     )
 
+    /** Check ownership before submitting; an unconfirmed move must not be retried automatically. */
+    fun joinChannelIfCurrent(
+        channelId: Int,
+        password: String,
+        canSubmit: () -> Boolean,
+    ) {
+        if (!canSubmit()) throw ChannelMoveNotSubmittedException()
+        joinChannel(channelId, password)
+    }
+
     /** One attempt only; Unknown never authorizes an automatic retry. */
     suspend fun sendTextMessage(
         target: TextTarget,

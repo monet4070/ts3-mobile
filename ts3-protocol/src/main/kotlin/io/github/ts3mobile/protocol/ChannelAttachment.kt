@@ -30,6 +30,8 @@ class VirtualServerUid private constructor(private val value: String) {
 
 fun interface AttachmentDownload {
     suspend fun stage(privateDirectory: Path): ChannelFileResult<Path>
+
+    fun isCurrent(): Boolean = true
 }
 
 class ChannelAttachment private constructor(

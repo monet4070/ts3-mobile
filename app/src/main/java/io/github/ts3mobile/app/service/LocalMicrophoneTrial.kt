@@ -32,6 +32,7 @@ internal class LocalMicrophoneTrial(
     private var target: InputTarget? = null
     private var startJob: Job? = null
     val state = trial.state
+    val isInputReleased: Boolean get() = trial.isInputReleased
 
     fun watchSession() {
         scope.launch {

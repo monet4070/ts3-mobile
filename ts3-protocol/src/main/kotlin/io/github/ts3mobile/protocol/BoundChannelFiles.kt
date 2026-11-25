@@ -12,6 +12,8 @@ internal class BoundChannelFiles(
     private val channelId: Int,
     private val current: () -> Boolean,
 ) : ChannelFiles {
+    override fun isCurrent(): Boolean = current()
+
     override suspend fun list(directory: String): ChannelFileResult<List<ChannelFileEntry>> {
         val result = runInterruptible(Dispatchers.IO) { transport.list(channelId, directory, current) }
         return if (current()) result else ChannelFileResult.Failed(ChannelFileFailure.SESSION_CHANGED)

@@ -43,6 +43,7 @@ internal class MicrophoneController(
     },
     private val captureDispatcher: CoroutineDispatcher = Dispatchers.IO,
     floatingClockMs: () -> Long = SystemClock::elapsedRealtime,
+    private val trialInputReleased: () -> Boolean = { true },
 ) : AutoCloseable {
     private val transmitMutex = Mutex()
     private val transmitPublicationLock = Any()
@@ -166,13 +167,15 @@ internal class MicrophoneController(
         whenInputReleased { appVisible.get() == leavingMainActivity && floating.arm(state.value.microphoneMode) } == true
 
     fun selectFloatingPttMode(mode: MicrophoneMode): Boolean {
-        if (appVisible.get() || !floatingPttValid || !floating.select(mode, ::requestStop)) return false
+        if (appVisible.get() || !floatingPttValid) return false
+        if (mode != MicrophoneMode.OFF && !checkTrialInputReleased()) return false
+        if (!floating.select(mode, ::requestStop)) return false
         if (mode.requiresContinuousCapture) reconcile()
         return true
     }
 
     fun pressFloatingPtt(): Long? {
-        if (appVisible.get()) return null
+        if (appVisible.get() || !floatingPttValid || !checkTrialInputReleased()) return null
         val token = whenInputReleased { floating.begin() } ?: return null
         reconcile()
         return token
@@ -182,6 +185,13 @@ internal class MicrophoneController(
 
     fun disarmFloatingPtt() {
         if (floating.disarm()) requestStop()
+    }
+
+    private fun checkTrialInputReleased(): Boolean {
+        if (trialInputReleased()) return true
+        voiceSource.disable()
+        feedback.trialReleaseFailed()
+        return false
     }
 
     private fun <Result> whenInputReleased(action: () -> Result?): Result? {
@@ -203,6 +213,11 @@ internal class MicrophoneController(
                 val floatingPress = floating.capture
                 if (!shouldCapture(floatingPress)) {
                     stopLocked()
+                    return@withLock
+                }
+
+                if (!checkTrialInputReleased()) {
+                    if (!microphone.isReleased) stopSafely()
                     return@withLock
                 }
 
@@ -245,14 +260,18 @@ internal class MicrophoneController(
                         stopLocked()
                         return@withLock
                     }
+                    if (!checkTrialInputReleased()) {
+                        stopSafely()
+                        return@withLock
+                    }
                     if (floatingPress != null) check(microphone.isReleased) { "Previous microphone input is not released" }
                     val current = state.value
                     val captureMode = floatingPress?.mode ?: current.microphoneMode
                     microphone.configure(current.microphoneSettings, captureMode == MicrophoneMode.VOLUME_GATE)
                     microphone.start()
-                    val authorized = floatingPress?.let { token -> { shouldCapture(token) } }
+                    val authorized = floatingPress?.let { token -> { shouldCapture(token) && trialInputReleased() } }
                     val countFrame: (() -> Unit)? = if (floatingPress != null) ({ floatingFrames.incrementAndGet() }) else null
-                    val stillAuthorized = shouldCapture(floatingPress) && !stopPending.get()
+                    val stillAuthorized = shouldCapture(floatingPress) && !stopPending.get() && checkTrialInputReleased()
                     if (!stillAuthorized || !voiceSource.tryEnable(sendRevision, authorized, countFrame)) {
                         stopLocked()
                         if (shouldCapture()) reconcile()
