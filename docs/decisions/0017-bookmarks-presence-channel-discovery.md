@@ -16,6 +16,10 @@ Bookmarks use an independent versioned AES-GCM vault/Keystore alias with explici
 save failures, bounded to 50 entries. Existing history/form/identity data formats
 and keys remain unchanged; old installs begin with no bookmarks and no migration.
 Each entry has a stable UUID and revision; updates/deletes reject stale revisions.
+New and edited entries normalize the connection host and nickname before
+encoding. The writer uses the reader's archive and ciphertext limits and fails
+without replacing the previous ciphertext. Existing readable entries are still
+accepted unchanged; the format and key did not migrate.
 Passwords are opt-in, excluded from backup/transfer along with the whole vault,
 and removed from a bookmark when remembering is disabled. This does not erase
 independent form memory or identity. Loading/editing never connects automatically.

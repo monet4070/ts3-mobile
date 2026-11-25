@@ -8,6 +8,10 @@ for the new playback profiles, Bluetooth protection, invites and listening contr
 
 ## Connect and join
 
+In the unreleased candidate, **Settings → Help and about → Feature help** covers server setup, invites,
+identity, floating PTT, chat, files and troubleshooting. Select a topic when you need it. Where a control
+is highlighted, tap that control to navigate; **Close tip** clears the highlight without opening another tip.
+
 Enter a server address, voice port, 3–30 character nickname and server password
 if required. The usual voice port is `9987`; use the administrator's configured
 voice port, not a ServerQuery port. A local TeamSpeak identity is generated on
@@ -64,6 +68,11 @@ Below 100%, the slider approximates perceived loudness: 50% aims to sound about
 half as loud as the unadjusted 100%. The result depends on the voice and listening setup.
 Listening mute is separate from turning your microphone off.
 
+In development builds, **Settings → Voice playback → Audio devices in use** shows
+the selected output separately from the confirmed media/call route, the recording
+input, and the system microphone mute state. “Unknown” is not inferred from a
+preference; “Not recording” is distinct from being muted.
+
 Open **More options → Appearance**: Light (the unset default),
 Dark, or Follow system. The choice is saved locally and applies to the main,
 identity and appearance pages. System changes affect the palette only in Follow
@@ -85,6 +94,10 @@ unmute manually; reconnecting a headset keeps the safety mute. This affects list
 microphone mode. Android callback and hardware latency still need physical-headset testing.
 
 ## Messages, private chats and pokes
+
+Basic TeamSpeak BBCode (bold, italic, code and explicit HTTP(S) links) is displayed
+in chat. Tapping a link first shows its destination; messages do not fetch previews.
+Copy message keeps the original text, including any markup.
 
 Use Chat for the current channel. Send private message in user actions opens a
 private conversation; the chat header switches conversations. Drafts and unread
@@ -116,16 +129,23 @@ brief result feedback; opening the dialog does not send anything.
 Incoming pokes show an in-app notice. Background/locked delivery uses a dedicated
 notification channel with generic content. Notification permission, channel settings
 and Do Not Disturb control presentation and sound. Returning shows a retained
-pending notice. Chat/poke records and drafts stay only in service memory: ordinary
-reconnect keeps them; manual exit, a new manual session, terminal failure or process
-death clears them. Servers and recipients may keep received content.
+pending notice. Live chat, pokes and drafts stay in service memory: ordinary reconnect
+keeps them; manual exit, a new manual session, terminal failure or process death clears
+them. Servers and recipients may keep received content.
+
+In the development build, **Settings → Local chat history** can save new, eligible
+text after you opt in. After disconnecting, use **Browse saved messages** to read your
+current identity's records. The archive never resends messages, stores drafts or
+downloads messages from the server. Sort and display are separate from live chat;
+deleting one saved conversation does not affect other ones. Turning the feature off
+asks you to confirm deletion of all saved messages on this device.
 
 ## Server bookmarks
 
 ![English bookmark list and editor in 1.1.0, with sample servers](images/1.1.0/en/bookmarks-and-editor.webp)
 
 Choose a saved server on the connection form, or open Server bookmarks in More
-options. Each card has a Connect action. Its menu holds Fill form, Edit and Delete;
+options. Each card has a **Connect now** action that does not replace an active session. Its menu holds Fill form, Edit and Delete;
 deletion requires confirmation. Fill form replaces parameters without connecting.
 
 Add bookmark prefills the current address, port and nickname; give it a name.
@@ -139,13 +159,23 @@ nickname, even if you edited the connection form meanwhile. Its current channel
 is preselected. For a bookmark matching the connected endpoint, Choose default
 channel lists names with parent paths; Use current channel selects it directly.
 This stores the same channel ID as before. Passwords are still explicit opt-in
-and are never copied from the active session. Changing the selected channel
-clears its previously entered channel password.
+and are never copied from the active session. In the upcoming hotfix, changing the host
+or port clears both passwords and the old default channel from the draft. Changing or
+clearing only the default channel, including through the numeric field, clears only its
+password. Re-enter any required passwords for the new target. Returning to the old target
+does not restore cleared passwords; canceling the whole edit keeps the original bookmark.
 
 Connection replacement, channel deletion or an out-of-date bookmark revision
 keeps your draft and prevents a stale save. Choose again, clear the default
 channel, or use the numeric field in More settings for deliberate offline/manual
 editing. Choosing a channel does not grant permission to join it.
+
+In More settings, **Save channel list for offline use** appears when the bookmark
+matches the current connection. It saves up to 100 channel IDs and paths locally
+for that address and port, independently of saving the bookmark. **Browse saved
+channels** lets you choose a default channel without connecting or forget the
+list. Names, IDs and permissions may be out of date. Current channel information
+remains available through **Choose default channel** when connected.
 
 ## Away, background and exit
 
@@ -182,8 +212,20 @@ Older versions need one manual update to gain this entry.
 See [installation and the update screen](INSTALLATION.md#english).
 
 More options → Identity and backups exports verified, encrypted identity files and supports confirmed import/local rollback.
-Keep the passphrase separately. Backups exclude bookmarks/forms and do not support desktop-client identity formats.
+Keep the passphrase separately. Backups exclude bookmarks and forms.
 See [README identity instructions](../README.md) and [installation](INSTALLATION.md).
+
+The separate desktop `.ini` import is an unreleased Debug preview. Export a single
+disposable identity from desktop TS3 and select it with **Import desktop TS3 identity**;
+do not use this entry for an encrypted `.ts3mbak`. The INI contains a private key;
+keep it private. Review the comparison and choose **Use this identity** to apply it.
+If the same UID would receive a lower security level, a separate acknowledgement is required.
+
+The published 1.2.0 APK does not include floating PTT. In the unreleased standard build,
+join a channel and open **More options → Settings → Floating PTT** to grant overlay access.
+Show it manually, recall it from the connection notification, or opt in to showing it on Home.
+Displaying it never activates the microphone. Only Hold mode uses the right-hand press target;
+other modes show status there. The local-only microphone lab remains Debug-only.
 
 ## Offline audio diagnostics
 

@@ -52,6 +52,14 @@ appearance.
   migrated. Disabling password retention removes both bookmark passwords from
   that snapshot; deleting a bookmark does not erase independent form memory,
   history or identity. Loading bookmarks never connects automatically.
+  In the upcoming hotfix, changing the host or port clears the draft's previous
+  default channel and both passwords; changing only the channel clears its password.
+  This does not scan or modify saved bookmarks that you have not edited.
+- Choosing **Save channel list for offline use** stores up to 100 channel IDs and
+  paths per address and port (up to six endpoints). It does not save credentials,
+  participants or messages. The lists use a separate Android Keystore key, are
+  excluded from backup and device transfer, and are never fetched in the
+  background. Use **Forget saved list** to remove an endpoint's list.
 - Away status/message and input/output mute flags are sent to the selected server
   through clientupdate. Away messages stay in service memory and are not logged or
   saved. Local mute/stop still works if server synchronization is refused or uncertain.
@@ -82,6 +90,8 @@ appearance.
   up to 120 samples and 64 fixed events each, in a capped 1 MiB log. It includes
   timing, receive/playback counters, coarse route/network kinds and user time marks;
   no audio, payloads, participant/device names or IDs, endpoints or exception text.
+  Unreleased diagnostics add bounded protocol timing buckets, device categories and
+  known system microphone mute when recording. They do not retain per-packet timestamps.
   Records survive reopening until rotated or app data is removed. A sudden exit
   may lose the latest unpersisted interval. No diagnostic upload is automatic.
   An explicit Save file action writes JSON to the Android document provider chosen
@@ -101,14 +111,27 @@ Received text, sender names and drafts stay in foreground-service memory with a
 bounded incoming events/drafts. Participant UIDs are in-memory conversation keys;
 numeric conversation IDs and scroll metadata (position, last handled sequence and
 follow intent) are the only saved conversation UI state.
-Messages, names, UIDs and drafts are not stored in preferences, saved Activity
-state, diagnostics or logs.
+By default no message body, sender name or UID is saved to disk. Drafts are never
+archived. Chat content is excluded from saved Activity state, diagnostics and logs.
 Ordinary reconnect keeps them in memory; a new manual connection, manual exit,
 terminal session failure or process death removes them. Explicit long-press Copy
 puts only the selected message body on Android's clipboard, subject to Android's
 clipboard behavior. Server operators and participants may retain received text.
 Closing a private conversation removes its in-memory messages and draft. A private
 conversation without a stable UID is also removed when its connection attempt ends.
+
+Development builds offer **Settings → Local chat history**, off by default. If
+enabled, eligible new text (including while connected in the background) is saved
+locally with a separate Android Keystore key and excluded from backup and device
+transfer. The archive records the address/port, own TeamSpeak UID, channel ID or
+stable peer UID, timestamp, direction, sender name when present, and text. Drafts,
+pokes, unconfirmed sends, private keys, passwords, and ambiguous recipients are
+not archived. The browser shows only the currently active identity's records.
+The archive prunes on load or write to the newest seven days, at most 500 messages
+and 512 KiB of encoded records in total. Delete a single saved conversation, clear
+all records, or turn the feature off and delete all records. None of these affects
+live chat or the server's copy. Nothing is uploaded or synced by this feature.
+
 Poke sender names and optional reasons use the same in-memory private history and
 retention limits. Unsubmitted reasons stay only in the current dialog's memory;
 they are not saved across Activity recreation. The latest retained incoming poke
@@ -211,3 +234,25 @@ Connection ownership blocks mutation until actual work settles; import/rollback
 never auto-connect. Forgetting the passphrase or losing all external backups is
 not recoverable by the project. Existing unusable aliases and physically corrupt
 Preferences are preserved rather than automatically deleted to make recovery pass.
+
+The unreleased desktop import preview uses a separate picker action for a single
+INI of up to 64 KiB. INIs contain a private key rather than an encrypted backup;
+no backup passphrase is requested or sent to the provider. The app does not save
+a plaintext copy or retain the URI. It ignores known display fields and only
+takes the identity material through the same local confirmation and vault.
+
+Floating PTT requires explicit Android overlay permission. A connected overlay can show the
+current channel, member count and active speakers over other apps. Opening or recalling it
+does not record; holding to talk or explicitly selecting Always on or Gate can capture and
+send to the current channel through the normal TeamSpeak voice path. Mode and active capture
+are not persisted; the overlay position and optional auto-show preference are saved locally.
+Auto-show is off by default and does not start recording. Manage or revoke display
+permission in the floating PTT settings. The Debug-only local recorder samples into a short
+memory buffer without encoding, sending or storing audio; it is not in ordinary Release.
+
+Channel file downloads and chat attachment downloads require explicit action and use the
+system file picker for the save destination. Server icons and visible avatars are fetched
+from the connected TeamSpeak server and cached only within the session.
+
+Feature help does not store viewing progress, send analytics, connect to servers, request permissions,
+or use the microphone. Any legacy onboarding flag remains excluded from backup and device transfer.

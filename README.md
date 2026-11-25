@@ -83,6 +83,9 @@ and upgrades](docs/INSTALLATION.md) for checksums and certificates.
 
 ## First use
 
+In the development build, **Settings → Help and about → Feature help** explains connection setup,
+voice settings, floating PTT, and other features on demand. Help does not open on launch.
+
 ### Get the connection details
 
 Ask the server administrator for its address, **voice port** and any password. You do not need
@@ -144,6 +147,9 @@ or **Stability first**, which tolerates more late packets at the cost of added d
 Your choice is saved locally and immediately resets voice playback without disconnecting
 from the server. Incoming voice may pause briefly; microphone settings do not change.
 
+The unreleased device panel in **Voice playback** distinguishes the selected output,
+confirmed output and current input, without treating an idle microphone as muted.
+
 ### Choose a microphone mode
 
 | Mode | Capture and transmission | Useful for |
@@ -155,6 +161,20 @@ from the server. Incoming voice may pause briefly; microphone settings do not ch
 
 **A quiet gate still uses the microphone.** Listening is not Off; select Off to stop capture. With the
 chat keyboard open, the compact voice bar's microphone-off icon can stop capture directly.
+
+### Use floating PTT
+
+While connected, open **More options → Settings → Floating PTT**, allow display over other
+apps, then choose **Show PTT**. Drag the channel area to move the overlay or tap it
+to see who is speaking and change mic mode. Only **Hold** uses the wide press area; in other
+modes it is a status indicator. The active session notification can recall the overlay without
+opening the mic. Locking, leaving the channel or returning to the app ends floating capture.
+For one-time setup, enable **Auto-show when leaving the app**. It remains off by default.
+With permissions granted and the microphone idle in a connected channel, going Home shows
+the overlay without starting recording. Existing active capture and its mode are not changed.
+
+The connected menu also offers **Channel files**. Select a file to download and choose where
+to save it in Android's file picker. Channel files are read-only in the app.
 
 ### Adjust input and output
 
@@ -264,6 +284,9 @@ does not connect. Up to 50 entries; leave the numeric default channel ID empty i
 retained only with Save passwords. Turning it off clears that bookmark's server/channel passwords, not
 the separate connection form's password.
 
+In the upcoming bookmark hotfix, editing the host or port clears the old default channel and both
+passwords from the draft. Editing only the default channel clears its password; canceling keeps the saved bookmark.
+
 ## Away, background and disconnect
 
 Tap the coffee-cup/clock → select Away, optionally enter a message → Apply status. Warm emphasis appears
@@ -309,7 +332,7 @@ There is no in-app language switch.
 | Connection form | Address/port/nickname/password encrypted separately, including unsubmitted edits; loading does not connect |
 | Recent endpoints | Up to ten successful endpoints; deleting history does not clear bookmarks or the form |
 | Bookmarks | Separate encrypted storage with opt-in passwords; no cross-package transfer/in-app restore |
-| Messages/drafts | Service memory only; reconnect keeps them, manual/new/terminal sessions or process death clear them |
+| Messages/drafts | Live chat remains in service memory; development builds offer a separate, default-off encrypted text archive |
 | Voice/diagnostics | No voice archive; diagnostics leave only when you choose to copy, save or share |
 
 Up to 20 conversations share 500 messages / 2 MiB; older content may be evicted. Servers/recipients can
@@ -328,7 +351,7 @@ multi-server tabs are absent. Tested Bluetooth/background/acoustic coverage is r
 | No output | Playback/per-user mute, user gain, Android communication volume and route |
 | Quiet gate shows a mic indicator | Expected capture; choose Off to stop it |
 | No incoming poke alert | Permission, app notifications, Pokes channel, DND and background policy |
-| Chat gone after restart | Records are memory-only, with no permanent history |
+| Chat gone after restart | Live chat resets; in a development build, check Settings → Local chat history for previously opted-in records |
 | APK conflicts with existing app | Compare package/certificate; keep current data and avoid immediate uninstall |
 
 See [troubleshooting](docs/TROUBLESHOOTING.md) and the [user guide](docs/USER_GUIDE.md). For unresolved
@@ -373,7 +396,8 @@ and checking the original identity. Unverified files may be incomplete: retry to
 a new file. Document providers control cloud synchronization. Keep the passphrase
 separately; it cannot be recovered. A local previous identity is not an external
 backup. Opening this page does not create an identity or connect to a server.
-Desktop-client identity formats are not supported.
+Standard builds keep desktop INI import disabled. Debug and the separate opt-in QA build
+can preview a single desktop INI, separate from encrypted restore.
 
 
 To restore, choose **Import or restore**, enter the backup’s existing passphrase,

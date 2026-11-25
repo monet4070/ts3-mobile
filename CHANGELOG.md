@@ -5,6 +5,69 @@ used milestone naming. After 1.0.0, patch versions are intended for compatible f
 and minor versions for compatible features; Android versionCode increases for
 each distributed update.
 
+## Unreleased — Bookmark Hotfix
+
+- Changing a bookmark's host or port clears both saved passwords and the old default
+  channel from the draft. Changing only the default channel clears its password, not
+  the server password. Unchanged bookmarks and the independent connection form are not migrated.
+- If you previously edited a bookmark's address and connected to an untrusted server,
+  check the saved settings and ask the relevant administrator to rotate passwords if needed.
+  This fix does not undo previous authentication attempts.
+- 收藏热修：修改地址或端口会清空草稿中的两种旧密码和默认频道；只改频道则只清频道密码。
+  若曾改址并连到不受信任的服务器，请核对收藏，必要时联系管理员更换相关口令。
+  此修复不会撤回历史认证，也不会批量更改既有收藏或独立连接表单。
+
+## Unreleased — Development Preview
+
+- Channel files and chat attachments support explicit, read-only downloads. The Users list shows avatars in the existing leading tile and opens a preview on tap.
+  Channel member rows keep their voice status icons without an avatar action.
+- 频道文件及聊天附件支持主动下载；用户列表左侧显示头像，点击放大，频道成员行不单列头像入口。
+- Chat displays basic TeamSpeak BBCode and confirms the destination before opening external links;
+  copying preserves the original text. Bookmark **Connect now** will not replace an active session.
+- 聊天显示基础 BBCode，打开外链前先核对地址，复制保留原文；收藏“立即连接”不会替换活动会话。
+- Optional local chat history saves eligible new text to a bounded encrypted archive;
+  it is off by default and can be browsed and deleted offline.
+- 新增默认关闭的本地聊天历史，可将符合条件的新文本限量加密保存，离线浏览或删除。
+- Keep saved chat history across clock rollbacks, verify writes before retrying,
+  and free queue capacity when clearing the archive. Capture release failures now
+  end the connection attempt without skipping other session cleanup.
+- 时钟回拨不会清除聊天记录；重试先确认可写，清空后立即释放队列容量。
+  录音释放失败会结束本次连接尝试，播放和路由仍会清理。
+- Preserve a second disconnect during reconnect handoff, and keep obsolete callbacks
+  from stopping a newer session's audio or reopening a completed disconnect.
+- 重连交接不会漏掉二次断线；过期回调不会停止替代会话的音频或改写已完成的断开状态。
+- Bound channel subscription and move waits; unconfirmed moves are not repeated.
+  Keep the old bookmark archive if a save exceeds its size limit, and block
+  floating microphone capture while the local trial still owns the input.
+- 频道订阅与切换设有等待上限，不会自动重复未确认的切换。收藏保存超限时保留原档；试麦未释放输入时，浮窗不会开始采集。
+- Keep verified downloads across screen recreation; if a document may be incomplete,
+  warn and offer retry to a separate destination. Diagnostic exports isolate each operation.
+- 界面重建后可继续保存已校验的下载；目标可能有残件时会提示，并允许改存到另一处。诊断导出按操作隔离。
+- Distinguish expired voice from a stalled output, reconcile the final notification
+  action after rapid updates, and prevent a retired service from restarting playback.
+- 分开处理过期语音和设备停滞，快速变化后核对通知的最终操作，已销毁服务不会重新启动播放。
+- Recover complete diagnostic checkpoints only, report missed playback generations,
+  and persist the service journal without waiting on disk during teardown.
+- 仅恢复已提交的诊断批次，明确记录漏采的播放代际；服务销毁不再等待诊断落盘。
+
+- Debug builds can preview and explicitly import a single desktop TS3 INI separately
+  from encrypted backups. Normal release builds keep the entry off pending official
+  desktop export and compatibility checks.
+- 开发包可单独预览并确认导入桌面 TS3 单身份 INI；正式构建默认关闭，等待官方桌面样本互通验收。
+- Connected floating PTT is included in standard builds, with a centered channel summary,
+  speaker list, mode-specific microphone status, and silent notification recall. The local lab remains Debug-only.
+- 正式构建包含浮窗 PTT：频道名对称居中，展开优先显示发言者；只有按住模式可按压发话，其他模式仅显示状态。
+  通知可召回浮窗，不自动开麦。试麦实验室仅留在 Debug。
+- Floating PTT can be set to show on Home without recording. The settings overview keeps its compact header; Identity & Backups now uses grouped cards and a clear export/restore selector.
+- 浮窗可选按 Home 自动显示，不会自动开麦。设置首页保留紧凑标题，身份与备份采用分组卡片和明确的导出／恢复切换。
+- Settings standardizes switches, status readouts and actions across voice, appearance, history, diagnostics and updates; narrow screens and large fonts can reflow labels and values.
+- 语音、外观、历史、诊断和更新设置统一开关、状态和操作样式；窄屏和大字号下长标题与读数可换行。
+- Feature help is available on demand under Settings → Help and about. No tutorial opens on launch.
+- 帮助说明仅保留在「设置 → 帮助与关于 → 功能帮助」，启动时不再弹出指引。
+- Voice playback adds a read-only actual-device panel and redacted timing diagnostics.
+  Exact UDP timing requires the separate local TS3j QA build.
+- 语音播放添加实际设备面板和脱敏计时诊断；精确 UDP 计时仅在单独的本地 TS3j 验证构建中可用。
+
 ## 1.2.0 — 2026-11-20
 
 - Mix incoming voice with foreground media without taking audio focus or entering

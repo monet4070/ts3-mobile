@@ -25,6 +25,7 @@
 | Speaker echo | Prefer headphones, lower speaker volume and inspect device AEC state. Noise suppression and echo cancellation serve different purposes |
 | Screen-off disconnect | Inspect Background voice check and vendor battery policy. Optional CPU-awake cannot guarantee survival on every device |
 | Microphone settings reset or capture mode changed | In 1.1.0, gain, noise suppression, echo cancellation and gate threshold persist after saving. Check the save status and retry if needed. Capture mode is not saved; a new service starts in Hold without capturing |
+| Floating PTT does not appear on Home in the candidate | Under Settings → Floating PTT, grant overlay access and enable automatic display. Join a channel and press Home while the mic is idle. The session notification can also show the overlay without opening the mic |
 
 For a listening interruption, see the [1.1.0 diagnostics screen and export steps](USER_GUIDE.md#offline-audio-diagnostics).
 
@@ -37,8 +38,15 @@ For a listening interruption, see the [1.1.0 diagnostics screen and export steps
 | Poke does not open Chat | Expected: submission keeps your page and gives brief feedback; history remains in the corresponding private chat |
 | Server accepted but no read receipt | Acceptance is not a delivery/read receipt; check peer availability, permissions and identity |
 | Unknown send result | No automatic retry; verify with the peer before resending to avoid duplicates |
-| Chat gone after restart | Records are memory-only; exit, a new manual session, terminal failure or process death clears them |
+| Chat gone after restart | Live chat resets and there is no cloud sync. The candidate can retain new, eligible text only after you opt in under Settings → Local chat history; it does not backfill old messages |
 | Form still remembers a removed bookmark password | Form memory and bookmarks are separate. Clear that form field and allow it to save too |
+
+## Candidate features
+
+Look up feature-specific tips under Settings → Help and about → Feature help.
+Channel files are read-only: the candidate can browse and download, but not upload.
+If a transfer fails, check the channel permissions and file-transfer port.
+See [candidate status](release/CANDIDATE_STATUS_2026-11-25.md) for differences from the public stable release.
 
 For unresolved problems, share version, device, reproduction steps and sanitized
 diagnostics as described in [support](../SUPPORT.md). Never post real endpoints,

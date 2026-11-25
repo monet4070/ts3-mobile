@@ -3,6 +3,15 @@
 **1.2.0 / versionCode 16** 保持 Android 8.0+ 和四种 ABI。音频改动与小米 14 测试边界见
 [1.2.0 更新说明](release/1.2.0/RELEASE_NOTES_ZH.md)；历史覆盖不能替代在其他耳机、系统与网络上的实测。
 
+待发布的收藏热修不改变最低系统、ABI、密钥或收藏格式。API 35 Debug 覆盖安装与离线验证见
+[B1 收藏凭据隔离](testing/BOOKMARK_CREDENTIAL_SCOPE_2026-11-23_ZH.md)；不代表正式签名包已验收。
+
+待发布候选的连接浮窗与只读频道文件已纳入标准构建；[本机试麦实验室](testing/FLOATING_PTT_P0_2026-11-23_ZH.md)
+仍仅留 Debug。[桌面身份预览](testing/DESKTOP_IDENTITY_IMPORT_2026-11-23_ZH.md) 继续默认关闭，不将合成数据等同于官方桌面导出验证。
+见[候选状态](release/CANDIDATE_STATUS_2026-11-25.md)；合成帧、收听设备状态与双端实听是不同的证据。
+
+[A0/A2 音频诊断](testing/VOICE_TIMING_AND_ACTUAL_DEVICES_2026-11-23_ZH.md) 的模拟器验证不证明实体耳机的延迟或性能模式。精确 UDP 字段只有明确的本地 QA 包有证据。
+
 ## 1.1.0 / code 15 历史范围
 
 记录日期：2026-11-09。**1.1.0 / versionCode 15** 的确切最终包门禁、签名、

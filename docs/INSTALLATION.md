@@ -5,6 +5,9 @@
 实际包名、版本、证书与摘要以同一 Release 的 `BUILDINFO.json` 为准，验证范围见
 [发布说明](release/1.2.0/RELEASE_NOTES_ZH.md)和[兼容性](COMPATIBILITY.md)。
 
+[待发布候选](release/CANDIDATE_STATUS_2026-11-25.md)的 QA APK 使用独立包名和开发签名；
+不替换上述正式包，也不读取它的身份和收藏。不要把 QA APK 作为正式升级工件分发。
+
 ## 下载与校验
 
 1. 打开 [GitHub Releases](https://github.com/monet4070/ts3-mobile/releases)，检查正式／测试版标识。

@@ -11,6 +11,8 @@
 每个正式版和测试版提供对应的 APK、`SHA256SUMS.txt` 和 `BUILDINFO.json`，
 保持递增 versionCode、实际源码绑定和原公开签名。旧版本资料按日期保留，不代表新版实测。
 
+未发布的变更及设备验收范围单独记录在[候选状态](CANDIDATE_STATUS_2026-11-25.md)，不改写 1.2.0 标签的说明。
+
 ---
 
 # 1.0.0 历史发布资料 / Historical first stable release

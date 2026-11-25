@@ -5,8 +5,8 @@
 
 ## 报告问题
 
-先确认你使用的是哪个 Release，以及它是否包含所需功能。当前稳定版为
-[1.1.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0)（2026-11-09，versionCode 15）。
+先确认你使用的是哪个 Release。见[发布索引](docs/release/README.md)；
+未公开的候选功能不包含在稳定包中。
 安装、签名与升级问题先阅读[安装说明](docs/INSTALLATION.md)。
 
 在 [GitHub Issues](https://github.com/monet4070/ts3-mobile/issues) 搜索已有问题，
@@ -28,8 +28,8 @@
 
 ## English
 
-Check the release version first: the current stable release is
-[1.1.0](https://github.com/monet4070/ts3-mobile/releases/tag/v1.1.0) (2026-11-09, versionCode 15).
+Check the [release index](docs/release/README.md) first: the stable APK does not
+include features listed only in the unreleased candidate.
 Read [installation](docs/INSTALLATION.md) for upgrade
 and certificate problems, then search [existing issues](https://github.com/monet4070/ts3-mobile/issues).
 Use Bug report for defects and Feature request for proposals.
