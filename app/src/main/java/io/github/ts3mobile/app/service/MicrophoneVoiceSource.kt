@@ -1,31 +1,51 @@
 package io.github.ts3mobile.app.service
 
 import io.github.ts3mobile.protocol.EncodedVoiceSource
-import java.util.concurrent.atomic.AtomicLong
+import io.github.ts3mobile.protocol.TimedEncodedVoiceFrame
+import io.github.ts3mobile.protocol.TimedEncodedVoiceSource
+import java.util.concurrent.atomic.AtomicReference
 
 /** The send boundary closes synchronously before potentially blocking capture teardown. */
-internal class MicrophoneVoiceSource(private val capture: EncodedVoiceSource) : EncodedVoiceSource {
-    private val revision = AtomicLong()
-
-    fun disable() {
-        revision.updateAndGet { (it + 2) and -2L }
+internal class MicrophoneVoiceSource(private val capture: EncodedVoiceSource) : TimedEncodedVoiceSource {
+    private data class Gate(val revision: Long, val authorized: (() -> Boolean)? = null, val onFrame: (() -> Unit)? = null) {
+        fun isOpen(): Boolean = revision and 1L == 1L && authorized?.invoke() != false
     }
 
-    fun currentRevision(): Long = revision.get()
+    private val gate = AtomicReference(Gate(0L))
 
-    fun tryEnable(expectedRevision: Long): Boolean = revision.compareAndSet(expectedRevision, expectedRevision or 1L)
+    fun disable() {
+        gate.updateAndGet { Gate((it.revision + 2) and -2L) }
+    }
 
-    fun isEnabled(): Boolean = revision.get() and 1L == 1L
+    fun currentRevision(): Long = gate.get().revision
+
+    fun tryEnable(
+        expectedRevision: Long,
+        authorized: (() -> Boolean)? = null,
+        onFrame: (() -> Unit)? = null,
+    ): Boolean {
+        val current = gate.get()
+        return current.revision == expectedRevision && gate.compareAndSet(current, Gate(expectedRevision or 1L, authorized, onFrame))
+    }
+
+    fun isEnabled(): Boolean = gate.get().isOpen()
 
     override val isTransmitting: Boolean
         get() = isEnabled() && capture.isTransmitting
 
     override fun isReady(): Boolean = isEnabled() && capture.isReady()
 
-    override fun pollEncodedFrame(): ByteArray? {
-        val current = revision.get()
-        if (current and 1L == 0L) return null
-        val frame = capture.pollEncodedFrame()
-        return frame.takeIf { revision.get() == current }
+    override fun pollTimedEncodedFrame(): TimedEncodedVoiceFrame? {
+        val current = gate.get()
+        if (!current.isOpen()) return null
+        val frame =
+            if (capture is TimedEncodedVoiceSource) {
+                capture.pollTimedEncodedFrame()
+            } else {
+                capture.pollEncodedFrame()?.let { TimedEncodedVoiceFrame(it, null) }
+            }
+        if (gate.get() !== current || !current.isOpen()) return null
+        if (frame != null && frame.bytes.isNotEmpty()) current.onFrame?.invoke()
+        return frame
     }
 }

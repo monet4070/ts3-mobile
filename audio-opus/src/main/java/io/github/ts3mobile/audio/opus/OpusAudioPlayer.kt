@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class OpusAudioPlayer internal constructor(
-    @Suppress("UNUSED_PARAMETER") context: Context,
+    context: Context,
     private val reference: PlaybackReferenceSink?,
     private val onRouteChanged: () -> Unit = {},
     private val onStatusChanged: (PlaybackStatus) -> Unit = {},
@@ -37,6 +37,7 @@ class OpusAudioPlayer internal constructor(
     private val participantGains = ConcurrentHashMap<Int, Float>()
     private val userMuted = AtomicBoolean(false)
     private val routeGuard = BluetoothPlaybackGuard()
+    private val standardBluetoothExperiment = context.resources.getBoolean(R.bool.bluetooth_standard_output_experiment)
 
     @Volatile private var routeSwitching = false
     private val lifecycleLock = Any()
@@ -93,6 +94,8 @@ class OpusAudioPlayer internal constructor(
     fun setDiagnosticsObserver(observer: AudioDiagnosticsObserver?) {
         inputQueue.budget.stats.observer = observer
     }
+
+    fun setOutputDeviceObserver(observer: ((ActualAudioDevice?) -> Unit)?) = inputQueue.budget.stats.setOutputDeviceObserver(observer)
 
     fun submit(frame: VoiceFrame) {
         inputQueue.budget.stats.count(AudioReceiveCounter.SUBMITTED)
@@ -286,6 +289,7 @@ class OpusAudioPlayer internal constructor(
                     outputFactory?.invoke()
                         ?: AndroidPlaybackOutput(
                             preferredDevice, ::onOutputRouteChanged, routeGuard, ::onUnsafeOutputRoute, inputQueue.budget.stats,
+                            standardBluetoothExperiment = standardBluetoothExperiment,
                         )
                 },
                 reference = reference,

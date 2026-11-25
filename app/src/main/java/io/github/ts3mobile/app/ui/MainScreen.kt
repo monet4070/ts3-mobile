@@ -10,6 +10,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -116,8 +117,28 @@ fun MainScreen(
     onShareServerInvite: (() -> Unit)? = null,
     onShareChannelInvite: (() -> Unit)? = null,
     microphoneTrialDialog: (@Composable (onDismiss: () -> Unit) -> Unit)? = null,
+    openChannelFiles: (() -> io.github.ts3mobile.protocol.ChannelFiles?)? = null,
+    openServerImages: ((String) -> io.github.ts3mobile.protocol.ServerImages?)? = null,
+    openChatAttachment: OpenChatAttachment? = null,
+    featureHelpAvailable: Boolean = true,
 ) {
     val snackbar = remember { SnackbarHostState() }
+    var guideVisit by rememberSaveable { mutableStateOf<GuideRoute?>(null) }
+    var pendingHelpTitle by rememberSaveable { mutableStateOf<Int?>(null) }
+    val fileChannelId =
+        serviceState.snapshot.currentChannelId.takeIf {
+            serviceState.status.phase == ConnectionPhase.CONNECTED && serviceState.switchingChannelId == null
+        }
+    var fileBrowser by remember(serviceState.bookmarkConnection?.token, fileChannelId) {
+        mutableStateOf<io.github.ts3mobile.protocol.ChannelFiles?>(null)
+    }
+    fileBrowser?.let { files ->
+        val closeFiles = {
+            fileBrowser = null
+            guideVisit = null
+        }
+        GuideDestinationTip(guideVisit.takeIf { it == GuideRoute.FILES }) { ChannelFilesDialog(files, closeFiles) }
+    }
     PokeFeedbackEffect(chatState, snackbar)
     chatState.pokeNotice?.let { PokeNoticeDialog(it, onPokeDismiss) { onPushToTalkChanged(false) } }
     var showPresence by rememberSaveable { mutableStateOf(false) }
@@ -125,7 +146,10 @@ fun MainScreen(
     var showSettings by rememberSaveable { mutableStateOf(false) }
     val pages = rememberSaveableStateHolder()
     LaunchedEffect(chatNotification) {
-        if (chatNotification != null) showSettings = false
+        if (chatNotification != null) {
+            showSettings = false
+            guideVisit = null
+        }
     }
     val connected = serviceState.status.phase == ConnectionPhase.CONNECTED
     var showInviteShare by remember(serviceState.bookmarkConnection?.token, connected) { mutableStateOf(false) }
@@ -159,24 +183,35 @@ fun MainScreen(
     }
     var showBookmarks by rememberSaveable { mutableStateOf(false) }
     if (showBookmarks) {
-        BookmarkDialogs(
-            bookmarks,
-            form,
-            canUseBookmarkConnection && serviceState.status.phase in setOf(ConnectionPhase.DISCONNECTED, ConnectionPhase.ERROR),
-            onBookmarkSave,
-            onBookmarkRemove,
-            onBookmarkSelect,
-            onBookmarkConnect,
-            onBookmarkReload,
-            serviceState.bookmarkContext(),
-            onBookmarkSaveFromConnection,
-        ) { showBookmarks = false }
+        val closeBookmarks = {
+            showBookmarks = false
+            guideVisit = null
+        }
+        GuideDestinationTip(guideVisit.takeIf { it == GuideRoute.BOOKMARKS }) {
+            BookmarkDialogs(
+                bookmarks,
+                form,
+                canUseBookmarkConnection && serviceState.status.phase in setOf(ConnectionPhase.DISCONNECTED, ConnectionPhase.ERROR),
+                onBookmarkSave,
+                onBookmarkRemove,
+                onBookmarkSelect,
+                onBookmarkConnect,
+                onBookmarkReload,
+                serviceState.bookmarkContext(),
+                onBookmarkSaveFromConnection,
+                onDismiss = closeBookmarks,
+            )
+        }
     }
     if (showSettings) {
+        val closeSettings = {
+            showSettings = false
+            guideVisit = null
+        }
         AppSettings(
             state = serviceState,
             snackbar = snackbar,
-            onBack = { showSettings = false },
+            onBack = closeSettings,
             onMicrophonePreferenceEdit = onMicrophonePreferenceEdit,
             microphonePreferenceStatus = microphonePreferenceStatus,
             onMicrophonePreferenceCommit = onMicrophonePreferenceCommit,
@@ -198,123 +233,171 @@ fun MainScreen(
             onMarkAudioIssue = onMarkAudioIssue,
             onCheckUpdates = onCheckUpdates,
             onOpenRepository = onOpenRepository,
+            guideRoute = guideVisit,
+            onHelpTopicRequested = { title ->
+                pendingHelpTitle = title
+                closeSettings()
+            },
         )
         return
     }
     pages.SaveableStateProvider("main") {
-        val largeText = LocalDensity.current.fontScale > 1.3f
-        var chatSelected by androidx.compose.runtime.remember { mutableStateOf(false) }
-        val chatKeyboard = chatSelected && WindowInsets.ime.getBottom(LocalDensity.current) > 0
-        Scaffold(
-            snackbarHost = { SnackbarHost(snackbar) },
-            topBar = {
-                if (!chatKeyboard) {
-                    MainScreenAppBar(
-                        serviceState.status.phase,
-                        largeText,
-                        {
-                            onUserNavigation()
-                            onPushToTalkChanged(false)
-                        },
-                        listOfNotNull(
-                            if (connected && onShareServerInvite != null) {
-                                MainMenuAction(R.string.invite_share_title, UiIcon.Connect) { showInviteShare = true }
-                            } else {
-                                null
-                            },
-                            if (connected) MainMenuAction(R.string.presence_title, UiIcon.Away) { showPresence = true } else null,
-                            if (connected) MainMenuAction(R.string.discovery_title, UiIcon.Search) { showSearch = true } else null,
-                            MainMenuAction(R.string.bookmarks_title, UiIcon.Bookmark) { showBookmarks = true },
-                            MainMenuAction(R.string.settings_title, UiIcon.Settings, startsGroup = true) { showSettings = true },
-                        ),
-                    )
+        val anchors = remember { GuideAnchors() }
+        val canShowHelp =
+            featureHelpAvailable && !showBookmarks && !showPresence && !showSearch && !showInviteShare && joinTarget == null &&
+                fileBrowser == null && chatState.pokeNotice == null &&
+                serviceState.status.phase in setOf(ConnectionPhase.CONNECTED, ConnectionPhase.DISCONNECTED, ConnectionPhase.ERROR)
+        CompositionLocalProvider(LocalGuideAnchors provides anchors) {
+            MainFeatureHelp(
+                canShowHelp,
+                connected,
+                anchors,
+                filesAvailable = fileChannelId != null && openChannelFiles != null,
+                requestedTitle = pendingHelpTitle,
+                onTopicOpened = { pendingHelpTitle = null },
+            ) { navigation ->
+                val expectedRoute = navigation?.route
+                val recordGuideVisit: (GuideRoute?) -> Unit = { route ->
+                    guideVisit = route
+                    if (route != null) navigation?.onDestinationOpened?.invoke()
                 }
-            },
-        ) { contentPadding ->
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .padding(contentPadding),
-            ) {
-                val context = LocalContext.current
-                val statusText = serviceState.resolveStatusText(context)
-                if (serviceState.status.phase == ConnectionPhase.CONNECTED) {
-                    statusText?.let { detail -> StatusMessage(serviceState.status.phase, detail) }
+                val openBookmarks = {
+                    recordGuideVisit(expectedRoute.takeIf { it == GuideRoute.BOOKMARKS })
+                    showBookmarks = true
                 }
-                serviceState.microphoneError?.let { message ->
-                    StatusMessage(ConnectionPhase.ERROR, message.resolve(context))
-                }
-                if (serviceState.hasPlaybackFailure) {
-                    StatusMessage(ConnectionPhase.ERROR, stringResource(R.string.playback_failed))
-                }
-                serviceState.channelError?.let { message ->
-                    StatusMessage(ConnectionPhase.ERROR, message.resolve(context))
-                }
-                serviceState.audioRouting.error?.let { error ->
-                    StatusMessage(ConnectionPhase.ERROR, UserMessage.AudioRouting(error).resolve(context))
-                }
+                val largeText = LocalDensity.current.fontScale > 1.3f
+                var chatSelected by androidx.compose.runtime.remember { mutableStateOf(false) }
+                val chatKeyboard = chatSelected && WindowInsets.ime.getBottom(LocalDensity.current) > 0
+                Scaffold(
+                    snackbarHost = { SnackbarHost(snackbar) },
+                    topBar = {
+                        if (!chatKeyboard) {
+                            MainScreenAppBar(
+                                serviceState.status.phase,
+                                largeText,
+                                {
+                                    onUserNavigation()
+                                    onPushToTalkChanged(false)
+                                },
+                                listOfNotNull(
+                                    if (connected && onShareServerInvite != null) {
+                                        MainMenuAction(R.string.invite_share_title, UiIcon.Connect) { showInviteShare = true }
+                                    } else {
+                                        null
+                                    },
+                                    if (connected) MainMenuAction(R.string.presence_title, UiIcon.Away) { showPresence = true } else null,
+                                    if (connected) MainMenuAction(R.string.discovery_title, UiIcon.Search) { showSearch = true } else null,
+                                    if (openChannelFiles != null && fileChannelId != null) {
+                                        MainMenuAction(
+                                            R.string.channel_files_probe_title,
+                                            UiIcon.Folder,
+                                        ) {
+                                            fileBrowser = openChannelFiles()
+                                            recordGuideVisit(expectedRoute.takeIf { it == GuideRoute.FILES && fileBrowser != null })
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                    MainMenuAction(R.string.bookmarks_title, UiIcon.Bookmark, action = openBookmarks),
+                                    MainMenuAction(R.string.settings_title, UiIcon.Settings, startsGroup = true) {
+                                        recordGuideVisit(expectedRoute.takeIf { it?.settingsEntry != null })
+                                        showSettings = true
+                                    },
+                                ),
+                                guidedAction = expectedRoute?.menuLabel,
+                            )
+                        }
+                    },
+                ) { contentPadding ->
+                    Column(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(contentPadding),
+                    ) {
+                        val context = LocalContext.current
+                        val statusText = serviceState.resolveStatusText(context)
+                        if (serviceState.status.phase == ConnectionPhase.CONNECTED) {
+                            statusText?.let { detail -> StatusMessage(serviceState.status.phase, detail) }
+                        }
+                        serviceState.microphoneError?.let { message ->
+                            StatusMessage(ConnectionPhase.ERROR, message.resolve(context))
+                        }
+                        if (serviceState.hasPlaybackFailure) {
+                            StatusMessage(ConnectionPhase.ERROR, stringResource(R.string.playback_failed))
+                        }
+                        serviceState.channelError?.let { message ->
+                            StatusMessage(ConnectionPhase.ERROR, message.resolve(context))
+                        }
+                        serviceState.audioRouting.error?.let { error ->
+                            StatusMessage(ConnectionPhase.ERROR, UserMessage.AudioRouting(error).resolve(context))
+                        }
 
-                val showRecoveringChat = chatState.established && chatState.scope != null && !chatState.connected
-                if (serviceState.status.phase == ConnectionPhase.CONNECTED || showRecoveringChat) {
-                    ConnectedContent(
-                        state = serviceState,
-                        onDisconnect = onDisconnect,
-                        onPlaybackMutedChange = onPlaybackMutedChange,
-                        onParticipantMutedChange = onParticipantMutedChange,
-                        onParticipantVolumeChange = onParticipantVolumeChange,
-                        onAudioRouteSelected = onAudioRouteSelected,
-                        onMicrophoneModeChanged = onMicrophoneModeChanged,
-                        onPushToTalkChanged = onPushToTalkChanged,
-                        onJoinChannel = onJoinChannel,
-                        chat = chatState,
-                        onChatDraft = onChatDraft,
-                        onChatSend = onChatSend,
-                        onChatVisible = onChatVisible,
-                        onOpenPrivateChat = onOpenPrivateChat,
-                        onChatConversationSelected = onChatConversationSelected,
-                        onChatConversationClosed = onChatConversationClosed,
-                        onChatSelected = { chatSelected = it },
-                        onPoke = onPoke,
-                        onOpenSearch = { showSearch = true },
-                        onOpenPresence = { showPresence = true },
-                        chatNotification = chatNotification,
-                        onChatNotificationConsumed = onChatNotificationConsumed,
-                        onUserNavigation = onUserNavigation,
-                        microphoneVolumeShortcut = {
-                            MicrophoneVolumeShortcut(
-                                volumePercent = serviceState.microphoneSettings.volumePercent,
-                                preferenceStatus = microphonePreferenceStatus,
-                                onVolumeChanged = {
-                                    onMicrophonePreferenceEdit(
-                                        MicrophonePreferenceField.VOLUME,
-                                        serviceState.microphoneSettings.copy(volumePercent = it),
+                        val showRecoveringChat = chatState.established && chatState.scope != null && !chatState.connected
+                        if (serviceState.status.phase == ConnectionPhase.CONNECTED || showRecoveringChat) {
+                            ConnectedContent(
+                                state = serviceState,
+                                onDisconnect = onDisconnect,
+                                onPlaybackMutedChange = onPlaybackMutedChange,
+                                onParticipantMutedChange = onParticipantMutedChange,
+                                onParticipantVolumeChange = onParticipantVolumeChange,
+                                onAudioRouteSelected = onAudioRouteSelected,
+                                onMicrophoneModeChanged = onMicrophoneModeChanged,
+                                onPushToTalkChanged = onPushToTalkChanged,
+                                onJoinChannel = onJoinChannel,
+                                chat = chatState,
+                                onChatDraft = onChatDraft,
+                                onChatSend = onChatSend,
+                                onChatVisible = onChatVisible,
+                                onOpenPrivateChat = onOpenPrivateChat,
+                                onChatConversationSelected = onChatConversationSelected,
+                                onChatConversationClosed = onChatConversationClosed,
+                                onChatSelected = { chatSelected = it },
+                                onPoke = onPoke,
+                                onOpenSearch = { showSearch = true },
+                                onOpenPresence = { showPresence = true },
+                                chatNotification = chatNotification,
+                                onChatNotificationConsumed = onChatNotificationConsumed,
+                                onUserNavigation = onUserNavigation,
+                                openServerImages = openServerImages,
+                                openChatAttachment = openChatAttachment,
+                                guideNavigation = navigation,
+                                microphoneVolumeShortcut = {
+                                    MicrophoneVolumeShortcut(
+                                        volumePercent = serviceState.microphoneSettings.volumePercent,
+                                        preferenceStatus = microphonePreferenceStatus,
+                                        onVolumeChanged = {
+                                            onMicrophonePreferenceEdit(
+                                                MicrophonePreferenceField.VOLUME,
+                                                serviceState.microphoneSettings.copy(volumePercent = it),
+                                            )
+                                        },
+                                        onCommit = onMicrophonePreferenceCommit,
+                                        onRetry = onMicrophonePreferenceRetry,
+                                        onOpen = { onPushToTalkChanged(false) },
                                     )
                                 },
-                                onCommit = onMicrophonePreferenceCommit,
-                                onRetry = onMicrophonePreferenceRetry,
-                                onOpen = { onPushToTalkChanged(false) },
                             )
-                        },
-                    )
-                } else {
-                    ConnectionForm(
-                        form = form,
-                        history = history,
-                        historyError = historyError,
-                        phase = serviceState.status.phase,
-                        onHostChanged = onHostChanged,
-                        onPortChanged = onPortChanged,
-                        onNicknameChanged = onNicknameChanged,
-                        onPasswordChanged = onPasswordChanged,
-                        onHistorySelected = onHistorySelected,
-                        onHistoryRemoved = onHistoryRemoved,
-                        onConnect = onConnect,
-                        onDisconnect = onDisconnect,
-                        statusText = statusText,
-                        onOpenBookmarks = { showBookmarks = true },
-                        actions = connectionActions,
-                    )
+                        } else {
+                            ConnectionForm(
+                                form = form,
+                                history = history,
+                                historyError = historyError,
+                                phase = serviceState.status.phase,
+                                onHostChanged = onHostChanged,
+                                onPortChanged = onPortChanged,
+                                onNicknameChanged = onNicknameChanged,
+                                onPasswordChanged = onPasswordChanged,
+                                onHistorySelected = onHistorySelected,
+                                onHistoryRemoved = onHistoryRemoved,
+                                onConnect = onConnect,
+                                onDisconnect = onDisconnect,
+                                statusText = statusText,
+                                onOpenBookmarks = openBookmarks,
+                                actions = connectionActions,
+                            )
+                        }
+                    }
                 }
             }
         }

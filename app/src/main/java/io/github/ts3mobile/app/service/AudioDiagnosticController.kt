@@ -4,6 +4,7 @@ import android.os.SystemClock
 import io.github.ts3mobile.audio.opus.AudioDiagnosticEventKind
 import io.github.ts3mobile.audio.opus.AudioDiagnosticsObserver
 import io.github.ts3mobile.audio.opus.AudioReceiveDiagnostics
+import io.github.ts3mobile.protocol.VoiceTimingWindow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -17,6 +18,7 @@ internal class AudioDiagnosticController(
     private val context: () -> AudioDiagnosticContext,
     private val wallMs: () -> Long = System::currentTimeMillis,
     private val elapsedMs: () -> Long = SystemClock::elapsedRealtime,
+    private val takeVoiceTiming: () -> VoiceTimingWindow? = { null },
 ) : AudioDiagnosticsObserver {
     private var generation = 0L
 
@@ -44,6 +46,11 @@ internal class AudioDiagnosticController(
 
     @Synchronized override fun onStarted(snapshot: AudioReceiveDiagnostics) {
         accept(snapshot, final = false)
+    }
+
+    @Synchronized fun mark(): Boolean {
+        sampleNow(force = true)
+        return repository.mark()
     }
 
     @Synchronized override fun onStopped(snapshot: AudioReceiveDiagnostics) {
@@ -93,6 +100,13 @@ internal class AudioDiagnosticController(
         if (previous?.network != value.network || previous.networkGeneration != value.networkGeneration) {
             repository.event(session, AudioDiagnosticEvent.NETWORK, value.network.ordinal.toLong())
         }
+        if (previous?.actualDevices?.input != value.actualDevices.input) {
+            repository.event(session, AudioDiagnosticEvent.ACTUAL_INPUT_DEVICE, value.actualDevices.input?.ordinal?.toLong() ?: -1L)
+        }
+        if (previous?.actualDevices?.systemMicMuted != value.actualDevices.systemMicMuted) {
+            val code = value.actualDevices.systemMicMuted?.let { if (it) 1L else 0L } ?: -1L
+            repository.event(session, AudioDiagnosticEvent.SYSTEM_MICROPHONE_MUTE, code)
+        }
     }
 
     fun serviceStopped() {
@@ -118,7 +132,9 @@ internal class AudioDiagnosticController(
         val now = elapsedMs()
         val current = context()
         observe(current)
-        repository.sample(AudioDiagnosticSample(wallMs(), now, (now - lastSampleElapsed).coerceAtLeast(0), session, snapshot, current))
+        repository.sample(
+            AudioDiagnosticSample(wallMs(), now, (now - lastSampleElapsed).coerceAtLeast(0), session, snapshot, current, takeVoiceTiming()),
+        )
         lastSampleElapsed = now
         if (final || !snapshot.active) {
             repository.end(session)
@@ -139,4 +155,5 @@ internal fun audioDiagnosticContext(
         state.status.phase, state.playbackStatus, state.audioRouting.selectedRoute.kind,
         state.audioRouting.switching, state.audioRouting.safetyMuted, state.playbackMuted,
         state.audioRouting.error?.kind, network.transport, network.generation, state.backgroundRuntime.cpuLockHeld,
+        state.actualAudioDevices.activeInput(state.isCapturing),
     )

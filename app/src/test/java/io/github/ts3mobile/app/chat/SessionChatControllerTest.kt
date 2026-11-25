@@ -184,6 +184,46 @@ class SessionChatControllerTest {
             assertTrue(client.bodies.isEmpty())
         }
 
+    @Test fun archiveIncludesOnlyScopedReceivedTextAndConfirmedSends() =
+        runTest {
+            val history = ChatHistoryController(backgroundScope, FixtureHistoryStore())
+            val client = FakeClient()
+            val chat = SessionChatController(this, history = history)
+            val account = checkNotNull(ChatHistoryAccount.parse("voice.example.com", 9987, "own-uid"))
+            val channelMessage = Ts3TextEvent(TextTargetMode.CHANNEL, 10, 11, "fixture-uid", "Fixture", "channel")
+            runCurrent()
+            chat.begin(binding.scope)
+            chat.bindWithHistory(binding, client, false, emptyList(), account) { true }
+            chat.receive(binding.scope, binding.attempt, channelMessage.copy(body = "while off"))
+            assertTrue(history.setEnabled(true))
+            chat.receive(binding.scope, binding.attempt, channelMessage)
+            chat.receive(binding.scope, binding.attempt, channelMessage.copy(targetId = 99, body = "other channel"))
+            chat.receive(binding.scope, binding.attempt, channelMessage.copy(targetId = null, body = "ambiguous channel"))
+            chat.receive(binding.scope, binding.attempt - 1, channelMessage.copy(body = "old attempt"))
+            val privateMessage = channelMessage.copy(mode = TextTargetMode.PRIVATE, targetId = 7, body = "private")
+            chat.receive(binding.scope, binding.attempt, privateMessage)
+            chat.receive(binding.scope, binding.attempt, privateMessage.copy(invokerUid = null, body = "anonymous"))
+            chat.updateDraft("accepted after acknowledgement")
+            chat.submit()
+            runCurrent()
+            advanceTimeBy(61)
+            runCurrent()
+            assertEquals(listOf("channel", "private"), history.read(account.ownUid).map { it.body })
+            client.response.complete(TextSendOutcome.Accepted)
+            runCurrent()
+            advanceTimeBy(61)
+            runCurrent()
+            val saved = history.read(account.ownUid)
+            assertEquals(listOf("channel", "private", "accepted after acknowledgement"), saved.map { it.body })
+            assertEquals(
+                listOf(ChatHistoryRoom.Channel(10), ChatHistoryRoom.Peer("fixture-uid"), ChatHistoryRoom.Channel(10)),
+                saved.map {
+                    it.conversation.room
+                },
+            )
+            assertTrue(saved.last().outgoing)
+        }
+
     private class FakeClient : Ts3SessionClient {
         val bodies = mutableListOf<String>()
         val targets = mutableListOf<TextTarget>()

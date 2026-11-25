@@ -6,6 +6,11 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 
+internal fun sameBookmarkHost(
+    host: String,
+    other: String,
+): Boolean = host.trim().equals(other.trim(), ignoreCase = true)
+
 data class ServerBookmark(
     val id: String,
     val revision: Long = 0,

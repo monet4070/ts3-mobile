@@ -4,3 +4,20 @@ sdk.dir=C:\\Android\\Sdk
 
 # Bluetooth playback A/B candidate (Gradle CLI only, omitted = false):
 # ./gradlew -PbluetoothStandardOutputExperiment=true :app:assembleRelease
+
+# Desktop identity QA probe in a minified build (Gradle CLI only, omitted = false):
+# ./gradlew -PdesktopIdentityImportExperiment=true :app:assembleRelease
+
+# Isolated QA APK: media + desktop identity + floating PTT lab (not for publication):
+# ./gradlew -I tools/media-qa.init.gradle :app:assembleRelease
+
+# Optional local TS3j voice timing QA repository, built by tools/prepare-ts3j-voice-timing.py:
+# ./gradlew -Pts3jVoiceTimingRepository=/path/to/local/qa/maven :app:assembleRelease
+
+# Optional pinned TS3j source build (no JitPack); do not combine with the timing repository:
+# ./gradlew -Pts3jSourceRepository=/path/to/local/source/maven :ts3-protocol:test :app:assembleRelease
+
+# Read-only channel files QA (Debug only, omitted = false):
+# ./gradlew -PchannelFilesProbe=true :app:assembleDebug
+# Explicit loopback server interoperability probe (omitted = skip):
+# ./gradlew -Pts3LocalFileProbePort=19987 :ts3-protocol:test --tests '*LocalChannelFilesProbeTest'

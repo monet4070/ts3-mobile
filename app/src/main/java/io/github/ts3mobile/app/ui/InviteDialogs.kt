@@ -79,7 +79,7 @@ internal fun PasteInviteAction(
     OutlinedButton(
         onClick = { showPaste = true },
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).guideAnchor(GuideAnchor.INVITE),
         shape = MaterialTheme.shapes.small,
     ) {
         AppIcon(UiIcon.Copy, null, Modifier.size(18.dp))

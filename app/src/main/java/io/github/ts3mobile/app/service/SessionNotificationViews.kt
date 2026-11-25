@@ -11,6 +11,7 @@ internal fun NotificationCompat.Builder.showConnectedControls(
     status: String,
     disconnect: NotificationCompat.Action,
     listening: NotificationCompat.Action?,
+    recall: NotificationCompat.Action?,
 ): NotificationCompat.Builder {
     val compact =
         RemoteViews(context.packageName, R.layout.session_notification).apply {
@@ -25,6 +26,11 @@ internal fun NotificationCompat.Builder.showConnectedControls(
                 setOnClickPendingIntent(R.id.session_notification_listening, listening.actionIntent)
             } else {
                 setViewVisibility(R.id.session_notification_listening, View.GONE)
+            }
+            if (recall != null) {
+                setViewVisibility(R.id.session_notification_show_ptt, View.VISIBLE)
+                setTextViewText(R.id.session_notification_show_ptt, recall.title)
+                setOnClickPendingIntent(R.id.session_notification_show_ptt, recall.actionIntent)
             }
         }
     val expanded =

@@ -15,7 +15,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -27,7 +26,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.ui.FeatureAction
+import io.github.ts3mobile.app.ui.FeatureNotice
 import io.github.ts3mobile.app.ui.SettingsPage
+import io.github.ts3mobile.app.ui.SettingsSection
+import io.github.ts3mobile.app.ui.UiIcon
 import io.github.ts3mobile.app.ui.theme.tailSyncColors
 
 @Composable
@@ -40,36 +43,24 @@ internal fun AppearanceScreen(
 ) {
     val failed = state.status == ThemePreferenceStatus.READ_FAILED || state.status == ThemePreferenceStatus.WRITE_FAILED
     SettingsPage(R.string.appearance_title, onBack = onClose) {
-        Text(stringResource(R.string.appearance_mode_title), style = MaterialTheme.typography.titleMedium)
-        Column(
-            Modifier.fillMaxWidth().selectableGroup(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            ThemeMode.entries.forEach { mode ->
-                ThemeModeCard(mode, mode == state.mode, !state.busy && state.status != ThemePreferenceStatus.READ_FAILED) {
-                    onSelect(mode)
+        SettingsSection(stringResource(R.string.appearance_mode_title), UiIcon.Sliders) {
+            Column(
+                Modifier.fillMaxWidth().selectableGroup(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ThemeMode.entries.forEach { mode ->
+                    ThemeModeCard(mode, mode == state.mode, !state.busy && state.status != ThemePreferenceStatus.READ_FAILED) {
+                        onSelect(mode)
+                    }
                 }
             }
         }
         if (failed) {
-            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.errorContainer) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(state.status.label()), color = MaterialTheme.colorScheme.onErrorContainer)
-                    OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.action_retry_control))
-                    }
-                    OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.appearance_reset))
-                    }
-                }
-            }
+            FeatureNotice(UiIcon.Info, stringResource(state.status.label()), error = true)
+            FeatureAction(UiIcon.Refresh, stringResource(R.string.action_retry_control), onRetry, Modifier.fillMaxWidth())
+            FeatureAction(UiIcon.Sliders, stringResource(R.string.appearance_reset), onReset, Modifier.fillMaxWidth())
         } else if (state.busy) {
-            Text(
-                stringResource(state.status.label()),
-                Modifier.padding(horizontal = 4.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            FeatureNotice(UiIcon.Refresh, stringResource(state.status.label()))
         }
     }
 }

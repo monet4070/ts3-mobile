@@ -91,7 +91,7 @@ private fun AudioRoutingError.resolve(context: Context): String =
         AudioRoutingErrorKind.BLUETOOTH_ROUTE_LOST -> context.getString(R.string.audio_route_bluetooth_lost)
     }
 
-private fun AudioRouteKind.labelId(): Int =
+internal fun AudioRouteKind.labelId(): Int =
     when (this) {
         AudioRouteKind.SYSTEM -> R.string.audio_route_system
         AudioRouteKind.EARPIECE -> R.string.audio_route_earpiece

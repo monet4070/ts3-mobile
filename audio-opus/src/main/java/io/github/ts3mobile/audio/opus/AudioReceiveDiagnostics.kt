@@ -57,6 +57,8 @@ enum class AudioDiagnosticEventKind {
     OUTPUT_CREATE_SLOW_MS,
     OUTPUT_START_SLOW_MS,
     RECEIVE_DELAY_PROFILE,
+    ACTUAL_OUTPUT_DEVICE,
+    FIRST_WRITE_TO_HEAD_US,
 }
 
 internal enum class OutputRetirement(val code: Long) {

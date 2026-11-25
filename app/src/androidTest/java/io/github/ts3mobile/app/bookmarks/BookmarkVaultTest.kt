@@ -136,7 +136,10 @@ class BookmarkVaultTest {
     @Test fun bookmarkCiphertextIsExcludedFromBackupAndTransfer() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-        fun exclusions(id: Int): Int {
+        fun exclusions(
+            id: Int,
+            path: String,
+        ): Int {
             val parser = context.resources.getXml(id)
             var count = 0
             parser.use {
@@ -146,7 +149,7 @@ class BookmarkVaultTest {
                         parser.getAttributeValue(
                             null,
                             "path",
-                        ) == "datastore/ts3_bookmarks.preferences_pb"
+                        ) == path
                     ) {
                         count++
                     }
@@ -155,7 +158,10 @@ class BookmarkVaultTest {
             }
             return count
         }
-        assertEquals(1, exclusions(R.xml.backup_rules))
-        assertEquals(2, exclusions(R.xml.data_extraction_rules))
+        val vaults = listOf("ts3_bookmarks", "ts3_bookmark_channels", "ts3_chat_history")
+        for (path in vaults.map { "datastore/$it.preferences_pb" }) {
+            assertEquals(1, exclusions(R.xml.backup_rules, path))
+            assertEquals(2, exclusions(R.xml.data_extraction_rules, path))
+        }
     }
 }

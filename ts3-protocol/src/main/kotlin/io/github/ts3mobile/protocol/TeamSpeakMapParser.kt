@@ -13,6 +13,7 @@ internal fun Map<String, String>.toTs3Channel(id: Int): Ts3Channel =
         topic = get("channel_topic")?.boundedText(1024),
         maxClients = intValue("channel_maxclients")?.takeIf { it >= 0 },
         unlimitedClients = booleanValue("channel_flag_maxclients_unlimited"),
+        icon = get("channel_icon_id")?.let(ServerImage::icon),
     )
 
 internal fun Ts3Channel.withTeamSpeakUpdates(values: Map<String, String>): Ts3Channel =
@@ -25,12 +26,14 @@ internal fun Ts3Channel.withTeamSpeakUpdates(values: Map<String, String>): Ts3Ch
         topic = values["channel_topic"]?.boundedText(1024) ?: topic,
         maxClients = values.intValue("channel_maxclients")?.takeIf { it >= 0 } ?: maxClients,
         unlimitedClients = values.booleanValue("channel_flag_maxclients_unlimited") ?: unlimitedClients,
+        icon = if ("channel_icon_id" in values) values["channel_icon_id"]?.let(ServerImage::icon) else icon,
     )
 
-internal fun Ts3Participant.withTeamSpeakUpdates(values: Map<String, String>): Ts3Participant =
-    copy(
+internal fun Ts3Participant.withTeamSpeakUpdates(values: Map<String, String>): Ts3Participant {
+    val uid = values["client_unique_identifier"] ?: uniqueIdentifier
+    return copy(
         nickname = values["client_nickname"] ?: nickname,
-        uniqueIdentifier = values["client_unique_identifier"] ?: uniqueIdentifier,
+        uniqueIdentifier = uid,
         isTalking =
             values.booleanValue("client_flag_talking")
                 ?: values.booleanValue("status")
@@ -39,7 +42,11 @@ internal fun Ts3Participant.withTeamSpeakUpdates(values: Map<String, String>): T
         awayMessage = values["client_away_message"]?.boundedText(256) ?: awayMessage,
         isInputMuted = values.booleanValue("client_input_muted") ?: isInputMuted,
         isOutputMuted = values.booleanValue("client_output_muted") ?: isOutputMuted,
+        avatar = if ("client_flag_avatar" in values) values.toAvatar(uid) else avatar.takeIf { uid == uniqueIdentifier },
     )
+}
+
+internal fun Map<String, String>.toAvatar(uid: String): ServerImage.Avatar? = get("client_flag_avatar")?.let { ServerImage.avatar(uid, it) }
 
 private fun Map<String, String>.intValue(key: String): Int? = get(key)?.toIntOrNull()
 

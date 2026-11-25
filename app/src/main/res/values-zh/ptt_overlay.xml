@@ -1,0 +1,39 @@
+<resources>
+    <string name="ptt_connected_hold">按住说话</string>
+    <string name="ptt_connected_capture">正在采集</string>
+    <string name="ptt_connected_frames">发话中</string>
+    <string name="ptt_connected_listening">麦克风已开启 · 等待说话</string>
+    <string name="ptt_overlay_idle">未录音</string>
+    <string name="ptt_overlay_starting">开启中</string>
+    <string name="ptt_overlay_releasing">释放中</string>
+    <string name="ptt_overlay_expand">点按展开 · 拖动移动</string>
+    <string name="ptt_overlay_collapse">点按收起 · 拖动移动</string>
+    <string name="ptt_overlay_close">关闭浮窗</string>
+    <string name="settings_floating_ptt">浮窗 PTT</string>
+    <string name="settings_floating_ptt_summary">在其他应用上方发言、查看谁在说话</string>
+    <string name="ptt_settings_display">显示方式</string>
+    <string name="ptt_auto_show">退到后台时自动显示浮窗</string>
+    <string name="ptt_auto_show_summary">已加入频道且麦克风空闲时，按 Home 即显示浮窗，不会自动开麦。</string>
+    <string name="ptt_current_session">当前会话</string>
+    <string name="ptt_session_ready">已进入频道</string>
+    <string name="ptt_session_disconnected">加入频道后可使用浮窗</string>
+    <string name="ptt_settings_behavior">打开浮窗不会开启麦克风。展开后可切换麦克风模式；除按住发言外，麦克风区域只显示状态。</string>
+    <string name="ptt_settings_permissions">权限</string>
+    <string name="ptt_overlay_permission">在其他应用上层显示</string>
+    <string name="ptt_overlay_allowed">已允许 · 在系统设置中管理</string>
+    <string name="ptt_overlay_needed">在 TS3 Mobile 之外显示浮窗需要此权限</string>
+    <string name="ptt_permission_settings_unavailable">当前设备无法打开浮窗权限设置。</string>
+    <string name="ptt_show_unavailable">无法显示浮窗。请检查连接与麦克风、通知、浮窗权限，并结束正在进行的录音。</string>
+    <string name="ptt_overlay_hold_action">按住说话</string>
+    <string name="ptt_overlay_hold_test">按住测试</string>
+    <string name="ptt_overlay_gate_waiting">等待发话</string>
+    <string name="ptt_overlay_mic_disabled">麦克风禁用</string>
+    <string name="ptt_overlay_gate_short">门控</string>
+    <string name="ptt_overlay_channel">当前频道</string>
+    <string name="ptt_overlay_speakers_heading">正在发言</string>
+    <string name="ptt_overlay_no_speakers">暂无发言</string>
+    <string name="ptt_overlay_name_separator">" · "</string>
+    <string name="ptt_overlay_more_speakers">+%d</string>
+    <plurals name="ptt_overlay_members"><item quantity="other">%d 人</item></plurals>
+    <string name="ptt_overlay_local_details">本机测试</string>
+</resources>

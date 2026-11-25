@@ -9,8 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.settings.PlaybackPreferenceState
 import io.github.ts3mobile.audio.opus.ReceiveDelayProfile
 
@@ -28,33 +29,45 @@ internal fun PlaybackSettingsScreen(
     onSelect: (ReceiveDelayProfile) -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit,
+    session: TeamSpeakServiceState = TeamSpeakServiceState(),
 ) {
     SettingsPage(R.string.playback_settings_title, onBack) {
-        Text(stringResource(R.string.playback_settings_lifetime), style = MaterialTheme.typography.bodyMedium)
-        Column(Modifier.selectableGroup()) {
-            PlaybackProfileOption(
-                R.string.playback_profile_balanced,
-                R.string.playback_profile_balanced_summary,
-                state,
-                ReceiveDelayProfile.BALANCED,
-                onSelect,
+        SettingsSection(stringResource(R.string.playback_profile_title), UiIcon.Headphones) {
+            Text(
+                stringResource(R.string.playback_settings_lifetime),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            PlaybackProfileOption(
-                R.string.playback_profile_stability,
-                R.string.playback_profile_stability_summary,
-                state,
-                ReceiveDelayProfile.STABILITY,
-                onSelect,
-            )
-        }
-        when {
-            state.busy -> Text(stringResource(if (state.profile == null) R.string.playback_loading else R.string.playback_saving))
-            state.failed && state.profile == null -> {
-                Text(stringResource(R.string.playback_read_failed), color = MaterialTheme.colorScheme.error)
-                OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.action_retry_control)) }
+            Column(Modifier.selectableGroup().guideAnchor(GuideAnchor.PLAYBACK_PROFILE), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                PlaybackProfileOption(
+                    R.string.playback_profile_balanced,
+                    R.string.playback_profile_balanced_summary,
+                    state,
+                    ReceiveDelayProfile.BALANCED,
+                    onSelect,
+                )
+                PlaybackProfileOption(
+                    R.string.playback_profile_stability,
+                    R.string.playback_profile_stability_summary,
+                    state,
+                    ReceiveDelayProfile.STABILITY,
+                    onSelect,
+                )
             }
-            state.failed -> Text(stringResource(R.string.playback_write_failed), color = MaterialTheme.colorScheme.error)
+            when {
+                state.busy ->
+                    FeatureNotice(
+                        UiIcon.Refresh,
+                        stringResource(if (state.profile == null) R.string.playback_loading else R.string.playback_saving),
+                    )
+                state.failed && state.profile == null -> {
+                    FeatureNotice(UiIcon.Info, stringResource(R.string.playback_read_failed), error = true)
+                    FeatureAction(UiIcon.Refresh, stringResource(R.string.action_retry_control), onRetry)
+                }
+                state.failed -> FeatureNotice(UiIcon.Info, stringResource(R.string.playback_write_failed), error = true)
+            }
         }
+        ActualAudioDevicesPanel(session)
     }
 }
 
@@ -68,17 +81,23 @@ private fun PlaybackProfileOption(
 ) {
     val selected = state.profile == profile
     val enabled = state.profile != null && !state.busy
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 64.dp)
-            .selectable(selected, enabled = enabled, role = Role.RadioButton) { onSelect(profile) }
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) colors.primaryContainer else colors.surface,
     ) {
-        RadioButton(selected = selected, onClick = null, enabled = enabled)
-        Column {
-            Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 64.dp)
+                .selectable(selected, enabled = enabled, role = Role.RadioButton) { onSelect(profile) }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(stringResource(title), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(summary), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            }
+            RadioButton(selected = selected, onClick = null, enabled = enabled)
         }
     }
 }

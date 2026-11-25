@@ -1,0 +1,24 @@
+<resources>
+    <string name="ptt_probe_title">浮动发话实验室（开发版）</string>
+    <string name="ptt_probe_intro">仅验证 Android 麦克风权限。切出应用后按住悬浮按钮，本机短时采样，不保存或发送音频。不要在 TeamSpeak 通话期间测试。</string>
+    <string name="ptt_probe_overlay">打开悬浮窗权限设置</string>
+    <string name="ptt_probe_prepare">准备五分钟</string>
+    <string name="ptt_probe_stop">解除准备</string>
+    <string name="ptt_probe_denied">请先允许悬浮窗和麦克风、解锁设备并结束 TeamSpeak 连接。</string>
+    <string name="ptt_probe_idle">未准备</string>
+    <string name="ptt_probe_ready">悬浮按钮已准备，未录音</string>
+    <string name="ptt_probe_starting">正在打开麦克风</string>
+    <string name="ptt_probe_sampling">仅本机采样，不发送</string>
+    <string name="ptt_probe_releasing">正在释放麦克风，不发送</string>
+    <string name="ptt_probe_hold">按住测试麦克风</string>
+    <string name="ptt_probe_stats">按压：%1$d。成功开启采集：%2$d。有有效输入：%3$d。失败：%4$d。开启 p50/p95：%5$s。释放 p50/p95：%6$s。</string>
+    <string name="ptt_connected_intro">请先加入隔离测试频道并征得所有参与者同意。展开浮窗可临时切换麦克风模式。选择常开或门控会立即启动麦克风；按住模式只有按住时才发话。</string>
+    <string name="ptt_connected_prepare">准备连接测试</string>
+    <string name="ptt_connected_denied">请先连接频道并停止已有录音，允许悬浮窗、麦克风和通知，解锁设备并结束通话后再准备。</string>
+    <string name="ptt_connected_ready">连接 PTT 已准备，尚未录音。回到桌面显示浮窗。</string>
+    <string name="ptt_show_on_desktop">回到桌面显示浮窗</string>
+    <string name="ptt_overlay_sampling">本机采样</string>
+    <string name="ptt_overlay_local_title">本机麦克风</string>
+    <string name="ptt_overlay_local_notice">不保存、不发送</string>
+    <string name="ptt_overlay_attempts">按压 %1$d 次 · 成功采集 %2$d 次</string>
+</resources>

@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -73,6 +74,7 @@ internal fun SettingsScaffold(
     snackbar: SnackbarHostState? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
+    val largeTitle = LocalDensity.current.fontScale > 1.35f
     Scaffold(
         topBar = {
             TopAppBar(
@@ -80,8 +82,8 @@ internal fun SettingsScaffold(
                     Text(
                         stringResource(title),
                         Modifier.semantics { heading() },
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1,
+                        style = if (largeTitle) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                        maxLines = if (largeTitle) 2 else 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
@@ -94,6 +96,7 @@ internal fun SettingsScaffold(
                         )
                     }
                 },
+                expandedHeight = if (largeTitle) 92.dp else TopAppBarDefaults.TopAppBarExpandedHeight,
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
@@ -106,6 +109,8 @@ internal data class SettingsAction(
     val title: Int,
     val icon: UiIcon,
     val unavailableHint: Int? = null,
+    val detail: Int? = null,
+    val guideTarget: GuideAnchor? = null,
     val onClick: (() -> Unit)?,
 )
 
@@ -114,11 +119,11 @@ internal fun SettingsActionGroup(
     actions: List<SettingsAction>,
     title: Int? = null,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (title != null) SectionLabel(stringResource(title), Modifier.padding(start = 4.dp).semantics { heading() })
         Panel(Modifier.fillMaxWidth()) {
             actions.forEachIndexed { index, action ->
-                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                if (index > 0) HorizontalDivider(Modifier.padding(start = 60.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 SettingsActionRow(action)
             }
         }
@@ -127,10 +132,13 @@ internal fun SettingsActionGroup(
 
 @Composable
 private fun SettingsActionRow(action: SettingsAction) {
-    val enabled = action.onClick != null
+    val focus = LocalGuideFocus.current
+    val enabled = action.onClick != null && (focus == null || action.guideTarget == focus)
     val titleColor = MaterialTheme.colorScheme.onSurface.let { if (enabled) it else it.copy(alpha = 0.5f) }
+    val detail = if (enabled) action.detail else action.unavailableHint
+    val target = action.guideTarget?.let { Modifier.guideAnchor(it) } ?: Modifier
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 60.dp)
+        target.fillMaxWidth().heightIn(min = 60.dp)
             .clickable(enabled = enabled, role = Role.Button) { action.onClick?.invoke() }
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -139,10 +147,10 @@ private fun SettingsActionRow(action: SettingsAction) {
         IconTile(action.icon, accented = enabled)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(stringResource(action.title), style = MaterialTheme.typography.titleSmall, color = titleColor)
-            if (!enabled && action.unavailableHint != null) {
+            if (detail != null) {
                 Text(
-                    stringResource(action.unavailableHint),
-                    style = MaterialTheme.typography.bodyMedium,
+                    stringResource(detail),
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

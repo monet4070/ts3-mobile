@@ -56,6 +56,7 @@ data class Ts3Channel(
     val topic: String? = null,
     val maxClients: Int? = null,
     val unlimitedClients: Boolean? = null,
+    val icon: ServerImage.Icon? = null,
 )
 
 data class Ts3Participant(
@@ -68,12 +69,15 @@ data class Ts3Participant(
     val uniqueIdentifier: String = "",
     val isAway: Boolean = false,
     val awayMessage: String = "",
+    val avatar: ServerImage.Avatar? = null,
 )
 
 data class SessionSnapshot(
     val channels: List<Ts3Channel> = emptyList(),
     val participants: List<Ts3Participant> = emptyList(),
     val ownClientId: Int? = null,
+    val serverIcon: ServerImage.Icon? = null,
+    val serverUid: VirtualServerUid? = null,
 ) {
     val currentChannelId: Int?
         get() = participants.firstOrNull { it.id == ownClientId }?.channelId

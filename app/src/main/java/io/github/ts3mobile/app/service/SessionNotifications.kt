@@ -12,11 +12,12 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import io.github.ts3mobile.app.MainActivity
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.floatingPttRecallIntent
 import io.github.ts3mobile.app.ui.resolve
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 
-/** Foreground types describe listening and actual capture, without data-sync time limits. */
+/** Foreground types cover playback, capture and explicit floating PTT preparation. */
 internal class SessionNotifications(
     private val service: Service,
     private val onTypesApplied: (Int) -> Unit,
@@ -24,7 +25,12 @@ internal class SessionNotifications(
     private val manager = service.getSystemService(NotificationManager::class.java)
     private val channelId = SessionNotificationChannel.register(manager, service.getString(R.string.notification_channel_name))
     private val playbackActions = PlaybackNotificationActions()
+    private val recallIntent by lazy {
+        PendingIntent.getActivity(service, 4, service.floatingPttRecallIntent(), PendingIntent.FLAG_IMMUTABLE)
+    }
+    private var pttPrepared = false
 
+    @Synchronized
     fun startConnecting(host: String) {
         promote(
             build(TeamSpeakServiceState(status = ConnectionStatus(ConnectionPhase.CONNECTING), serverLabel = host)),
@@ -45,20 +51,42 @@ internal class SessionNotifications(
         stop()
     }
 
+    @Synchronized
     fun update(state: TeamSpeakServiceState) {
         if (state.status.phase !in foregroundPhases || state.serverLabel == null) return
         manager.notify(NOTIFICATION_ID, build(state))
     }
 
+    @Synchronized
     fun updateType(
         state: TeamSpeakServiceState,
         includeMicrophone: Boolean,
     ) {
-        if (state.status.phase !in foregroundPhases || state.serverLabel == null) return
+        if (pttPrepared || state.status.phase !in foregroundPhases || state.serverLabel == null) return
         promote(build(state.copy(isCapturing = includeMicrophone)), includeMicrophone)
     }
 
+    @Synchronized
+    fun setPttPrepared(
+        state: TeamSpeakServiceState,
+        ready: Boolean,
+        inputReleased: () -> Boolean,
+    ) {
+        if (ready) {
+            check(state.floatingPttTarget() != null && state.serverLabel != null)
+            val channel = manager.getNotificationChannel(channelId)
+            check(manager.areNotificationsEnabled() && channel != null && channel.importance != NotificationManager.IMPORTANCE_NONE)
+            promote(build(state, prepared = true), includeMicrophone = true)
+        } else if (state.status.phase in foregroundPhases && state.serverLabel != null) {
+            pttPrepared = false
+            promote(build(state), includeMicrophone = !inputReleased())
+        }
+        pttPrepared = ready
+    }
+
+    @Synchronized
     fun stop() {
+        pttPrepared = false
         playbackActions.clear()
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
     }
@@ -81,11 +109,16 @@ internal class SessionNotifications(
         onTypesApplied(types)
     }
 
-    private fun build(state: TeamSpeakServiceState): Notification {
+    private fun build(
+        state: TeamSpeakServiceState,
+        prepared: Boolean = pttPrepared,
+    ): Notification {
         val host = state.serverLabel.orEmpty()
         val onlineCount = state.snapshot.participants.size
         val text =
             when {
+                prepared && state.isCapturing -> service.getString(R.string.notification_floating_ptt_capture)
+                prepared -> service.getString(R.string.notification_floating_ptt_ready)
                 state.hasPlaybackFailure ->
                     service.getString(R.string.playback_failed)
                 state.microphoneError == UserMessage.MicrophoneResumeInApp && state.status.phase == ConnectionPhase.CONNECTED ->
@@ -114,6 +147,12 @@ internal class SessionNotifications(
                 serviceAction(1, TeamSpeakService.ACTION_DISCONNECT),
             )
         val listening = listeningControl(state)
+        val recall =
+            if (!prepared && !state.isCapturing && state.floatingPttTarget() != null) {
+                NotificationCompat.Action(0, service.getString(R.string.notification_show_floating_ptt), recallIntent)
+            } else {
+                null
+            }
         val builder =
             NotificationCompat.Builder(service, channelId)
                 .setSmallIcon(R.drawable.ic_app)
@@ -124,7 +163,7 @@ internal class SessionNotifications(
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
-        if (state.microphoneMode.requiresContinuousCapture) {
+        if (recall == null && state.microphoneMode.requiresContinuousCapture) {
             builder.addAction(
                 0,
                 service.getString(R.string.notification_mute_microphone),
@@ -132,8 +171,9 @@ internal class SessionNotifications(
             )
         }
         listening?.let { builder.addAction(it) }
+        recall?.let { builder.addAction(it) }
         if (state.status.phase == ConnectionPhase.CONNECTED) {
-            builder.showConnectedControls(service, text, disconnect, listening)
+            builder.showConnectedControls(service, text, disconnect, listening, recall)
         }
         return builder.build()
     }

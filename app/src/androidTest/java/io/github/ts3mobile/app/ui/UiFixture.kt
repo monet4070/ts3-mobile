@@ -119,6 +119,7 @@ internal class UiFixture(connected: Boolean = false) {
         fontScale: Float = 1f,
         onShareServerInvite: (() -> Unit)? = null,
         onShareChannelInvite: (() -> Unit)? = null,
+        openChannelFiles: (() -> io.github.ts3mobile.protocol.ChannelFiles?)? = null,
         saveBookmark: (
             ServerBookmark,
         ) -> Unit = { bookmarks.value = BookmarkState(BookmarkCodec.save(bookmarks.value.entries, it), loading = false) },
@@ -155,6 +156,7 @@ internal class UiFixture(connected: Boolean = false) {
         ) {
             Ts3MobileTheme(darkTheme = dark) {
                 MainScreen(
+                    openChannelFiles = openChannelFiles,
                     onCheckUpdates = { updateChecks++ },
                     onShareServerInvite = onShareServerInvite,
                     onShareChannelInvite = onShareChannelInvite,

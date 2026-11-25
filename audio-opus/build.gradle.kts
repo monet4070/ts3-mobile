@@ -16,7 +16,7 @@ android {
     defaultConfig {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("boolean", "BLUETOOTH_STANDARD_OUTPUT_EXPERIMENT", bluetoothStandardOutputExperiment.toString())
+        resValue("bool", "bluetooth_standard_output_experiment", bluetoothStandardOutputExperiment.toString())
 
         externalNativeBuild {
             cmake {
@@ -27,10 +27,6 @@ android {
             }
         }
         if (apmExperimentRoot != null) testInstrumentationRunnerArguments["apmExperiment"] = "true"
-    }
-
-    buildFeatures {
-        buildConfig = true
     }
 
     externalNativeBuild {

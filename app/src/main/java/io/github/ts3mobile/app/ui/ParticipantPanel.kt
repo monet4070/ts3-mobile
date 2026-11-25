@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +44,7 @@ internal fun ParticipantList(
     onVolumeChange: (String, Int) -> Unit,
     onPrivateMessage: (Int) -> Unit = {},
     onPoke: (Ts3Participant) -> Unit = {},
+    previews: ServerImagePreviewScope? = null,
 ) {
     val volumeLabelMinWidth = 44.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
     val channelsById =
@@ -54,30 +57,27 @@ internal fun ParticipantList(
         return
     }
 
-    LazyColumn(Modifier.fillMaxSize()) {
+    val listState = rememberLazyListState()
+    val visibleParticipants by remember(listState) {
+        derivedStateOf { listState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? Int }.toSet() }
+    }
+    val guideParticipant = state.snapshot.participants.firstOrNull { it.id != state.snapshot.ownClientId }
+    LazyColumn(Modifier.fillMaxSize(), state = listState) {
         // Several connected clients may share an identity; list rows are client instances.
         items(state.snapshot.participants, key = { it.id }) { participant ->
             val key = participant.audioControlKey()
             val settings = state.participantAudioSettings[key] ?: ParticipantAudioSettings()
             val isOwnClient = participant.id == state.snapshot.ownClientId
+            val guideTarget = if (participant.id == guideParticipant?.id) Modifier.guideAnchor(GuideAnchor.MEMBER_ACTIONS) else Modifier
             Column(Modifier.fillMaxWidth()) {
                 Row(
                     modifier =
-                        Modifier
+                        guideTarget
                             .fillMaxWidth()
                             .padding(start = 18.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconTile(
-                        icon =
-                            when {
-                                participant.isTalking -> UiIcon.Audio
-                                participant.isInputMuted -> UiIcon.MicOff
-                                participant.isOutputMuted -> UiIcon.VolumeOff
-                                else -> UiIcon.User
-                            },
-                        accented = participant.isTalking,
-                    )
+                    ParticipantAvatarTile(participant, previews, previews != null && participant.id in visibleParticipants)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(

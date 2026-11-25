@@ -1,0 +1,42 @@
+<resources>
+    <string name="ptt_connected_hold">Hold to speak</string>
+    <string name="ptt_connected_capture">Capturing</string>
+    <string name="ptt_connected_frames">Speaking</string>
+    <string name="ptt_connected_listening">Mic on · gate waiting</string>
+    <string name="ptt_overlay_idle">Mic off</string>
+    <string name="ptt_overlay_starting">Opening…</string>
+    <string name="ptt_overlay_releasing">Closing…</string>
+    <string name="ptt_overlay_expand">Tap to expand · Drag to move</string>
+    <string name="ptt_overlay_collapse">Tap to collapse · Drag to move</string>
+    <string name="ptt_overlay_close">Close floating PTT</string>
+    <string name="settings_floating_ptt">Floating PTT</string>
+    <string name="settings_floating_ptt_summary">Talk and see who’s speaking over other apps</string>
+    <string name="ptt_settings_display">Display</string>
+    <string name="ptt_auto_show">Auto-show when leaving the app</string>
+    <string name="ptt_auto_show_summary">Shows PTT when you go Home from a connected channel with the mic idle. It does not turn the mic on.</string>
+    <string name="ptt_current_session">Current session</string>
+    <string name="ptt_session_ready">Connected to a channel</string>
+    <string name="ptt_session_disconnected">Join a channel to use the overlay</string>
+    <string name="ptt_settings_behavior">The overlay opens with your mic off. Expand it to choose a mic mode. Outside Hold mode, the mic tile only shows its status.</string>
+    <string name="ptt_settings_permissions">Permissions</string>
+    <string name="ptt_overlay_permission">Display over other apps</string>
+    <string name="ptt_overlay_allowed">Allowed · Manage in Android settings</string>
+    <string name="ptt_overlay_needed">Required to show the overlay outside TS3 Mobile</string>
+    <string name="ptt_permission_settings_unavailable">Overlay settings are unavailable on this device.</string>
+    <string name="ptt_show_unavailable">Can’t show the overlay. Check your connection, mic, notification and overlay permissions, and stop any active recording.</string>
+    <string name="ptt_overlay_hold_action">Hold to talk</string>
+    <string name="ptt_overlay_hold_test">Hold to test</string>
+    <string name="ptt_overlay_gate_waiting">Listening</string>
+    <string name="ptt_overlay_mic_disabled">Mic disabled</string>
+    <string name="ptt_overlay_gate_short">Gate</string>
+    <string name="ptt_overlay_channel">Current channel</string>
+    <string name="ptt_overlay_speakers_heading">Speaking</string>
+    <string name="ptt_overlay_no_speakers">No one speaking</string>
+    <string name="ptt_overlay_name_separator">" · "</string>
+    <string name="ptt_overlay_more_speakers">+%d</string>
+    <plurals name="ptt_overlay_members">
+        <item quantity="one">%d person</item>
+        <item quantity="other">%d people</item>
+    </plurals>
+    <string name="ptt_overlay_local_details">Local test</string>
+</resources>

@@ -35,6 +35,18 @@ class CaptureVoiceBufferTest {
         assertEquals((91..99).toList(), retained)
     }
 
+    @Test fun overflowCountsOnlyEvictionsAndRetainsEachSurvivingFrameTimestamp() {
+        val queue = CaptureVoiceBuffer()
+        val revision = queue.revision()
+        val bytes = List(CaptureVoiceBuffer.CAPACITY + 2) { byteArrayOf(it.toByte()) }
+        val timestamps = bytes.indices.map { it * 100_000L }
+        assertEquals(2, queue.publish(revision, bytes, true, timestamps))
+        assertEquals(timestamps.drop(2), generateSequence(queue::pollTimed).map { it.encodedAtNanos }.toList())
+        queue.reset()
+        assertEquals(0, queue.publish(revision, bytes, true, timestamps))
+        assertNull(queue.pollTimed())
+    }
+
     @Test fun resetRejectsInFlightOldConfigurationAndClearsSpeech() {
         val queue = CaptureVoiceBuffer()
         val old = queue.revision()

@@ -17,6 +17,7 @@ internal class AndroidPlaybackOutput(
     private val routeGuard: BluetoothPlaybackGuard,
     private val onUnsafeRoute: (AndroidPlaybackOutput) -> Unit,
     private val stats: ReceiveStats? = null,
+    standardBluetoothExperiment: Boolean = false,
 ) : PlaybackOutput {
     private val track: AudioTrack
     private val routingListener: AudioRouting.OnRoutingChangedListener
@@ -43,7 +44,7 @@ internal class AndroidPlaybackOutput(
                 AudioFormat.ENCODING_PCM_16BIT,
             )
         check(minimumBytes > 0) { "Unable to determine audio buffer size: $minimumBytes" }
-        val performanceMode = playbackPerformanceMode(routeGuard.expectsBluetooth(), BuildConfig.BLUETOOTH_STANDARD_OUTPUT_EXPERIMENT)
+        val performanceMode = playbackPerformanceMode(routeGuard.expectsBluetooth(), standardBluetoothExperiment)
         track =
             AudioTrack.Builder()
                 .setAudioAttributes(voicePlaybackAudioAttributes())
@@ -102,6 +103,7 @@ internal class AndroidPlaybackOutput(
             if (closed) return
             silenced = true
             track.setVolume(0f)
+            stats?.confirmOutputDevice(null)
             Unit
         }
 
@@ -124,7 +126,8 @@ internal class AndroidPlaybackOutput(
         val decision =
             synchronized(outputLock) {
                 if (closed || silenced) return false
-                val kind = track.routedDevice?.let { AudioRouteDevices.routeKindForDeviceType(it.type) }
+                val device = track.routedDevice
+                val kind = device?.let { AudioRouteDevices.routeKindForDeviceType(it.type) }
                 routedKind = kind
                 stats?.observeRoute(kind)
                 val now = SystemClock.elapsedRealtime()
@@ -133,6 +136,7 @@ internal class AndroidPlaybackOutput(
                 routeGuard.evaluate(kind, routeRevision, timedOut).also {
                     bluetoothWaitStartedAt = if (it == PlaybackRouteDecision.WAIT_FOR_BLUETOOTH) waitStarted ?: now else null
                     track.setVolume(if (it == PlaybackRouteDecision.ALLOW) 1f else 0f)
+                    stats?.confirmOutputDevice(if (it == PlaybackRouteDecision.ALLOW) actualAudioDevice(device?.type) else null)
                     if (it == PlaybackRouteDecision.ALLOW && kind != null) observePerformanceMode()
                 }
             }
@@ -162,6 +166,8 @@ internal class AndroidPlaybackOutput(
             track.pause()
             track.flush()
             routedDeviceId = null
+            stats?.confirmOutputDevice(null)
+            Unit
         }
 
     fun setPreferredDevice(device: AudioDeviceInfo?) {
@@ -183,6 +189,7 @@ internal class AndroidPlaybackOutput(
                 closed = true
                 routedKind = null
                 stats?.observeRoute(null)
+                stats?.confirmOutputDevice(null)
             }
         }
 

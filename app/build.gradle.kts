@@ -18,10 +18,16 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+        resValue("bool", "channel_files_probe_enabled", "true")
     }
 
     buildTypes {
+        debug {
+            resValue("bool", "desktop_identity_import_enabled", "true")
+        }
         release {
+            val desktopImport = providers.gradleProperty("desktopIdentityImportExperiment").getOrElse("false").toBoolean()
+            resValue("bool", "desktop_identity_import_enabled", desktopImport.toString())
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

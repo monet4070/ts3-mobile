@@ -2,12 +2,17 @@ package io.github.ts3mobile.app.service
 
 import android.media.AudioDeviceInfo
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.ts3mobile.app.bookmarks.BookmarkConnection
 import io.github.ts3mobile.audio.opus.EchoCancellationState
 import io.github.ts3mobile.audio.opus.MicrophoneCapture
 import io.github.ts3mobile.audio.opus.MicrophoneCaptureState
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
+import io.github.ts3mobile.protocol.EncodedVoiceSource
+import io.github.ts3mobile.protocol.SessionSnapshot
+import io.github.ts3mobile.protocol.Ts3Participant
+import io.github.ts3mobile.protocol.Ts3SessionClient
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,13 +22,138 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /** Only a fake microphone is constructed: no AudioRecord, permission or network use. */
 class MicrophoneControllerTest {
+    @Test fun preparingBeforeHomeCannotCaptureUntilTheMainActivityHasPaused() =
+        Fixture().use { fixture ->
+            val source = fixture.bindFloatingSource()
+            fixture.controller.setAppVisible(true)
+            val preparation = fixture.preparation()
+            assertFalse(preparation.arm {})
+            assertTrue(preparation.arm(leavingMainActivity = true) {})
+            assertNull(preparation.press())
+            assertFalse(preparation.selectMode(MicrophoneMode.CONTINUOUS))
+            fixture.controller.setAppVisible(false)
+            assertEquals(0, fixture.capture.starts)
+            assertNull(source.pollEncodedFrame())
+            assertFalse(preparation.captureRequested)
+            preparation.disarm()
+            assertFalse(preparation.arm(leavingMainActivity = true) {})
+        }
+
+    @Test fun selectingFloatingModesStartsCaptureWithoutAnotherButtonAndRevokesOldCapture() =
+        Fixture().use { fixture ->
+            val source = fixture.bindFloatingSource()
+            val preparation = fixture.preparation()
+            fixture.state.value = fixture.state.value.copy(microphoneMode = MicrophoneMode.CONTINUOUS)
+            assertTrue(preparation.arm { })
+            fixture.controller.reconcile()
+            assertEquals(MicrophoneMode.PUSH_TO_TALK, preparation.mode)
+            assertEquals(0, fixture.capture.starts)
+            assertFalse(preparation.captureRequested)
+
+            val hold = checkNotNull(preparation.press())
+            assertTrue(preparation.selectMode(MicrophoneMode.VOLUME_GATE))
+            assertNull(preparation.press())
+            assertEquals(2, fixture.capture.starts)
+            assertTrue(preparation.captureRequested)
+            assertTrue(fixture.state.value.isCapturing)
+            assertFalse(source.isTransmitting)
+            assertNull(source.pollEncodedFrame())
+            fixture.capture.speech(true)
+            assertTrue(source.isTransmitting)
+            assertEquals(1, source.pollEncodedFrame()?.single()?.toInt())
+
+            assertTrue(preparation.selectMode(MicrophoneMode.CONTINUOUS))
+            assertTrue(fixture.capture.isCapturing)
+            assertEquals(3, fixture.capture.starts)
+            preparation.release(hold)
+            assertTrue(source.isTransmitting)
+            assertTrue(preparation.selectMode(MicrophoneMode.OFF))
+            assertFalse(fixture.capture.isCapturing)
+            assertFalse(preparation.captureRequested)
+            assertNull(source.pollEncodedFrame())
+            assertNull(preparation.press())
+            assertEquals(MicrophoneMode.CONTINUOUS, fixture.state.value.microphoneMode)
+            preparation.disarm()
+        }
+
+    @Test fun preparedBackgroundSessionHandsOffSyntheticFramesForTwentySeparatePressesOnly() =
+        Fixture().use { fixture ->
+            val source = fixture.bindFloatingSource()
+            val preparation = fixture.preparation()
+            assertTrue(preparation.arm { })
+            assertEquals(0, fixture.capture.starts)
+            assertNull(source.pollEncodedFrame())
+            var previousToken: Long? = null
+            repeat(20) {
+                val press = checkNotNull(preparation.press())
+                previousToken?.let(preparation::release)
+                fixture.controller.setPushToTalkPressed(false)
+                assertTrue(fixture.state.value.isCapturing)
+                assertEquals(1, source.pollEncodedFrame()?.single()?.toInt())
+                preparation.release(press)
+                assertFalse(fixture.capture.isCapturing)
+                assertNull(source.pollEncodedFrame())
+                previousToken = press
+            }
+            assertEquals(20, fixture.capture.starts)
+            assertEquals(20L, preparation.framesProvided)
+            assertEquals(listOf(true), fixture.foreground.filter { it })
+            preparation.disarm()
+            assertNull(preparation.press())
+        }
+
+    @Test fun releaseWhileCaptureIsOpeningClosesVoiceAndRejectsNextPressUntilTeardown() =
+        Fixture(Dispatchers.IO).use { fixture ->
+            val source = fixture.bindFloatingSource()
+            val preparation = fixture.preparation()
+            val opening = CountDownLatch(1)
+            val unblock = CountDownLatch(1)
+            fixture.capture.beforeStart = {
+                opening.countDown()
+                check(unblock.await(5, TimeUnit.SECONDS))
+            }
+            try {
+                assertTrue(preparation.arm { })
+                val press = checkNotNull(preparation.press())
+                assertTrue(opening.await(3, TimeUnit.SECONDS))
+                preparation.release(press)
+                assertNull(source.pollEncodedFrame())
+                assertNull(preparation.press())
+            } finally {
+                unblock.countDown()
+            }
+            runBlocking { fixture.controller.stopSerialized() }
+            assertFalse(fixture.capture.isCapturing)
+            assertNull(source.pollEncodedFrame())
+            assertEquals(0L, preparation.framesProvided)
+        }
+
+    @Test fun channelChangeFencesFramesBeforeAsyncDisarmAndMissingPermissionPreventsRearm() =
+        Fixture().use { fixture ->
+            val source = fixture.bindFloatingSource()
+            val preparation = fixture.preparation()
+            assertTrue(preparation.arm { })
+            checkNotNull(preparation.press())
+            assertTrue(source.isReady())
+            fixture.state.value = fixture.state.value.copy(snapshot = SessionSnapshot.Empty)
+            assertFalse(preparation.isValid)
+            assertNull(source.pollEncodedFrame())
+            preparation.disarm()
+            assertFalse(fixture.capture.isCapturing)
+            fixture.bindFloatingSource()
+            fixture.permission = false
+            assertFalse(preparation.arm { })
+        }
+
     @Test fun destructionRequestsStopImmediatelyAndKeepsCleanupAliveAfterScopeCancellation() {
         Fixture(Dispatchers.IO).use { fixture ->
             val entered = CountDownLatch(1)
@@ -218,6 +348,25 @@ class MicrophoneControllerTest {
                 captureDispatcher = dispatcher,
             )
 
+        fun preparation() = ConnectedPttPreparation(controller, { true }, { foreground += it })
+
+        fun bindFloatingSource(): EncodedVoiceSource {
+            state.value =
+                state.value.copy(
+                    bookmarkConnection = BookmarkConnection("test", "fixture.example.invalid", 9987, "Test"),
+                    snapshot = SessionSnapshot(participants = listOf(Ts3Participant(1, 2, "Test", false, false, false)), ownClientId = 1),
+                )
+            var source: EncodedVoiceSource? = null
+            val session =
+                Proxy.newProxyInstance(Ts3SessionClient::class.java.classLoader, arrayOf(Ts3SessionClient::class.java)) { _, method, args ->
+                    check(method.name == "setVoiceSource")
+                    source = args.single() as EncodedVoiceSource
+                    null
+                } as Ts3SessionClient
+            controller.attachTo(session)
+            return checkNotNull(source)
+        }
+
         override fun close() {
             controller.close()
             scope.cancel()
@@ -238,6 +387,7 @@ class MicrophoneControllerTest {
         val startedAgain = CountDownLatch(1)
         var stopEntered: CountDownLatch? = null
         var stopRelease: CountDownLatch? = null
+        var beforeStart: () -> Unit = {}
         var settings = MicrophoneSettings()
         private var gated = false
 
@@ -261,6 +411,7 @@ class MicrophoneControllerTest {
         }
 
         override fun start() {
+            beforeStart()
             starts++
             generation++
             isCapturing = true
@@ -292,8 +443,8 @@ class MicrophoneControllerTest {
 
         override fun close() = stop()
 
-        override fun isReady() = false
+        override fun isReady() = isCapturing
 
-        override fun pollEncodedFrame(): ByteArray? = null
+        override fun pollEncodedFrame(): ByteArray? = if (isCapturing && isTransmitting) byteArrayOf(1) else null
     }
 }

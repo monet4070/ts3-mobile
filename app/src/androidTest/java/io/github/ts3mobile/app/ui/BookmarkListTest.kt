@@ -3,6 +3,7 @@ package io.github.ts3mobile.app.ui
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -13,10 +14,13 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.text.TextLayoutResult
 import io.github.ts3mobile.app.bookmarks.BookmarkState
 import io.github.ts3mobile.app.bookmarks.ServerBookmark
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -140,11 +144,19 @@ class BookmarkListTest {
     @Test fun warmChineseDarkListPreview() = preview(dark = true)
 
     @Test fun chineseLargeTextKeepsLongNamesAndActionsReachable() {
-        val entry = studio.copy(name = "周末一起打游戏的朋友们", nickname = "一个很长的测试昵称")
+        val entry = studio.copy(name = "周末一起打游戏的朋友们", host = "weekend-voice.example.invalid", nickname = "一个很长的测试昵称")
         val fixture = withEntries(entry, weekend)
         rule.setContent { fixture.Render(locale = "zh-CN", fontScale = 1.8f) }
         rule.onNodeWithText("选择收藏服务器").performScrollTo().performClick()
         rule.onNodeWithText(entry.name).performScrollTo().assertIsDisplayed()
+        listOf("${entry.host}:${entry.port}", entry.nickname).forEach { label ->
+            val layouts = mutableListOf<TextLayoutResult>()
+            rule.onNodeWithText(label).performScrollTo().performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            val layout = layouts.single()
+            val lastLine = layout.lineCount - 1
+            assertFalse("Bookmark text was ellipsized", layout.isLineEllipsized(lastLine))
+            assertEquals("Bookmark text was cut off", label.length, layout.getLineEnd(lastLine, visibleEnd = true))
+        }
         rule.onNodeWithContentDescription("连接到 ${entry.name}").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("新增收藏").assertIsDisplayed()
         save("bookmarks-zh-large")

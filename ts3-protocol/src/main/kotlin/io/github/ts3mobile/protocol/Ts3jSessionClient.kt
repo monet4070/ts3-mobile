@@ -25,6 +25,15 @@ class Ts3jSessionClient : Ts3SessionClient {
 
     constructor() : this(Ts3jClientSocketFactory { LocalTeamspeakClientSocketAdapter() })
 
+    constructor(voiceTiming: VoiceTimingCollector) :
+        this(Ts3jClientSocketFactory { LocalTeamspeakClientSocketAdapter(voiceTiming = voiceTiming) })
+
+    constructor(voiceTiming: VoiceTimingCollector, verifyAttachmentIdentity: Boolean) : this(
+        Ts3jClientSocketFactory {
+            LocalTeamspeakClientSocketAdapter(voiceTiming = voiceTiming, verifyAttachmentIdentity = verifyAttachmentIdentity)
+        },
+    )
+
     internal constructor(socketFactory: Ts3jClientSocketFactory, clockNanos: () -> Long = System::nanoTime) {
         this.socketFactory = socketFactory
         this.clockNanos = clockNanos
@@ -317,6 +326,54 @@ class Ts3jSessionClient : Ts3SessionClient {
             ChannelInfoResult(ControlOutcome(ControlStatus.NOT_SENT)),
         ) { client, valid -> client.channelInfo(channelId, timeoutMs, valid) }
 
+    override fun channelFiles(channelId: Int): ChannelFiles? {
+        val token = generation.currentToken()
+        return generation.withCurrent(token) {
+            val captured = socket?.takeIf { it.isConnected } ?: return@withCurrent null
+            val transport = captured.channelFiles ?: return@withCurrent null
+            val clientId = captured.clientId
+            val revision = snapshotStore.channelRevision(clientId, channelId) ?: return@withCurrent null
+            BoundChannelFiles(transport, channelId) {
+                generation.withCurrent(token) {
+                    socket === captured && captured.isConnected && snapshotStore.channelRevision(clientId, channelId) == revision
+                } == true
+            }
+        }
+    }
+
+    override fun serverImages(): ServerImages? {
+        val token = generation.currentToken()
+        return generation.withCurrent(token) {
+            val captured = socket?.takeIf { it.isConnected } ?: return@withCurrent null
+            val transport = captured.channelFiles ?: return@withCurrent null
+            BoundServerImages(transport) {
+                generation.withCurrent(token) { socket === captured && captured.isConnected } == true
+            }
+        }
+    }
+
+    override fun attachmentDownload(
+        attachment: ChannelAttachment,
+        canSubmit: () -> Boolean,
+    ): AttachmentDownload? {
+        if (!canSubmit()) return null
+        val token = generation.currentToken()
+        return generation.withCurrent(token) {
+            val captured = socket?.takeIf { it.isConnected && it.serverUid == attachment.serverUid } ?: return@withCurrent null
+            val transport = captured.channelFiles ?: return@withCurrent null
+            val channelId = attachment.channelId
+            val lifetime = snapshotStore.channelLifetime(channelId) ?: return@withCurrent null
+            val files =
+                BoundChannelFiles(transport, channelId) {
+                    generation.withCurrent(token) {
+                        socket === captured && captured.isConnected && captured.serverUid == attachment.serverUid &&
+                            snapshotStore.channelLifetime(channelId) == lifetime
+                    } == true && canSubmit()
+                }
+            AttachmentDownload { directory -> files.stageDownload(attachment.remotePath, directory) }
+        }
+    }
+
     private suspend fun <T> capturedControl(
         canSubmit: () -> Boolean,
         notSent: T,
@@ -463,8 +520,13 @@ class Ts3jSessionClient : Ts3SessionClient {
     private fun publishSnapshot(token: Long) {
         val pending =
             generation.withCurrent(token) {
-                val ownClientId = socket?.takeIf { it.isConnected }?.clientId
-                listener to snapshotStore.snapshot().copy(ownClientId = ownClientId)
+                val connected = socket?.takeIf { it.isConnected }
+                listener to
+                    snapshotStore.snapshot().copy(
+                        ownClientId = connected?.clientId,
+                        serverIcon = connected?.serverIcon,
+                        serverUid = connected?.serverUid,
+                    )
             } ?: return
         pending.first?.onSnapshotChanged(pending.second)
     }

@@ -5,6 +5,7 @@ internal class PlaybackTimeline(
     private val reference: PlaybackReferenceSink? = null,
     private val receiveStats: ReceiveStats? = null,
     private val canWrite: () -> Boolean = { true },
+    private val clockNanos: () -> Long = System::nanoTime,
 ) {
     enum class State { IDLE, PLAYING, RECOVERING, DRAINING }
 
@@ -30,6 +31,7 @@ internal class PlaybackTimeline(
     private var startedAt = 0L
     private var pendingArrival: Long? = null
     private var extendedStartupWrite = false
+    private var firstWriteAt: Long? = null
 
     fun start(now: Long = System.nanoTime()) {
         check(state == State.IDLE)
@@ -39,6 +41,7 @@ internal class PlaybackTimeline(
         headOrigin = previousHead
         startedAt = now
         extendedStartupWrite = false
+        firstWriteAt = null
         reference?.start()
         state = State.PLAYING
     }
@@ -99,6 +102,13 @@ internal class PlaybackTimeline(
         if (advanced > HEAD_MASK / 2) return
         previousHead = currentHead
         playedFrames = (playedFrames + advanced).coerceAtMost(submittedFrames)
+        if (playedFrames > 0L) {
+            firstWriteAt?.let { writeAt ->
+                firstWriteAt = null
+                val delay = (clockNanos() - writeAt).coerceAtLeast(0L)
+                receiveStats?.observer?.onEvent(AudioDiagnosticEventKind.FIRST_WRITE_TO_HEAD_US, delay / 1_000L)
+            }
+        }
     }
 
     private fun writePending(now: Long) {
@@ -118,6 +128,7 @@ internal class PlaybackTimeline(
                 receiveStats?.count(AudioReceiveCounter.ZERO_WRITES)
                 return
             }
+            if (submittedFrames == 0L && receiveStats?.observer != null) firstWriteAt = clockNanos()
             receiveStats?.count(AudioReceiveCounter.OUTPUT_SAMPLES, written.toLong())
             pendingArrival?.let { arrival -> receiveStats?.let { it.maximum(it.maxCombinedWaitNanos, now - arrival) } }
             if (reference != null) {

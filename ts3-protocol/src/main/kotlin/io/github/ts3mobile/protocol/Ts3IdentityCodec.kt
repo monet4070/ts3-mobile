@@ -11,12 +11,15 @@ data class Ts3IdentitySummary(val uid: String, val keyOffset: Long, val security
 class InvalidIdentityMaterial : IllegalArgumentException("Invalid identity material")
 
 object Ts3IdentityCodec {
+    const val MAX_MATERIAL_BYTES = 64 * 1_024
+
     fun generate(securityLevel: Int = 10): String = LocalIdentity.generateNew(securityLevel).export()
+
+    fun normalizeDesktopIni(bytes: ByteArray): String = DesktopIdentityIni.normalize(bytes)
 
     /** Bounded summary/validation only; never repairs, improves or logs imported material. */
     fun inspect(material: String): Ts3IdentitySummary {
         try {
-            require(material.length <= 64 * 1_024 && material.toByteArray(StandardCharsets.UTF_8).size <= 64 * 1_024)
             val identity = decode(material)
             val publicKey = identity.publicKey
             val privateKey = identity.privateKey
@@ -31,6 +34,14 @@ object Ts3IdentityCodec {
         }
     }
 
-    internal fun decode(material: String): LocalIdentity =
-        ByteArrayInputStream(material.toByteArray(StandardCharsets.UTF_8)).use(LocalIdentity::read)
+    internal fun decode(material: String): LocalIdentity {
+        require(material.length <= MAX_MATERIAL_BYTES)
+        val bytes = material.toByteArray(StandardCharsets.UTF_8)
+        try {
+            require(bytes.size <= MAX_MATERIAL_BYTES)
+            return ByteArrayInputStream(bytes).use(LocalIdentity::read)
+        } finally {
+            bytes.fill(0)
+        }
+    }
 }

@@ -3,7 +3,7 @@
     <application>
         <provider
             android:name="io.github.ts3mobile.app.identity.documents.BackupTestProvider"
-            android:authorities="io.github.ts3mobile.app.test.backup-documents"
+            android:authorities="${applicationId}.backup-documents"
             android:exported="true"
             android:grantUriPermissions="true" />
     </application>

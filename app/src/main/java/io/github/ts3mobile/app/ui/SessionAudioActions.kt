@@ -37,7 +37,10 @@ internal fun SessionAudioActions(
     onOpenPresence: () -> Unit,
 ) {
     val connected = state.status.phase == ConnectionPhase.CONNECTED
-    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp).guideAnchor(GuideAnchor.OUTPUT),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Box(Modifier.weight(1f)) { AudioRouteMenu(state.audioRouting, onAudioRouteSelected) }
         IconButton(onClick = onOpenSearch, enabled = connected) {
             AppIcon(UiIcon.Search, stringResource(R.string.discovery_title))

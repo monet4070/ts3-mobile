@@ -41,6 +41,7 @@ internal fun NavigationTabs(
     selected: SessionTab,
     onSelect: (SessionTab) -> Unit,
     unread: Int = 0,
+    guidedTab: SessionTab? = null,
 ) {
     val tabs =
         listOf(
@@ -65,13 +66,14 @@ internal fun NavigationTabs(
                         null
                     }
                 val bringIntoView = remember { BringIntoViewRequester() }
-                LaunchedEffect(selected, scrollable) {
-                    if (selected == tab) bringIntoView.bringIntoView()
+                val guideModifier = Modifier.guideAnchor(tab.guideEntry)
+                LaunchedEffect(selected, scrollable, guidedTab) {
+                    if ((guidedTab ?: selected) == tab) bringIntoView.bringIntoView()
                 }
                 Surface(
                     modifier =
                         (if (scrollable) Modifier.widthIn(min = 112.dp) else Modifier.weight(1f))
-                            .bringIntoViewRequester(bringIntoView),
+                            .bringIntoViewRequester(bringIntoView).then(guideModifier),
                     shape = MaterialTheme.shapes.small,
                     color = if (selected == tab) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.background,
                     contentColor =
@@ -82,7 +84,12 @@ internal fun NavigationTabs(
                         },
                 ) {
                     Row(
-                        Modifier.selectable(selected == tab, role = Role.Tab, onClick = { onSelect(tab) })
+                        Modifier.selectable(
+                            selected == tab,
+                            enabled = guidedTab == null || guidedTab == tab,
+                            role = Role.Tab,
+                            onClick = { onSelect(tab) },
+                        )
                             .semantics { if (unreadDescription != null) stateDescription = unreadDescription }
                             .heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,

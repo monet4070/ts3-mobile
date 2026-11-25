@@ -142,6 +142,19 @@ class AudioDiagnosticControllerTest {
             }
         }
 
+    @Test fun problemMarkForcesASampleOnTheSameTimelineBeforeThePeriodicDeadline() =
+        runTest {
+            var time = 1_000L
+            val repository = AudioDiagnosticRepository(temporary.newFile(), backgroundScope, { time })
+            val controller = AudioDiagnosticController(repository, { frame(1) }, { AudioDiagnosticContext() }, { time }, { time })
+            controller.sampleNow()
+            time += 50
+            assertTrue(controller.mark())
+            val report = repository.export()
+            assertTrue(report.contains("{\"timeMs\":1050,\"session\":1,\"kind\":\"USER_MARK\""))
+            assertTrue(report.contains("{\"timeMs\":1050,\"elapsedRealtimeMs\":1050,\"windowMs\":50"))
+        }
+
     private fun frame(count: Long) =
         AudioReceiveDiagnostics(
             1,

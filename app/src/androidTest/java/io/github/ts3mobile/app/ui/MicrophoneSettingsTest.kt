@@ -34,8 +34,8 @@ class MicrophoneSettingsTest {
         rule.onNodeWithContentDescription("Microphone input volume").performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { it(150f) }
         rule.onNodeWithText("Input volume: 150%").assertIsDisplayed()
-        rule.onNodeWithContentDescription("RNNoise noise suppression").performScrollTo().performClick()
-        rule.onNodeWithContentDescription("Device echo cancellation").performScrollTo().performClick()
+        rule.onNodeWithText("RNNoise noise suppression").performScrollTo().performClick()
+        rule.onNodeWithText("Device echo cancellation").performScrollTo().performClick()
         rule.onNodeWithContentDescription("Volume gate threshold").performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { it(-35f) }
         rule.onNodeWithText("Volume gate threshold: -35 dBFS").assertIsDisplayed()

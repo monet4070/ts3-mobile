@@ -70,7 +70,7 @@ internal fun ConnectionFormState.withSelectedHistoryEntry(entry: ServerHistoryEn
     )
 }
 
-internal class ConnectionRequest(val config: ServerConfig, val fromInvite: Boolean)
+internal class ConnectionRequest(val config: ServerConfig, val fromInvite: Boolean, val requireIdle: Boolean)
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     internal val chatNotificationEntry = ChatNotificationEntry()
@@ -237,6 +237,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    internal fun connectBookmark(
+        entry: ServerBookmark,
+        onReady: (ServerConfig) -> Unit,
+    ) {
+        if (submitting || pendingConnection != null) return
+        if (!isCurrentBookmark(entry)) return
+        applyBookmark(entry)
+        submitAndRemember { config -> if (isCurrentBookmark(entry)) onReady(config) }
+    }
+
+    private fun isCurrentBookmark(entry: ServerBookmark): Boolean =
+        bookmarks.value.let { !it.busy && !it.loading && !it.failed && entry in it.entries }
 
     private suspend fun rememberCurrentForm() =
         saveMutex.withLock {

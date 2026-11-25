@@ -6,6 +6,7 @@ import com.github.manevolent.ts3j.protocol.NetworkPacket
 import com.github.manevolent.ts3j.protocol.Packet
 import com.github.manevolent.ts3j.protocol.ProtocolRole
 import com.github.manevolent.ts3j.protocol.client.ClientConnectionState
+import com.github.manevolent.ts3j.protocol.packet.PacketBody0Voice
 import com.github.manevolent.ts3j.protocol.packet.PacketBody2Command
 import com.github.manevolent.ts3j.protocol.packet.PacketBodyType
 import com.github.manevolent.ts3j.protocol.socket.client.AbstractTeamspeakClientSocket
@@ -51,14 +52,32 @@ internal open class StateAwareTeamspeakClientSocket :
     @Volatile
     private var requestSent: (() -> Unit)? = null
 
+    @Volatile var voiceTiming: Ts3jVoiceTiming? = null
+    val channelFileReplies = Ts3jChannelFileReplies()
+
+    @Volatile var serverIcon: ServerImage.Icon? = null
+        private set
+
+    @Volatile var serverUid: VirtualServerUid? = null
+        private set
+
+    @Volatile var closeChannelFiles: (() -> Unit)? = null
+
     fun <T> withOperation(block: () -> T): T = operations.run(block)
 
     override fun writePacket(packet: Packet) {
-        operations.run { super.writePacket(packet) }
+        val voice = packet.body as? PacketBody0Voice
+        if (voice != null && voice.codecData?.isNotEmpty() != true) voiceTiming?.clearOffered()
+        try {
+            operations.run { super.writePacket(packet) }
+        } finally {
+            if (voice != null) voiceTiming?.clearOffered()
+        }
     }
 
     final override fun writeNetworkPacket(packet: NetworkPacket) {
         writeDatagram(packet)
+        if (packet.header.type == PacketBodyType.VOICE) voiceTiming?.successfulSend(packet)
         if (Thread.currentThread() === exitSender && packet.header.type == PacketBodyType.COMMAND) {
             requestSent?.also { requestSent = null }?.invoke()
         }
@@ -69,7 +88,9 @@ internal open class StateAwareTeamspeakClientSocket :
 
     override fun close() {
         if (!resourcesClosed.compareAndSet(false, true)) return
+        voiceTiming?.close()
         closed = true
+        closeChannelFiles?.invoke()
         operations.stop()
         try {
             super.close()
@@ -94,7 +115,10 @@ internal open class StateAwareTeamspeakClientSocket :
         } finally {
             // The library sets DISCONNECTED from its own constructor, before an
             // attempt exists; only a disconnect after CONNECTING is a lost session.
-            if (state == ClientConnectionState.DISCONNECTED && attemptStarted) closed = true
+            if (state == ClientConnectionState.DISCONNECTED && attemptStarted) {
+                closed = true
+                closeChannelFiles?.invoke()
+            }
         }
     }
 
@@ -102,6 +126,19 @@ internal open class StateAwareTeamspeakClientSocket :
         client: AbstractTeamspeakClientSocket,
         command: SingleCommand,
     ) {
+        if (client === this && command.role == ProtocolRole.SERVER && command.name in ICON_NOTIFICATIONS) {
+            command.parameters.firstOrNull { it.name == "virtualserver_icon_id" }?.let { serverIcon = ServerImage.icon(it.value) }
+            if (command.name == "initserver") {
+                serverUid =
+                    command.parameters.firstOrNull { it.name == "virtualserver_unique_identifier" }
+                        ?.value?.let(VirtualServerUid::parse)
+            }
+        }
+        if (client === this && command.role == ProtocolRole.SERVER && command.name in FILE_NOTIFICATIONS &&
+            channelFileReplies.accept(command.name, command.parameters.associate { it.name to it.value })
+        ) {
+            return
+        }
         if (client === this && command.role == ProtocolRole.SERVER && command.isSelfDisconnectNotification()) {
             disconnectNotificationPending = true
             selfLeaveNotification.countDown()
@@ -168,6 +205,8 @@ internal open class StateAwareTeamspeakClientSocket :
     }
 
     private companion object {
+        val FILE_NOTIFICATIONS = setOf("notifyfilelist", "notifyfilelistfinished", "notifystartdownload", "notifystatusfiletransfer")
+        val ICON_NOTIFICATIONS = setOf("initserver", "notifyserveredited")
         const val SELF_DISCONNECT_COMMAND = "notifyclientleftview"
         const val CLIENT_ID_PARAMETER = "clid"
         const val CLIENT_DISCONNECT_COMMAND = "clientdisconnect"

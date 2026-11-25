@@ -3,6 +3,8 @@ package io.github.ts3mobile.app
 import android.app.Application
 import io.github.ts3mobile.app.appearance.ThemePreferenceController
 import io.github.ts3mobile.app.appearance.themePreferenceStore
+import io.github.ts3mobile.app.chat.ChatHistoryController
+import io.github.ts3mobile.app.chat.ChatHistoryVault
 import io.github.ts3mobile.app.identity.IdentityRepository
 import io.github.ts3mobile.app.identity.IdentityVault
 import io.github.ts3mobile.app.service.AudioDiagnosticRepository
@@ -18,6 +20,7 @@ import java.io.File
 /** Explicit process container shared by all Android components, including replacement instances. */
 class Ts3MobileApplication : Application() {
     internal val identities by lazy { IdentityRepository(IdentityVault(this).storage) }
+    internal val chatHistory by lazy { ChatHistoryController(CoroutineScope(SupervisorJob() + Dispatchers.IO), ChatHistoryVault(this)) }
 
     /** The archive read runs here, never on the caller's thread; see OfflineAudioDiagnosticsTest. */
     internal val audioDiagnosticDispatcher: CoroutineDispatcher = Dispatchers.IO

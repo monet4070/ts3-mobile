@@ -21,3 +21,11 @@ interface EncodedVoiceSource {
 
     fun pollEncodedFrame(): ByteArray?
 }
+
+class TimedEncodedVoiceFrame(val bytes: ByteArray, val encodedAtNanos: Long?)
+
+interface TimedEncodedVoiceSource : EncodedVoiceSource {
+    fun pollTimedEncodedFrame(): TimedEncodedVoiceFrame?
+
+    override fun pollEncodedFrame(): ByteArray? = pollTimedEncodedFrame()?.bytes
+}

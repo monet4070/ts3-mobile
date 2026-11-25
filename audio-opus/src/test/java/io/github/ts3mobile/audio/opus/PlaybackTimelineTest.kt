@@ -8,6 +8,36 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackTimelineTest {
+    @Test fun firstWriteToHeadUsesAcceptedWriteAndEmitsOnlyOnce() {
+        val output = FakePlaybackOutput()
+        output.writeResults.addAll(listOf(0, 1))
+        val stats = ReceiveStats()
+        val delays = mutableListOf<Long>()
+        stats.observer =
+            object : AudioDiagnosticsObserver {
+                override fun onEvent(
+                    kind: AudioDiagnosticEventKind,
+                    value: Long,
+                ) {
+                    if (kind == AudioDiagnosticEventKind.FIRST_WRITE_TO_HEAD_US) delays += value
+                }
+
+                override fun onStopped(snapshot: AudioReceiveDiagnostics) = Unit
+            }
+        var clock = 0L
+        val timeline = PlaybackTimeline(output, receiveStats = stats, clockNanos = { clock })
+        timeline.start(clock)
+        timeline.tick(shortArrayOf(7), clock)
+        clock = TICK
+        timeline.tick(null, clock)
+        assertTrue(delays.isEmpty())
+        output.playbackHead = 1L
+        clock = 3 * TICK
+        timeline.tick(null, clock)
+        timeline.tick(null, 4 * TICK)
+        assertEquals(listOf(20_000L), delays)
+    }
+
     @Test
     fun temporaryStarvationPreservesSubmittedTailAndResumesWithoutFlush() {
         listOf(10L, 20L, 40L).forEach { gapMs ->

@@ -37,7 +37,9 @@ import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ServerConfig
 import io.github.ts3mobile.protocol.SessionSnapshot
 import io.github.ts3mobile.protocol.Ts3SessionClient
+import io.github.ts3mobile.protocol.Ts3jSessionClient
 import io.github.ts3mobile.protocol.VoiceFrame
+import io.github.ts3mobile.protocol.VoiceTimingCollector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -63,16 +65,18 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     override val networkAvailable = MutableStateFlow(false)
     private val state = mutableState.asStateFlow()
     private val binder = SessionBinder()
-    private val chatController = SessionChatController(serviceScope)
+    private lateinit var chatController: SessionChatController
     private lateinit var sessionControls: SessionControlsController
     private lateinit var connectionCoordinator: ConnectionCoordinator
 
     private lateinit var identities: IdentityRepository
     private lateinit var audioPlayer: OpusAudioPlayer
     private val captureRoutes = CaptureRouteTracker()
+    private val voiceTiming = VoiceTimingCollector()
 
     @Volatile private var destroyed = false
     private lateinit var microphoneController: MicrophoneController
+    private var connectedPtt: ConnectedPttPreparation? = null
     private lateinit var microphonePreferences: MicrophonePreferenceController
     private val microphoneTrial by lazy {
         val scope = CoroutineScope(serviceScope.coroutineContext + Dispatchers.Main.immediate)
@@ -87,6 +91,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         }
     }
     private lateinit var audioRouter: AudioDeviceRouter
+    private lateinit var audioDeviceReadout: AudioDeviceReadout
     private lateinit var historyStore: SuccessServerHistoryStore
 
     @Volatile private var audioDiagnostics: ServiceAudioDiagnostics? = null
@@ -97,7 +102,9 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
             { destroyed },
         ) { repository ->
             audioDiagnostics =
-                ServiceAudioDiagnostics(repository, serviceScope, mutableState, networkMonitor.state, audioPlayer)
+                ServiceAudioDiagnostics(repository, serviceScope, mutableState, networkMonitor.state, audioPlayer) {
+                    voiceTiming.takeWindow(microphoneController.takeCaptureOverflow())
+                }
         }
     }
     private lateinit var sessionDiagnostics: SessionDiagnostics
@@ -121,7 +128,9 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
             SessionNotifications(this) { types ->
                 sessionDiagnostics.record(DiagnosticEventKind.FOREGROUND_TYPES, types.toLong())
             }
-        identities = (application as Ts3MobileApplication).identities
+        val app = application as Ts3MobileApplication
+        identities = app.identities
+        chatController = SessionChatController(serviceScope, history = app.chatHistory)
         sessionControls =
             SessionControlsController(serviceScope, mutableState) {
                 checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -155,6 +164,11 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 conciseMessage = { conciseMessage(it) },
                 recordEvent = { sessionDiagnostics.record(it) },
             )
+        connectedPtt =
+            ConnectedPttPreparation(microphoneController, { !sessionGeneration.isDisconnectRequested }) { ready ->
+                notifications.setPttPrepared(state.value, ready) { microphoneController.floatingPttInputReleased }
+            }
+        audioDeviceReadout = AudioDeviceReadout(applicationContext, serviceScope, mutableState, audioPlayer)
         microphonePreferences =
             MicrophonePreferenceController(serviceScope, microphonePreferenceStore(applicationContext)) { settings ->
                 // Queue every application, including UI edits, in the controller's
@@ -164,7 +178,10 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         audioRouter = AudioDeviceRouter(applicationContext, ::onAudioRoutingChanged)
         microphoneTrial.watchSession()
         connectionCoordinator =
-            ConnectionCoordinator(this, clockMs = SystemClock::elapsedRealtime, chat = chatController, identityGate = identities.gate)
+            ConnectionCoordinator(
+                this, clockMs = SystemClock::elapsedRealtime, chat = chatController, identityGate = identities.gate,
+                sessionFactory = { Ts3jSessionClient(voiceTiming, resources.getBoolean(R.bool.channel_files_probe_enabled)) },
+            )
         networkMonitor =
             DefaultNetworkMonitor(applicationContext) { network ->
                 networkAvailable.value =
@@ -225,7 +242,8 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
             ACTION_CONNECT -> {
                 val config = intent.toServerConfig() ?: return START_NOT_STICKY
                 val fromInvite = intent.getBooleanExtra(EXTRA_FROM_INVITE, false)
-                if (fromInvite && !mutableState.value.status.phase.allowsOfflineActions) return START_NOT_STICKY
+                val requireIdle = fromInvite || intent.getBooleanExtra(EXTRA_REQUIRE_IDLE, false)
+                if (requireIdle && !mutableState.value.status.phase.allowsOfflineActions) return START_NOT_STICKY
                 if (!microphoneTrial.stop()) {
                     notifications.rejectStart(R.string.microphone_trial_failed)
                     mutableState.update { it.copy(statusMessage = UserMessage.MicrophoneTrialReleaseFailed) }
@@ -267,12 +285,14 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
      * blocks the main thread. The bounded exit itself runs on IO.
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
+        connectedPtt?.disarm()
         sessionDiagnostics.record(DiagnosticEventKind.TASK_REMOVED)
         connectionCoordinator.requestExit(ExitTrigger.TASK_REMOVED)
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
+        connectedPtt?.disarm()
         destroyed = true
         // A queued exit teardown must not touch a destroyed service.
         mainHandler.removeCallbacksAndMessages(null)
@@ -282,6 +302,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         connectionCoordinator.close()
         backgroundRuntime.close()
         audioDiagnostics?.close()
+        audioDeviceReadout.close()
         // A pending installation is bound to this service: waiters must fail instead of hanging.
         audioDiagnosticsAttachment.failIfPending()
         sessionDiagnostics.close()
@@ -411,6 +432,12 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
     override fun stopMicrophoneImmediately() {
         microphoneController.stopImmediately()
+    }
+
+    override fun invalidateFloatingPtt() {
+        val preparation = connectedPtt ?: return
+        microphoneController.disarmFloatingPtt()
+        mainHandler.post { if (!destroyed && !preparation.isValid) preparation.disarm() }
     }
 
     override fun reconcileMicrophone() {
@@ -565,6 +592,8 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     }
 
     inner class SessionBinder : Binder() {
+        internal val connectedPttPreparation: ConnectedPttPreparation? get() = connectedPtt
+
         fun validateBookmarkSelection(
             entry: ServerBookmark,
             selection: BookmarkChannelSelection,
@@ -720,6 +749,16 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
         fun diagnosticSnapshot(): DiagnosticsSnapshot = diagnosticsRecorder.snapshot()
 
+        internal fun currentChannelFiles() = connectionCoordinator.currentChannelFiles()
+
+        internal fun currentServerImages(expectedToken: String) = connectionCoordinator.currentServerImages(expectedToken)
+
+        internal fun openChatAttachment(
+            token: String,
+            attempt: Long,
+            attachment: io.github.ts3mobile.protocol.ChannelAttachment,
+        ) = connectionCoordinator.openChatAttachment(token, attempt, attachment)
+
         suspend fun redactedDiagnosticsJson(): String {
             audioDiagnosticsAttachment.awaitReady()
             return sessionDiagnostics.export(diagnosticSnapshot(), audioDiagnostics?.export())
@@ -748,24 +787,33 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         private const val EXTRA_DEFAULT_CHANNEL = "default_channel"
         private const val EXTRA_CHANNEL_PASSWORD = "channel_password"
         private const val EXTRA_FROM_INVITE = "from_invite"
+        private const val EXTRA_REQUIRE_IDLE = "require_idle"
 
         fun connect(
             context: Context,
             config: ServerConfig,
             fromInvite: Boolean = false,
+            requireIdle: Boolean = fromInvite,
         ) {
-            val intent =
-                Intent(context, TeamSpeakService::class.java)
-                    .setAction(ACTION_CONNECT)
-                    .putExtra(EXTRA_HOST, config.host)
-                    .putExtra(EXTRA_PORT, config.port)
-                    .putExtra(EXTRA_NICKNAME, config.nickname)
-                    .putExtra(EXTRA_PASSWORD, config.password)
-                    .putExtra(EXTRA_DEFAULT_CHANNEL, config.defaultChannelId ?: 0)
-                    .putExtra(EXTRA_CHANNEL_PASSWORD, config.channelPassword)
-                    .putExtra(EXTRA_FROM_INVITE, fromInvite)
-            ContextCompat.startForegroundService(context, intent)
+            ContextCompat.startForegroundService(context, connectionIntent(context, config, fromInvite, requireIdle))
         }
+
+        internal fun connectionIntent(
+            context: Context,
+            config: ServerConfig,
+            fromInvite: Boolean = false,
+            requireIdle: Boolean = fromInvite,
+        ): Intent =
+            Intent(context, TeamSpeakService::class.java)
+                .setAction(ACTION_CONNECT)
+                .putExtra(EXTRA_HOST, config.host)
+                .putExtra(EXTRA_PORT, config.port)
+                .putExtra(EXTRA_NICKNAME, config.nickname)
+                .putExtra(EXTRA_PASSWORD, config.password)
+                .putExtra(EXTRA_DEFAULT_CHANNEL, config.defaultChannelId ?: 0)
+                .putExtra(EXTRA_CHANNEL_PASSWORD, config.channelPassword)
+                .putExtra(EXTRA_FROM_INVITE, fromInvite)
+                .putExtra(EXTRA_REQUIRE_IDLE, requireIdle)
 
         fun disconnect(context: Context) {
             context.startService(

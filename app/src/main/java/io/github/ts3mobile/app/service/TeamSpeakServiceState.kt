@@ -36,6 +36,7 @@ data class TeamSpeakServiceState(
      */
     val statusMessage: UserMessage? = null,
     val bookmarkConnection: BookmarkConnection? = null,
+    val actualAudioDevices: ActualAudioDevices = ActualAudioDevices(),
 )
 
 val TeamSpeakServiceState.hasPlaybackFailure: Boolean

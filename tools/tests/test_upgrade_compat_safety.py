@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import tempfile
+import runpy
 from pathlib import Path
 import unittest
 
@@ -26,6 +27,26 @@ class UpgradeDeviceSafetyTest(unittest.TestCase):
 
     def test_tuning_fixture_keeps_physical_device_guard_before_any_apk_access(self):
         self.reject_without_android_tools("synthetic-usb-device", "--include-tuning")
+
+    def test_staged_fixture_keeps_physical_device_guard_before_any_apk_access(self):
+        self.reject_without_android_tools("synthetic-usb-device", "--via-apk", "fixture.apk")
+
+    def test_legacy_backup_fixture_refuses_physical_targets_before_any_apk_access(self):
+        self.reject_without_android_tools("synthetic-usb-device", "--include-legacy-backup")
+
+    def test_staged_paths_require_ascending_codes_but_legacy_one_step_allows_the_same_code(self):
+        tools = Path(__file__).resolve().parents[1]
+        sys.path.insert(0, str(tools))
+        try:
+            check = runpy.run_path(str(tools / "check-upgrade-compat.py"))["check_version_path"]
+        finally:
+            sys.path.remove(str(tools))
+        check([16, 17, 18], strict=True)
+        check([16, 16])
+        with self.assertRaises(RuntimeError):
+            check([16, 17, 17], strict=True)
+        with self.assertRaises(RuntimeError):
+            check([16, 18, 17], strict=True)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,13 @@
+gradle.beforeProject { project ->
+    if (project.path == ':app') {
+        project.pluginManager.withPlugin('com.android.application') {
+            project.androidComponents.finalizeDsl { dsl ->
+                def candidate = dsl.buildTypes.getByName('release')
+                candidate.applicationIdSuffix = '.mediaqa'
+                candidate.signingConfig = dsl.signingConfigs.getByName('debug')
+                candidate.resValue('string', 'app_name', 'TS3 Mobile QA')
+                candidate.resValue('bool', 'desktop_identity_import_enabled', 'true')
+            }
+        }
+    }
+}

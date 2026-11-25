@@ -28,7 +28,11 @@ import org.junit.Test
 class IdentityRestorePickerTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun actualOpenDocumentCancellationConsumesItsSlotWithoutReadingOrChangingIdentity() {
+    @Test fun backupPickerCancellationConsumesItsSlot() = cancelOpenDocument(IdentityImportSource.BACKUP)
+
+    @Test fun desktopPickerCancellationConsumesItsSlot() = cancelOpenDocument(IdentityImportSource.DESKTOP)
+
+    private fun cancelOpenDocument(source: IdentityImportSource) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         val neverRead =
@@ -59,7 +63,13 @@ class IdentityRestorePickerTest {
                     state.pickerRequest?.let { if (controller.claimPickerRequest(it)) launcher.launch(arrayOf("*/*")) }
                 }
             }
-            rule.runOnIdle { controller.beginImport("synthetic picker password".toCharArray()) }
+            rule.runOnIdle {
+                when (source) {
+                    IdentityImportSource.BACKUP -> controller.beginImport("synthetic picker password".toCharArray())
+                    IdentityImportSource.DESKTOP -> controller.beginDesktopImport()
+                }
+                assertEquals(source, controller.state.value.source)
+            }
             rule.waitUntil(10_000) {
                 instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true
             }

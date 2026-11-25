@@ -9,7 +9,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
-internal enum class IdentityImportFailure { DOCUMENT_UNREADABLE, INVALID_IDENTITY }
+internal enum class IdentityImportFailure { DOCUMENT_UNREADABLE, INVALID_IDENTITY, RESOURCE_LIMIT }
 
 internal class IdentityImportException(val failure: IdentityImportFailure) : Exception("Identity import: ${failure.name}")
 
@@ -28,6 +28,45 @@ internal class ImportedIdentity private constructor(private val plaintext: ByteA
     }
 
     companion object {
+        fun readDesktop(document: BackupDocument): ImportedIdentity {
+            val raw = ByteArray(Ts3IdentityCodec.MAX_MATERIAL_BYTES + 1)
+            try {
+                val length = readDesktopDocument(document, raw)
+                if (length == raw.size) throw IdentityImportException(IdentityImportFailure.RESOURCE_LIMIT)
+                val exact = raw.copyOf(length)
+                try {
+                    val material = Ts3IdentityCodec.normalizeDesktopIni(exact)
+                    val summary = Ts3IdentityCodec.inspect(material)
+                    return ImportedIdentity(material.toByteArray(Charsets.UTF_8), summary)
+                } finally {
+                    exact.fill(0)
+                }
+            } catch (error: IdentityImportException) {
+                throw error
+            } catch (_: InvalidIdentityMaterial) {
+                throw IdentityImportException(IdentityImportFailure.INVALID_IDENTITY)
+            } catch (_: Exception) {
+                throw IdentityImportException(IdentityImportFailure.DOCUMENT_UNREADABLE)
+            } finally {
+                raw.fill(0)
+            }
+        }
+
+        private fun readDesktopDocument(
+            document: BackupDocument,
+            bytes: ByteArray,
+        ): Int =
+            document.openRead().use { input ->
+                var count = 0
+                while (count < bytes.size) {
+                    val read = input.read(bytes, count, bytes.size - count)
+                    if (read < 0) break
+                    if (read == 0) throw IdentityImportException(IdentityImportFailure.DOCUMENT_UNREADABLE)
+                    count += read
+                }
+                count
+            }
+
         fun read(
             document: BackupDocument,
             passphrase: CharArray,

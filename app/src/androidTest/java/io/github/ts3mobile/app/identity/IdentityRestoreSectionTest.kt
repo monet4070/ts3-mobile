@@ -2,6 +2,7 @@ package io.github.ts3mobile.app.identity
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -63,5 +64,44 @@ class IdentityRestoreSectionTest {
         rule.onNodeWithText("Choose encrypted backup…").performClick()
         rule.runOnIdle { assertEquals(1, imports) }
         rule.onNodeWithText("Review local previous identity").assertIsNotEnabled()
+    }
+
+    @Test fun desktopEntryNeedsNoPassphraseAndLowerSecurityConsentResetsWhenReviewChanges() {
+        val source = IdentityImportSource.DESKTOP
+        val current = Ts3IdentitySummary("synthetic-desktop-uid", 16, 5)
+        val proposed = current.copy(keyOffset = 2, securityLevel = 1)
+        val preview = IdentityReplacementPreview(IdentitySnapshot(current, null, false, "initial"), proposed, false, source)
+        val state = mutableStateOf(IdentityRestoreState())
+        val confirmations = mutableListOf<Boolean>()
+        rule.setContent {
+            Ts3MobileTheme {
+                IdentityRestoreSection(
+                    state.value,
+                    IdentityUseState.IDLE,
+                    false,
+                    false,
+                    { error("Desktop import must not use the encrypted backup path") },
+                    {},
+                    { confirmations += it },
+                    {},
+                    {},
+                    {},
+                    onImportDesktop = { state.value = IdentityRestoreState(IdentityRestoreStatus.PREVIEW, preview, source = source) },
+                )
+            }
+        }
+        rule.onNodeWithText("Import desktop TS3 identity (.ini)").performClick()
+        val button = rule.onNodeWithText("Use this identity")
+        val consent = rule.onNodeWithText("Use the lower security level for this same identity")
+        button.assertIsNotEnabled()
+        consent.performScrollTo().performClick()
+        button.assertIsEnabled()
+        rule.runOnIdle {
+            state.value = state.value.copy(preview = preview.copy(previous = preview.previous.copy(revision = "refreshed")))
+        }
+        button.assertIsNotEnabled()
+        consent.performScrollTo().performClick()
+        button.performClick()
+        rule.runOnIdle { assertEquals(listOf(true), confirmations) }
     }
 }

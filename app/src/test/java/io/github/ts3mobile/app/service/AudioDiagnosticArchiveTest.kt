@@ -88,6 +88,17 @@ class AudioDiagnosticArchiveTest {
 
     @Test fun maximumNumericExportFitsClipboardTransactionAndFileRotationBound() {
         val archive = AudioDiagnosticArchive()
+        val buckets = io.github.ts3mobile.protocol.VoiceTimingCollector.delayUpperBoundsUs.size + 1
+        val histogram = io.github.ts3mobile.protocol.VoiceDelayWindow(List(buckets) { 9_999L })
+        val window =
+            io.github.ts3mobile.protocol.VoiceTimingWindow(
+                true,
+                histogram,
+                histogram,
+                Long.MAX_VALUE,
+                Long.MAX_VALUE,
+                Long.MAX_VALUE,
+            )
         repeat(3) {
             val id = archive.begin(it + 1L)
             repeat(120) { index ->
@@ -100,11 +111,15 @@ class AudioDiagnosticArchiveTest {
                                 AudioReceiveCounter.entries.associateWith { Long.MAX_VALUE },
                                 AudioReceivePeak.entries.associateWith { Long.MAX_VALUE },
                             ),
+                        voiceTiming = window,
                     ),
                 )
             }
         }
         val report = AudioDiagnosticFormat.json(archive.state(), Long.MAX_VALUE)
+        val retained = archive.state().samples.size
+        assertEquals(360, retained)
+        assertTrue(report.contains("\"exportOmittedSamples\":"))
         assertTrue(
             "UTF-16 clipboard payload plus existing report must remain below Binder limit: ${report.length}",
             report.length * 2 < 850_000,

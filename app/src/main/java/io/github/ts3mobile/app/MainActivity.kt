@@ -24,6 +24,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.invite.ServerInvite
+import io.github.ts3mobile.app.probe.ConnectedPttProbeHost
+import io.github.ts3mobile.app.probe.autoShowFloatingPtt
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.PrivateMessageNotificationIntent
 import io.github.ts3mobile.app.service.PrivateMessageNotifications
@@ -182,12 +184,8 @@ class MainActivity : ComponentActivity() {
                     onBookmarkRemove = viewModel::removeBookmark,
                     onBookmarkSelect = viewModel::applyBookmark,
                     onBookmarkConnect = { entry ->
-                        val phase = serviceBinder?.state?.value?.status?.phase
-                        if (phase == io.github.ts3mobile.protocol.ConnectionPhase.DISCONNECTED ||
-                            phase == io.github.ts3mobile.protocol.ConnectionPhase.ERROR
-                        ) {
-                            viewModel.applyBookmark(entry)
-                            viewModel.submitAndRemember(::requestConnection)
+                        if (serviceBinder?.state?.value?.status?.phase?.allowsOfflineActions == true) {
+                            viewModel.connectBookmark(entry) { requestConnection(it, requireIdle = true) }
                         }
                     },
                     onBookmarkReload = viewModel::reloadBookmarks,
@@ -202,6 +200,7 @@ class MainActivity : ComponentActivity() {
                     onAppearance = { startActivity(Intent(this, io.github.ts3mobile.app.appearance.AppearanceActivity::class.java)) },
                     onOpenRepository = { openProjectRepository(this) },
                     onCheckUpdates = { startActivity(Intent(this, io.github.ts3mobile.app.updates.UpdatesActivity::class.java)) },
+                    featureHelpAvailable = serviceBinder != null && invitePreview == null && chatNotification == null,
                     chatNotification = chatNotification,
                     onChatNotificationConsumed = viewModel.chatNotificationEntry::consumed,
                     onUserNavigation = viewModel.chatNotificationEntry::cancel,
@@ -210,6 +209,17 @@ class MainActivity : ComponentActivity() {
                     onShareServerInvite = serverInvite?.let { { shareInvite(it) } },
                     onShareChannelInvite = channelInvite?.let { { shareInvite(it) } },
                     microphoneTrialDialog = serviceBinder?.let { binder -> { dismiss -> MicrophoneTrialDialog(binder, dismiss) } },
+                    openChannelFiles =
+                        serviceBinder?.takeIf { resources.getBoolean(R.bool.channel_files_probe_enabled) }?.let {
+                                binder ->
+                            binder::currentChannelFiles
+                        },
+                    openServerImages =
+                        serviceBinder?.takeIf { resources.getBoolean(R.bool.channel_files_probe_enabled) }
+                            ?.let { binder -> binder::currentServerImages },
+                    openChatAttachment =
+                        serviceBinder?.takeIf { resources.getBoolean(R.bool.channel_files_probe_enabled) }
+                            ?.let { binder -> binder::openChatAttachment },
                     connectionActions = {
                         PasteInviteAction(
                             enabled =
@@ -280,6 +290,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!activityVisible || !autoShowFloatingPtt) return
+        val binder = serviceBinder ?: return
+        val preparation = binder.connectedPttPreparation ?: return
+        ConnectedPttProbeHost(this, preparation, binder.state).arm(leavingMainActivity = true)
+    }
+
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun startActivityForResult(
+        intent: Intent,
+        requestCode: Int,
+        options: Bundle?,
+    ) {
+        val launchIntent = if (autoShowFloatingPtt) Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION) else intent
+        super.startActivityForResult(launchIntent, requestCode, options)
+    }
+
     override fun onPause() {
         activityVisible = false
         serviceBinder?.setAppVisible(false)
@@ -311,8 +339,10 @@ class MainActivity : ComponentActivity() {
     private fun requestConnection(
         config: ServerConfig,
         fromInvite: Boolean = false,
+        requireIdle: Boolean = fromInvite,
     ) {
         if (viewModel.pendingConnection != null) return
+        if (requireIdle && (!activityVisible || serviceBinder?.state?.value?.status?.phase?.allowsOfflineActions != true)) return
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
@@ -320,11 +350,11 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            viewModel.pendingConnection = ConnectionRequest(config, fromInvite)
+            viewModel.pendingConnection = ConnectionRequest(config, fromInvite, requireIdle)
             viewModel.notificationPermissionResolved = false
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            TeamSpeakService.connect(this, config, fromInvite)
+            TeamSpeakService.connect(this, config, fromInvite, requireIdle)
         }
     }
 
@@ -332,10 +362,10 @@ class MainActivity : ComponentActivity() {
         if (!activityVisible || !viewModel.notificationPermissionResolved) return
         val request = viewModel.pendingConnection ?: return
         val phase = serviceBinder?.state?.value?.status?.phase
-        if (request.fromInvite && phase == null) return
+        if (request.requireIdle && phase == null) return
         viewModel.pendingConnection = null
-        if (!request.fromInvite || phase?.allowsOfflineActions == true) {
-            TeamSpeakService.connect(this, request.config, request.fromInvite)
+        if (!request.requireIdle || phase?.allowsOfflineActions == true) {
+            TeamSpeakService.connect(this, request.config, request.fromInvite, request.requireIdle)
         }
     }
 

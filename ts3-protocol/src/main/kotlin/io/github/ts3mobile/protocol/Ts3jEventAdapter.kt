@@ -11,6 +11,7 @@ import com.github.manevolent.ts3j.event.ClientMovedEvent
 import com.github.manevolent.ts3j.event.ClientPokeEvent
 import com.github.manevolent.ts3j.event.ClientUpdatedEvent
 import com.github.manevolent.ts3j.event.DisconnectedEvent
+import com.github.manevolent.ts3j.event.ServerEditedEvent
 import com.github.manevolent.ts3j.event.TS3Listener
 import com.github.manevolent.ts3j.event.TextMessageEvent
 
@@ -41,6 +42,10 @@ internal class Ts3jEventAdapter(
     }
 
     override fun onDisconnected(event: DisconnectedEvent) = handleDisconnected(event)
+
+    override fun onServerEdit(event: ServerEditedEvent) {
+        if ("virtualserver_icon_id" in event.map) publishSnapshotWhenConnected()
+    }
 
     override fun onChannelList(event: ChannelListEvent) {
         applySnapshotMutation {
@@ -120,6 +125,7 @@ internal class Ts3jEventAdapter(
             uniqueIdentifier = uniqueClientIdentifier,
             isAway = map["client_away"] == "1",
             awayMessage = map["client_away_message"].orEmpty().boundedText(256),
+            avatar = map.toAvatar(uniqueClientIdentifier),
         )
 
     private companion object {

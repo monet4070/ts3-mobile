@@ -2,6 +2,7 @@ package io.github.ts3mobile.app.service
 
 import io.github.ts3mobile.app.bookmarks.BookmarkConnection
 import io.github.ts3mobile.app.chat.ChatBinding
+import io.github.ts3mobile.app.chat.ChatHistoryAccount
 import io.github.ts3mobile.app.chat.SessionChatController
 import io.github.ts3mobile.app.identity.IdentityConnectionLease
 import io.github.ts3mobile.app.identity.IdentityUseGate
@@ -77,6 +78,8 @@ internal interface ConnectionCoordinatorHost {
     fun attachMicrophoneTo(session: Ts3SessionClient)
 
     fun stopMicrophoneImmediately()
+
+    fun invalidateFloatingPtt() = Unit
 
     fun reconcileMicrophone()
 
@@ -416,6 +419,7 @@ internal class ConnectionCoordinator(
         host.mutableState.update {
             it.copy(switchingChannelId = channelId, channelError = null)
         }
+        host.invalidateFloatingPtt()
         syncChatContext(listener)
         launchIdentityWork(listener.epoch) {
             try {
@@ -621,7 +625,7 @@ internal class ConnectionCoordinator(
                 host.startPlayback()
 
                 val newSession = sessionFactory()
-                val listener = SessionListener(epoch, reconnecting)
+                val listener = SessionListener(epoch, reconnecting, chat?.historyAccount(config, identity))
                 val accepted =
                     synchronized(exitLock) {
                         if (!isEpochActive(epoch) || refusedEpoch == epoch) {
@@ -701,6 +705,7 @@ internal class ConnectionCoordinator(
     private inner class SessionListener(
         val epoch: Long,
         private val reconnecting: Boolean,
+        val historyAccount: ChatHistoryAccount?,
     ) : Ts3SessionListener {
         @Volatile
         var connected = false
@@ -761,7 +766,9 @@ internal class ConnectionCoordinator(
         override fun onSnapshotChanged(snapshot: SessionSnapshot) {
             if (!isListenerActive(this)) return
             withCurrentListener {
+                val channelChanged = host.mutableState.value.snapshot.currentChannelId != snapshot.currentChannelId
                 host.mutableState.update { it.copy(snapshot = snapshot) }
+                if (channelChanged) host.invalidateFloatingPtt()
                 host.applyParticipantAudioSettings(snapshot)
                 if (connected) syncChatContext(this)
                 if (connected) channelRestore.rememberSnapshot(snapshot.currentChannelId)
@@ -813,13 +820,63 @@ internal class ConnectionCoordinator(
         }
     }
 
+    fun currentChannelFiles(): io.github.ts3mobile.protocol.ChannelFiles? {
+        val listener = activeListener?.takeIf { it.connected } ?: return null
+        val captured = session ?: return null
+        val current = host.mutableState.value
+        if (current.status.phase != ConnectionPhase.CONNECTED || current.switchingChannelId != null) return null
+        val channelId = current.snapshot.currentChannelId ?: return null
+        return captured.channelFiles(channelId)?.takeIf {
+            isListenerActive(listener) && session === captured &&
+                host.mutableState.value.let { latest ->
+                    latest.status.phase == ConnectionPhase.CONNECTED && latest.switchingChannelId == null &&
+                        latest.snapshot.currentChannelId == channelId
+                }
+        }
+    }
+
+    fun currentServerImages(expectedToken: String): io.github.ts3mobile.protocol.ServerImages? {
+        val listener = activeListener?.takeIf { it.connected } ?: return null
+        val captured = session ?: return null
+
+        fun currentConnection(): Boolean =
+            host.mutableState.value.let { state ->
+                state.status.phase == ConnectionPhase.CONNECTED && state.bookmarkConnection?.token == expectedToken
+            }
+        if (!currentConnection()) return null
+        return captured.serverImages()?.takeIf { isListenerActive(listener) && session === captured && currentConnection() }
+    }
+
+    fun openChatAttachment(
+        token: String,
+        attempt: Long,
+        attachment: io.github.ts3mobile.protocol.ChannelAttachment,
+    ): io.github.ts3mobile.protocol.AttachmentDownload? {
+        val listener = activeListener?.takeIf { it.connected && it.chatAttempt == attempt } ?: return null
+        val captured = session ?: return null
+
+        fun isCurrent(): Boolean =
+            isListenerActive(listener) && session === captured &&
+                host.mutableState.value.let { state ->
+                    state.status.phase == ConnectionPhase.CONNECTED && state.bookmarkConnection?.token == token
+                }
+        if (!isCurrent()) return null
+        return captured.attachmentDownload(attachment, ::isCurrent)?.takeIf { isCurrent() }
+    }
+
     private fun syncChatContext(listener: SessionListener) {
         if (activeListener !== listener || !listener.connected) return
         val captured = session ?: return
         val current = host.mutableState.value
         val channel = current.snapshot.currentChannelId
         val binding = ChatBinding(listener.epoch, listener.chatAttempt, channel, current.snapshot.ownClientId)
-        chat?.bind(binding, captured, current.switchingChannelId != null, current.snapshot.participants) {
+        chat?.bindWithHistory(
+            binding,
+            captured,
+            current.switchingChannelId != null,
+            current.snapshot.participants,
+            listener.historyAccount,
+        ) {
             // No generation lock: chat callbacks can run under the short epoch
             // boundary. Atomic listener identity rejects replacements as well.
             !closed && activeListener === listener && session === captured &&
