@@ -1,0 +1,43 @@
+diff --git a/src/main/java/com/github/manevolent/ts3j/protocol/packet/handler/client/LocalClientHandlerConnecting.java b/src/main/java/com/github/manevolent/ts3j/protocol/packet/handler/client/LocalClientHandlerConnecting.java
+--- a/src/main/java/com/github/manevolent/ts3j/protocol/packet/handler/client/LocalClientHandlerConnecting.java
++++ b/src/main/java/com/github/manevolent/ts3j/protocol/packet/handler/client/LocalClientHandlerConnecting.java
+@@ -101,16 +101,9 @@
+                     BigInteger x = new BigInteger(1, serverReplyStep3.getX());
+                     BigInteger n = new BigInteger(1, serverReplyStep3.getN());
+ 
+-                    byte[] y = new byte[64];
+-
+-                    byte[] solution =
+-                            x.modPow(BigInteger.valueOf(2L).pow(serverReplyStep3.getLevel()), n).toByteArray();
+-
+-                    System.arraycopy(
+-                            solution, Math.abs(solution.length - 64),
+-                            y, solution.length < 64 ? 64 - solution.length : 0,
+-                            solution.length < 64 ? solution.length : 64
+-                    );
++                    BigInteger solution =
++                            x.modPow(BigInteger.valueOf(2L).pow(serverReplyStep3.getLevel()), n);
++                    byte[] y = encodeUnsigned(solution, 64);
+ 
+                     // Build response
+                     PacketBody8Init1.Step4 step4 = new PacketBody8Init1.Step4();
+@@ -212,7 +205,19 @@
+         }
+     }
+ 
++    static byte[] encodeUnsigned(BigInteger value, int width) {
++        if (value.signum() < 0 || width <= 0 || value.bitLength() > (long) width * Byte.SIZE) {
++            throw new IllegalArgumentException("Unsigned value does not fit the requested width");
++        }
++        byte[] encoded = value.toByteArray();
++        int start = encoded.length > 1 && encoded[0] == 0 ? 1 : 0;
++        int length = encoded.length - start;
++        byte[] fixed = new byte[width];
++        System.arraycopy(encoded, start, fixed, fixed.length - length, length);
++        return fixed;
++    }
++
+     private SingleCommand createInitIv() {
+         alphaBytes = new byte[10];
+         new Random().nextBytes(alphaBytes);
+ 

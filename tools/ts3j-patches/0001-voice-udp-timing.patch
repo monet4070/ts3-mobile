@@ -1,0 +1,119 @@
+diff --git a/src/main/java/com/github/manevolent/ts3j/protocol/NetworkPacket.java b/src/main/java/com/github/manevolent/ts3j/protocol/NetworkPacket.java
+index 4ca46bf..c272454 100644
+--- a/src/main/java/com/github/manevolent/ts3j/protocol/NetworkPacket.java
++++ b/src/main/java/com/github/manevolent/ts3j/protocol/NetworkPacket.java
+@@ -9,11 +9,30 @@ public final class NetworkPacket {
+     private final DatagramPacket datagram;
+     private final PacketHeader header;
+     private final ByteBuffer buffer;
++    private final Long receivedNanoTime;
++    private Long sentNanoTime;
+
+     public NetworkPacket(DatagramPacket datagram, PacketHeader header, ByteBuffer buffer) {
++        this(datagram, header, buffer, null);
++    }
++
++    public NetworkPacket(DatagramPacket datagram, PacketHeader header, ByteBuffer buffer, Long receivedNanoTime) {
+         this.datagram = datagram;
+         this.header = header;
+         this.buffer = buffer;
++        this.receivedNanoTime = receivedNanoTime;
++    }
++
++    public Long getReceivedNanoTime() {
++        return receivedNanoTime;
++    }
++
++    public Long getSentNanoTime() {
++        return sentNanoTime;
++    }
++
++    public void markSent(long nanoTime) {
++        sentNanoTime = nanoTime;
+     }
+
+     /**
+diff --git a/src/main/java/com/github/manevolent/ts3j/protocol/packet/PacketBody.java b/src/main/java/com/github/manevolent/ts3j/protocol/packet/PacketBody.java
+index c30ef33..700afd4 100644
+--- a/src/main/java/com/github/manevolent/ts3j/protocol/packet/PacketBody.java
++++ b/src/main/java/com/github/manevolent/ts3j/protocol/packet/PacketBody.java
+@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
+ public abstract class PacketBody {
+     private final PacketBodyType type;
+     private final ProtocolRole role;
++    private Long udpReceivedNanoTime;
+
+     protected PacketBody(PacketBodyType type, ProtocolRole role) {
+         this.type = type;
+@@ -22,6 +23,14 @@ public abstract class PacketBody {
+         return role;
+     }
+
++    public Long getUdpReceivedNanoTime() {
++        return udpReceivedNanoTime;
++    }
++
++    public void setUdpReceivedNanoTime(Long received) {
++        udpReceivedNanoTime = received;
++    }
++
+     public void read(PacketHeader header, ByteBuffer buffer) {
+         read(buffer);
+     }
+diff --git a/src/main/java/com/github/manevolent/ts3j/protocol/socket/client/AbstractTeamspeakClientSocket.java b/src/main/java/com/github/manevolent/ts3j/protocol/socket/client/AbstractTeamspeakClientSocket.java
+index b9353da..3355733 100644
+--- a/src/main/java/com/github/manevolent/ts3j/protocol/socket/client/AbstractTeamspeakClientSocket.java
++++ b/src/main/java/com/github/manevolent/ts3j/protocol/socket/client/AbstractTeamspeakClientSocket.java
+@@ -660,6 +660,9 @@ public abstract class AbstractTeamspeakClientSocket
+                 continue;
+             }
+
++            if (networkPacket.getReceivedNanoTime() != null)
++                packet.getBody().setUdpReceivedNanoTime(networkPacket.getReceivedNanoTime());
++
+             // Find if the packet must be acknowledged
+             PacketBodyType ackType = packet
+                     .getHeader()
+diff --git a/src/main/java/com/github/manevolent/ts3j/protocol/socket/client/LocalTeamspeakClientSocket.java b/src/main/java/com/github/manevolent/ts3j/protocol/socket/client/LocalTeamspeakClientSocket.java
+index 8618669..b38ac01 100644
+--- a/src/main/java/com/github/manevolent/ts3j/protocol/socket/client/LocalTeamspeakClientSocket.java
++++ b/src/main/java/com/github/manevolent/ts3j/protocol/socket/client/LocalTeamspeakClientSocket.java
+@@ -18,6 +18,7 @@ import com.github.manevolent.ts3j.protocol.client.ClientConnectionState;
+ import com.github.manevolent.ts3j.protocol.header.PacketHeader;
+ import com.github.manevolent.ts3j.protocol.packet.PacketBody0Voice;
+ import com.github.manevolent.ts3j.protocol.packet.PacketBody2Command;
++import com.github.manevolent.ts3j.protocol.packet.PacketBodyType;
+ import com.github.manevolent.ts3j.protocol.packet.handler.PacketHandler;
+ import com.github.manevolent.ts3j.protocol.packet.handler.client.LocalClientHandlerConnected;
+ import com.github.manevolent.ts3j.protocol.packet.handler.client.LocalClientHandlerConnecting;
+@@ -204,8 +205,10 @@ public class LocalTeamspeakClientSocket
+         while (socket.isBound()) {
+             socket.setSoTimeout(timeout);
+
++            long receivedNanoTime;
+             try {
+                 socket.receive(packet);
++                receivedNanoTime = System.nanoTime();
+             } catch (SocketTimeoutException ex) {
+                 throw ex;
+             } catch (SocketException ex) {
+@@ -240,7 +243,9 @@ public class LocalTeamspeakClientSocket
+             return new NetworkPacket(
+                     packet,
+                     header,
+-                    buffer
++                    buffer,
++                    header.getType() == PacketBodyType.VOICE || header.getType() == PacketBodyType.VOICE_WHISPER
++                            ? receivedNanoTime : null
+             );
+         }
+
+@@ -265,6 +270,8 @@ public class LocalTeamspeakClientSocket
+         packet.getDatagram().setSocketAddress(remote);
+
+         socket.send(packet.getDatagram());
++        if (packet.getHeader().getType() == PacketBodyType.VOICE)
++            packet.markSent(System.nanoTime());
+     }
+
+
