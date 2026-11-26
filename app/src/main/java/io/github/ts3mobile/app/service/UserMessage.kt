@@ -17,6 +17,9 @@ sealed interface UserMessage {
 
     data object IdentityMaintenance : UserMessage
 
+    /** An earlier session or audio teardown still holds the session lock after bounded wait. */
+    data object PreviousSessionBusy : UserMessage
+
     /** The session was replaced or invalidated before the action completed. */
     data object SessionExpired : UserMessage
 

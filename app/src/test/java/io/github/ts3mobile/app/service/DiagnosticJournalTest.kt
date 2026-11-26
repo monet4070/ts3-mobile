@@ -1,5 +1,11 @@
 package io.github.ts3mobile.app.service
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -100,4 +106,35 @@ class DiagnosticJournalTest {
         assertFalse(export.contains("clones already connected"))
         assertFalse(export.contains("example.invalid"))
     }
+
+    @Test
+    fun deferredDiskLoadPreservesExistingDiskEventsAcrossEarlyAppendAndAwaitLoaded() =
+        runBlocking {
+            val file = temporaryFolder.newFile("deferred.tsv")
+            DiagnosticJournal(file, { 10L }).record(DiagnosticEventKind.SERVICE_CREATED, 1L, 10L)
+
+            val journal = DiagnosticJournal(file, { 20L }, capacity = 4, loadImmediately = false)
+            assertFalse(journal.toRedactedJson().contains("SERVICE_CREATED"))
+
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            try {
+                journal.append(DiagnosticEventKind.CONNECT_REQUESTED, 2L, 20L)
+                val writer = SessionDiagnosticWriter(journal, scope)
+                writer.awaitLoaded()
+                writer.append(DiagnosticEventKind.CONNECTED, 3L, 30L)
+                journal.persist()
+
+                val json = writer.toRedactedJson()
+                val createdIdx = json.indexOf("SERVICE_CREATED")
+                val requestedIdx = json.indexOf("CONNECT_REQUESTED")
+                val connectedIdx = json.indexOf("CONNECTED")
+                assertTrue(createdIdx in 0 until requestedIdx)
+                assertTrue(requestedIdx in 0 until connectedIdx)
+
+                val reloaded = DiagnosticJournal(file).toRedactedJson()
+                assertEquals(json, reloaded)
+            } finally {
+                scope.cancel()
+            }
+        }
 }

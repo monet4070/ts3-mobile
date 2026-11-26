@@ -26,6 +26,8 @@ class Ts3jChannelFilesTest {
     @get:Rule val temporary = TemporaryFolder()
 
     private val loopback = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+    private val wildcardIpv4 = InetAddress.getByAddress(byteArrayOf(0, 0, 0, 0)).hostAddress
+    private val differentLoopback = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 2)).hostAddress
 
     @Test fun consumesRealTs3jNotificationParsingOnlyForConfirmedDirectoryAndChannel() {
         StateAwareTeamspeakClientSocket().use { socket ->
@@ -116,7 +118,6 @@ class Ts3jChannelFilesTest {
 
     @Test fun redirectAndOversizedOfferAreRejectedBeforeConnecting() {
         val replies = Ts3jChannelFileReplies()
-        val differentLoopback = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 2)).hostAddress
         var attempts = 0
         val files =
             client(replies) { request ->
@@ -129,6 +130,62 @@ class Ts3jChannelFilesTest {
         assertEquals(ChannelFileResult.Failed(ChannelFileFailure.INVALID_RESPONSE), files.download(7, "/file", directory.toPath()) { true })
         assertEquals(ChannelFileResult.Failed(ChannelFileFailure.TOO_LARGE), files.download(7, "/file", directory.toPath()) { true })
         assertEquals(emptyList<String>(), directory.list().orEmpty().toList())
+    }
+
+    @Test fun wildcardEmptyAndMatchingMultiAddressOffersDownloadViaResolvedPeerWhileMismatchesReject() {
+        val payload = byteArrayOf(5, 8, 13)
+        val matchingIps = listOf("", wildcardIpv4, "::", "$wildcardIpv4, ::", "::, ${loopback.hostAddress}")
+        for (ipField in matchingIps) {
+            ServerSocket(0, 1, loopback).use { server ->
+                server.soTimeout = 3_000
+                val sender =
+                    Thread {
+                        runCatching {
+                            server.accept().use { socket ->
+                                socket.soTimeout = 3_000
+                                socket.getInputStream().readNBytes(3)
+                                socket.getOutputStream().write(payload)
+                            }
+                        }
+                    }.apply { start() }
+                try {
+                    val replies = Ts3jChannelFileReplies()
+                    val files =
+                        client(replies) { request ->
+                            val id = request.get("clientftfid").value.toInt()
+                            replies.accept("notifystartdownload", offer(id, server.localPort, payload.size, "key") + ("ip" to ipField))
+                            TextSendOutcome.Accepted
+                        }
+                    val result = files.download(7, "/wild", temporary.newFolder().toPath()) { true } as ChannelFileResult.Success
+                    assertArrayEquals("offer ip='$ipField' failed", payload, result.value.toFile().readBytes())
+                } finally {
+                    server.close()
+                    sender.join(3_000)
+                }
+            }
+        }
+
+        val replies = Ts3jChannelFileReplies()
+        val rejectedIps = ArrayDeque(listOf("$differentLoopback, ::", "redirect.example.invalid"))
+        val files =
+            client(replies) { request ->
+                val id = request.get("clientftfid").value.toInt()
+                replies.accept("notifystartdownload", offer(id, 1, 0, "key") + ("ip" to rejectedIps.removeFirst()))
+                TextSendOutcome.Accepted
+            }
+        val directory = temporary.newFolder()
+        assertEquals(ChannelFileResult.Failed(ChannelFileFailure.INVALID_RESPONSE), files.download(7, "/bad1", directory.toPath()) { true })
+        assertEquals(ChannelFileResult.Failed(ChannelFileFailure.INVALID_RESPONSE), files.download(7, "/bad2", directory.toPath()) { true })
+    }
+
+    @Test fun matchesTransferPeerNormalizesNumericIpv6AndRejectsHostnamesOffline() {
+        val ipv6Loopback = InetAddress.getByAddress(byteArrayOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1))
+        assertTrue(matchesTransferPeer("[0:0:0:0:0:0:0:1]", ipv6Loopback))
+        assertTrue(matchesTransferPeer("$wildcardIpv4, ::", ipv6Loopback))
+        assertTrue(matchesTransferPeer("[::ffff:${loopback.hostAddress}]", loopback))
+        assertFalse(matchesTransferPeer("0:0:0:0:0:0:0:2", ipv6Loopback))
+        assertFalse(matchesTransferPeer("localhost", loopback))
+        assertFalse(matchesTransferPeer("$wildcardIpv4, not-an-ip.invalid", loopback))
     }
 
     @Test fun cancellationUnwindsStalledSocketAndDiscardsPartialFile() =

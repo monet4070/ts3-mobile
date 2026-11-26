@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -178,10 +179,12 @@ internal class ConnectionCoordinator(
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val chat: SessionChatController? = null,
     private val identityGate: IdentityUseGate = IdentityUseGate(),
+    private val sessionMutexTimeoutMs: Long = SESSION_MUTEX_TIMEOUT_MS,
     private val sessionFactory: () -> Ts3SessionClient = { Ts3jSessionClient() },
 ) : ReconnectEngine.Delegate {
     @Volatile
     private var session: Ts3SessionClient? = null
+    private var sessionEpoch: Long? = null
 
     private val nextChatAttempt = AtomicLong()
     private val listenerRef = AtomicReference<SessionListener?>(null)
@@ -209,7 +212,19 @@ internal class ConnectionCoordinator(
 
     @Volatile
     private var closed = false
-    private val exitRunner = SessionExitRunner(host, ownership, clockMs) { closed }
+
+    @Volatile
+    private var deferredAudioCleanupPending = false
+
+    private val exitRunner =
+        SessionExitRunner(
+            host,
+            ownership,
+            clockMs,
+            { closed },
+            onDeferredCleanupPending = { deferredAudioCleanupPending = true },
+            onAudioReclaimed = { deferredAudioCleanupPending = false },
+        )
 
     @Volatile
     private var exitSession: Ts3SessionClient? = null
@@ -269,34 +284,70 @@ internal class ConnectionCoordinator(
         val selectedPlaybackMuted = host.mutableState.value.playbackMuted
         host.resetParticipantGains()
         host.resetMicrophoneForConnection()
-        host.mutableState.value =
+        host.mutableState.update { current ->
             TeamSpeakServiceState(
                 status = ConnectionStatus(ConnectionPhase.CONNECTING),
                 serverLabel = "${config.host}:${config.port}",
                 microphoneMode = selectedMicrophoneMode,
                 microphoneSettings = selectedMicrophoneSettings,
                 playbackMuted = selectedPlaybackMuted,
-                audioRouting = host.mutableState.value.audioRouting,
+                audioRouting = current.audioRouting,
                 diagnostics = host.diagnosticsRecorder.snapshot(),
-                backgroundRuntime = host.mutableState.value.backgroundRuntime,
+                audioDiagnostics = current.audioDiagnostics,
+                backgroundRuntime = current.backgroundRuntime,
                 bookmarkConnection =
                     BookmarkConnection(
-                        UUID.randomUUID().toString(), config.host.trim(), config.port, config.nickname.trim(),
+                        UUID.randomUUID().toString(),
+                        config.host.trim(),
+                        config.port,
+                        config.nickname.trim(),
                     ),
             )
+        }
         // A session captured by an in-flight exit is already out of `session`, so
         // this never closes the socket that exit is still using.
-        val previousSession = synchronized(exitLock) { session.also { session = null } }
+        val previousSession =
+            synchronized(exitLock) {
+                if (sessionEpoch != epoch) {
+                    sessionEpoch = null
+                    session.also { session = null }
+                } else {
+                    null
+                }
+            }
         runCatching { previousSession?.close() }
 
+        val previousExit = synchronized(exitLock) { exitJob }
         connectionJob =
             lease.prepare(host.serviceScope) {
                 // Request order is established before IO scheduling, not by which
                 // coroutine happens to acquire the session mutex first.
-                synchronized(exitLock) { exitJob }?.join()
+                val waitStartedMs = clockMs()
+                val exitSettled =
+                    if (previousExit != null && !previousExit.isCompleted) {
+                        withTimeoutOrNull(sessionMutexTimeoutMs) {
+                            previousExit.join()
+                            true
+                        } == true
+                    } else {
+                        true
+                    }
                 if (!isEpochActive(epoch)) return@prepare
-                if (!releaseCaptureForAttempt(epoch)) return@prepare
-                when (val result = performConnectionAttempt(config, epoch, reconnecting = false)) {
+                if (!exitSettled) {
+                    finishSessionBusyFailure(epoch)
+                    return@prepare
+                }
+                val remainingMutexTimeoutMs =
+                    (sessionMutexTimeoutMs - (clockMs() - waitStartedMs).coerceAtLeast(0L)).coerceAtLeast(0L)
+                when (
+                    val result =
+                        performConnectionAttempt(
+                            config,
+                            epoch,
+                            reconnecting = false,
+                            mutexTimeoutMs = remainingMutexTimeoutMs,
+                        )
+                ) {
                     AttemptResult.Success,
                     AttemptResult.Stale,
                     -> Unit
@@ -333,30 +384,40 @@ internal class ConnectionCoordinator(
      */
     fun requestExit(trigger: ExitTrigger) {
         if (closed) return
+        val exitLease = IdentityConnectionLease.acquire(identityGate) ?: return
         val captured: Ts3SessionClient?
         val handshaking: Boolean
         val deadlineMs: Long
         val firstExit: Boolean
         val exitToken: Long
-        val lease: IdentityConnectionLease
+        val previousLease: IdentityConnectionLease?
         synchronized(exitLock) {
-            lease = identityLease?.takeIf { it.isActive } ?: IdentityConnectionLease.acquire(identityGate) ?: return
-            identityLease = lease
+            if (closed) {
+                exitLease.retire()
+                return
+            }
             exitToken = ownership.beginExit()
             captured = session
             session = null
+            sessionEpoch = null
             if (captured != null) exitSession = captured
             handshaking = host.mutableState.value.status.phase in interruptibleConnectionPhases
             deadlineMs = clockMs() + EXIT_BUDGET_MS
             // A second request for the same session joins the running exit instead
             // of sending a second leave command.
             firstExit = exitToken != activeExitToken || exitJob == null
+            if (firstExit) {
+                host.sessionGeneration.invalidate()
+                previousLease = identityLease.also { identityLease = null }
+            } else {
+                previousLease = null
+            }
         }
+        previousLease?.retire()
         if (!firstExit) {
-            lease.retire()
+            exitLease.retire()
             return
         }
-        host.sessionGeneration.invalidate()
         chat?.clear()
         activeListener = null
         connectionJob?.cancel()
@@ -377,23 +438,33 @@ internal class ConnectionCoordinator(
         host.updateNotification()
         val job =
             synchronized(exitLock) {
-                val previous = exitJob
-                checkNotNull(
-                    lease.prepare(host.serviceScope) {
-                        previous?.join()
-                        exitRunner.run(trigger, captured, handshaking, deadlineMs, exitToken) {
-                            if (exitSession === captured) exitSession = null
-                        }
-                    },
-                ).also {
-                    exitJob = it
-                    activeExitToken = exitToken
-                    exitJobs += it
+                if (closed) {
+                    if (exitSession === captured) exitSession = null
+                    null
+                } else {
+                    val previous = exitJob
+                    checkNotNull(
+                        exitLease.prepare(host.serviceScope) {
+                            previous?.join()
+                            exitRunner.run(trigger, captured, handshaking, deadlineMs, exitToken) {
+                                if (exitSession === captured) exitSession = null
+                            }
+                        },
+                    ).also {
+                        exitJob = it
+                        activeExitToken = exitToken
+                        exitJobs += it
+                    }
                 }
             }
+        if (job == null) {
+            runCatching { captured?.close() }
+            exitLease.retire()
+            return
+        }
         job.invokeOnCompletion { synchronized(exitLock) { exitJobs.remove(job) } }
         identityMaterial = null
-        lease.retire()
+        exitLease.retire()
         job.start()
     }
 
@@ -570,7 +641,11 @@ internal class ConnectionCoordinator(
         // about to be cancelled, and nothing waits for the server.
         val capturedExit = synchronized(exitLock) { exitSession.also { exitSession = null } }
         runCatching { capturedExit?.close() }
-        val current = synchronized(exitLock) { session.also { session = null } }
+        val current =
+            synchronized(exitLock) {
+                sessionEpoch = null
+                session.also { session = null }
+            }
         runCatching { current?.close() }
         identityMaterial = null
         identityLease?.retire()
@@ -587,7 +662,13 @@ internal class ConnectionCoordinator(
             synchronized(exitLock) {
                 if (!isEpochActive(epoch)) return
                 activeListener?.takeIf { it.epoch == epoch }?.let { listenerRef.compareAndSet(it, null) }
-                val previous = session.also { session = null }
+                val previous =
+                    if (sessionEpoch == epoch) {
+                        sessionEpoch = null
+                        session.also { session = null }
+                    } else {
+                        null
+                    }
                 previous to connectionJob
             }
         // No mutex acquisition or cancellation join before the socket is closed.
@@ -599,106 +680,177 @@ internal class ConnectionCoordinator(
         config: ServerConfig,
         epoch: Long,
         reconnecting: Boolean,
-    ): AttemptResult =
-        host.sessionMutex.withLock {
-            if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
-
-            host.diagnosticsRecorder.recordConnectionAttempt(reconnecting)
-            host.onConnectionAttempt(reconnecting)
-            host.refreshDiagnostics()
-
-            activeListener = null
-            session?.close()
-            session = null
-
+        mutexTimeoutMs: Long = sessionMutexTimeoutMs,
+    ): AttemptResult {
+        if (!host.sessionMutex.tryLockBounded(mutexTimeoutMs)) {
+            if (isEpochActive(epoch)) finishSessionBusyFailure(epoch)
+            return AttemptResult.Stale
+        }
+        var pendingCaptureFailure: UserMessage.MicrophoneFailed? = null
+        var pendingReclaimFailure: Throwable? = null
+        val attemptResult =
             try {
-                host.startAudioRouting()
-                val identity = identityMaterial ?: host.createIdentity()
-                if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
-                identityMaterial = identity
-                host.mutableState.update { it.copy(identityReady = true) }
-
-                host.applySelectedPlaybackMuted()
-                host.resetParticipantGains()
-                host.startPlayback()
-
-                val newSession = sessionFactory()
-                val listener = SessionListener(epoch, reconnecting, chat?.historyAccount(config, identity))
-                val accepted =
-                    synchronized(exitLock) {
-                        if (!isEpochActive(epoch) || refusedEpoch == epoch) {
-                            false
+                val needsDegradedAudioReclaim = deferredAudioCleanupPending
+                if (!isEpochActive(epoch)) {
+                    AttemptResult.Stale
+                } else {
+                    val captureFailure = if (!reconnecting) host.releaseCapture() else null
+                    if (captureFailure != null) {
+                        pendingCaptureFailure = captureFailure
+                        AttemptResult.Stale
+                    } else {
+                        var reclaimedOk = true
+                        if (needsDegradedAudioReclaim) {
+                            reclaimedOk =
+                                try {
+                                    reclaimAudioResourcesLocked()
+                                    deferredAudioCleanupPending = false
+                                    true
+                                } catch (error: Throwable) {
+                                    if (error is CancellationException) throw error
+                                    pendingReclaimFailure = error
+                                    false
+                                }
+                        }
+                        if (!reclaimedOk || !isEpochActive(epoch)) {
+                            AttemptResult.Stale
                         } else {
-                            activeListener = listener
-                            session = newSession
-                            true
+                            executeLockedConnectionAttempt(config, epoch, reconnecting)
                         }
                     }
-                if (!accepted) {
-                    newSession.close()
-                    return@withLock AttemptResult.Stale
                 }
-                host.attachMicrophoneTo(newSession)
-                runInterruptible { newSession.connect(config, identity, listener) }
-                if (!isListenerActive(listener)) {
-                    newSession.close()
-                    if (session === newSession) session = null
-                    return@withLock if (refusedEpoch == epoch) {
-                        AttemptResult.Stale
-                    } else if (isEpochActive(epoch)) {
-                        val status = host.mutableState.value.status
-                        AttemptResult.Failed(status, status.retryable)
+            } finally {
+                host.sessionMutex.unlock()
+            }
+        pendingCaptureFailure?.let { failure ->
+            finishTerminalFailure(ConnectionStatus(ConnectionPhase.ERROR), epoch, failure)
+        }
+        pendingReclaimFailure?.let { failure ->
+            finishReclaimFailure(epoch, failure)
+        }
+        return attemptResult
+    }
+
+    private suspend fun executeLockedConnectionAttempt(
+        config: ServerConfig,
+        epoch: Long,
+        reconnecting: Boolean,
+    ): AttemptResult {
+        host.diagnosticsRecorder.recordConnectionAttempt(reconnecting)
+        host.onConnectionAttempt(reconnecting)
+        host.refreshDiagnostics()
+
+        val priorSession =
+            synchronized(exitLock) {
+                if (!isEpochActive(epoch)) return AttemptResult.Stale
+                activeListener?.takeIf { it.epoch == epoch }?.let { listenerRef.compareAndSet(it, null) }
+                if (sessionEpoch == null || sessionEpoch == epoch) {
+                    sessionEpoch = null
+                    session.also { session = null }
+                } else {
+                    null
+                }
+            }
+        priorSession?.close()
+
+        return try {
+            host.startAudioRouting()
+            val identity = identityMaterial ?: host.createIdentity()
+            if (!isEpochActive(epoch)) return AttemptResult.Stale
+            identityMaterial = identity
+            host.mutableState.update { it.copy(identityReady = true) }
+
+            host.applySelectedPlaybackMuted()
+            host.resetParticipantGains()
+            host.startPlayback()
+
+            val newSession = sessionFactory()
+            val listener = SessionListener(epoch, reconnecting, chat?.historyAccount(config, identity))
+            val accepted =
+                synchronized(exitLock) {
+                    if (!isEpochActive(epoch) || refusedEpoch == epoch) {
+                        false
                     } else {
-                        AttemptResult.Stale
+                        activeListener = listener
+                        session = newSession
+                        sessionEpoch = epoch
+                        true
                     }
                 }
-                if (host.mutableState.value.status.phase == ConnectionPhase.CONNECTED) {
-                    AttemptResult.Success
-                } else {
+            if (!accepted) {
+                newSession.close()
+                return AttemptResult.Stale
+            }
+            host.attachMicrophoneTo(newSession)
+            runInterruptible { newSession.connect(config, identity, listener) }
+            if (!isListenerActive(listener)) {
+                newSession.close()
+                synchronized(exitLock) {
+                    if (session === newSession) {
+                        session = null
+                        if (sessionEpoch == epoch) sessionEpoch = null
+                    }
+                }
+                return if (refusedEpoch == epoch) {
+                    AttemptResult.Stale
+                } else if (isEpochActive(epoch)) {
                     val status = host.mutableState.value.status
-                    listenerRef.compareAndSet(listener, null)
-                    newSession.close()
-                    if (session === newSession) session = null
-                    AttemptResult.Failed(status, status.retryable && reconnecting)
+                    AttemptResult.Failed(status, status.retryable)
+                } else {
+                    AttemptResult.Stale
                 }
-            } catch (error: Throwable) {
-                if (error is CancellationException) throw error
-                val failedSession = session
-                activeListener = null
-                failedSession?.close()
-                if (session === failedSession) session = null
-                if (!isEpochActive(epoch)) return@withLock AttemptResult.Stale
-                if (refusedEpoch == epoch) return@withLock AttemptResult.Stale
-
-                val status =
-                    ConnectionStatus(
-                        ConnectionPhase.ERROR,
-                        host.conciseMessage(error),
-                        retryable = error.isRetryableConnectionFailure(),
-                        category = error.connectionFailureCategory(),
-                    )
-                val message = failureMessageFor(status, reconnecting)
-                host.mutableState.update { current ->
-                    if (reconnecting && status.retryable) {
-                        current.withStatus(
-                            ConnectionStatus(
-                                ConnectionPhase.RECONNECTING,
-                                status.detail,
-                                retryable = status.retryable,
-                                category = status.category,
-                            ),
-                            message,
-                        )
-                    } else {
-                        current.withStatus(status, message)
-                    }.copy(snapshot = SessionSnapshot.Empty)
+            }
+            if (host.mutableState.value.status.phase == ConnectionPhase.CONNECTED) {
+                AttemptResult.Success
+            } else {
+                val status = host.mutableState.value.status
+                listenerRef.compareAndSet(listener, null)
+                newSession.close()
+                synchronized(exitLock) {
+                    if (session === newSession) {
+                        session = null
+                        if (sessionEpoch == epoch) sessionEpoch = null
+                    }
                 }
-                host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
-                host.onConnectionFailure(status)
-                host.refreshDiagnostics()
                 AttemptResult.Failed(status, status.retryable && reconnecting)
             }
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            val failedSession = takeOwnedSession(epoch)
+            activeListener?.takeIf { it.epoch == epoch }?.let { listenerRef.compareAndSet(it, null) }
+            failedSession?.close()
+            if (!isEpochActive(epoch)) return AttemptResult.Stale
+            if (refusedEpoch == epoch) return AttemptResult.Stale
+
+            val status =
+                ConnectionStatus(
+                    ConnectionPhase.ERROR,
+                    host.conciseMessage(error),
+                    retryable = error.isRetryableConnectionFailure(),
+                    category = error.connectionFailureCategory(),
+                )
+            val message = failureMessageFor(status, reconnecting)
+            host.mutableState.update { current ->
+                if (reconnecting && status.retryable) {
+                    current.withStatus(
+                        ConnectionStatus(
+                            ConnectionPhase.RECONNECTING,
+                            status.detail,
+                            retryable = status.retryable,
+                            category = status.category,
+                        ),
+                        message,
+                    )
+                } else {
+                    current.withStatus(status, message)
+                }.copy(snapshot = SessionSnapshot.Empty)
+            }
+            host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
+            host.onConnectionFailure(status)
+            host.refreshDiagnostics()
+            AttemptResult.Failed(status, status.retryable && reconnecting)
         }
+    }
 
     private inner class SessionListener(
         val epoch: Long,
@@ -921,12 +1073,18 @@ internal class ConnectionCoordinator(
     }
 
     override suspend fun suspendAudioForReconnect(epoch: Long): Boolean {
+        if (!host.sessionMutex.tryLockBounded(sessionMutexTimeoutMs)) {
+            if (isEpochActive(epoch)) finishSessionBusyFailure(epoch)
+            return false
+        }
         val failure =
-            host.sessionMutex.withLock {
+            try {
                 if (!isEpochActive(epoch)) return false
                 val releaseFailure = host.releaseCapture()
                 if (releaseFailure == null && isEpochActive(epoch)) runInterruptible { host.stopPlayback() }
                 releaseFailure
+            } finally {
+                host.sessionMutex.unlock()
             }
         if (failure != null) finishTerminalFailure(ConnectionStatus(ConnectionPhase.ERROR), epoch, failure)
         return failure == null && isEpochActive(epoch)
@@ -936,13 +1094,6 @@ internal class ConnectionCoordinator(
         stableConnectionJob?.cancel()
         connectedWatchJob?.cancel()
         livenessJob?.cancel()
-    }
-
-    private suspend fun releaseCaptureForAttempt(epoch: Long): Boolean {
-        if (!isEpochActive(epoch)) return false
-        val failure = host.releaseCapture() ?: return isEpochActive(epoch)
-        finishTerminalFailure(ConnectionStatus(ConnectionPhase.ERROR), epoch, failure)
-        return false
     }
 
     private fun onConnectionRefused(
@@ -995,22 +1146,58 @@ internal class ConnectionCoordinator(
         captureFailure: UserMessage.MicrophoneFailed?,
     ) {
         if (!isEpochActive(epoch)) return
-        host.sessionMutex.withLock {
-            if (!isEpochActive(epoch)) return@withLock
+        if (!host.sessionMutex.tryLockBounded(TERMINAL_CLEANUP_MUTEX_TIMEOUT_MS)) {
+            val updated =
+                host.sessionGeneration.withActive(epoch) {
+                    if (!isEpochActive(epoch)) return@withActive
+                    chat?.clear(epoch)
+                    activeListener?.takeIf { it.epoch == epoch }?.let { listenerRef.compareAndSet(it, null) }
+                    cancelConnectionObservers()
+                    runCatching { host.stopMicrophoneImmediately() }
+                    deferredAudioCleanupPending = true
+                    host.mutableState.update { current ->
+                        val message = captureFailure ?: failureMessageFor(status, reconnecting = false)
+                        current.withStatus(status.copy(retryable = false), message).copy(
+                            snapshot = SessionSnapshot.Empty,
+                            isTransmitting = false,
+                            switchingChannelId = null,
+                            microphoneError = captureFailure ?: current.microphoneError,
+                        )
+                    }
+                }
+            if (!updated) return
+            val staleSession = takeOwnedSession(epoch)
+            runCatching { staleSession?.close() }
+            host.refreshDiagnostics()
+            host.finishTerminalOnMainThread(epoch)
+            synchronized(exitLock) {
+                if (host.sessionGeneration.isActive(epoch)) {
+                    identityMaterial = null
+                    identityLease?.retire()
+                }
+            }
+            if (!closed) scheduleDeferredSessionAudioReclamation(epoch)
+            return
+        }
+        try {
+            if (!isEpochActive(epoch)) return
             val ownsCleanup =
                 host.sessionGeneration.withActive(epoch) {
                     chat?.clear(epoch)
                     activeListener?.takeIf { it.epoch == epoch }?.let { listenerRef.compareAndSet(it, null) }
                     cancelConnectionObservers()
                 }
-            if (!ownsCleanup) return@withLock
-            session?.close()
-            session = null
+            if (!ownsCleanup) return
+            val staleSession = takeOwnedSession(epoch)
+            runCatching { staleSession?.close() }
             // New attempts acquire this same mutex before starting shared audio.
             val releaseFailure = captureFailure ?: host.releaseCapture()
-            runInterruptible {
-                host.stopPlayback()
-                host.stopAudioRouting()
+            try {
+                reclaimAudioResourcesLocked()
+                deferredAudioCleanupPending = false
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                deferredAudioCleanupPending = true
             }
             val updated =
                 host.sessionGeneration.withActive(epoch) {
@@ -1024,13 +1211,121 @@ internal class ConnectionCoordinator(
                         )
                     }
                 }
-            if (!updated) return@withLock
+            if (!updated) return
             host.refreshDiagnostics()
             host.finishTerminalOnMainThread(epoch)
             synchronized(exitLock) {
                 if (host.sessionGeneration.isActive(epoch)) {
                     identityMaterial = null
                     identityLease?.retire()
+                }
+            }
+        } finally {
+            host.sessionMutex.unlock()
+        }
+    }
+
+    private fun finishSessionBusyFailure(epoch: Long) {
+        finishWithoutMutexOrReclaim(
+            epoch = epoch,
+            status = ConnectionStatus(ConnectionPhase.ERROR, retryable = false),
+            message = UserMessage.PreviousSessionBusy,
+            scheduleDeferredCleanup = true,
+        )
+    }
+
+    private fun finishReclaimFailure(
+        epoch: Long,
+        failure: Throwable,
+    ) {
+        finishWithoutMutexOrReclaim(
+            epoch = epoch,
+            status = ConnectionStatus(ConnectionPhase.ERROR, host.conciseMessage(failure), retryable = false),
+            message = null,
+            scheduleDeferredCleanup = false,
+        )
+    }
+
+    private fun finishWithoutMutexOrReclaim(
+        epoch: Long,
+        status: ConnectionStatus,
+        message: UserMessage?,
+        scheduleDeferredCleanup: Boolean,
+    ) {
+        if (!isEpochActive(epoch)) return
+        val updated =
+            host.sessionGeneration.withActive(epoch) {
+                chat?.clear(epoch)
+                activeListener?.takeIf { it.epoch == epoch }?.let { listenerRef.compareAndSet(it, null) }
+                cancelConnectionObservers()
+                host.mutableState.update { current ->
+                    current.withStatus(status, message).copy(
+                        snapshot = SessionSnapshot.Empty,
+                        isTransmitting = false,
+                        switchingChannelId = null,
+                    )
+                }
+                host.diagnosticsRecorder.recordConnectionFailure(false)
+            }
+        if (!updated) return
+        host.onConnectionFailure(status)
+        val staleSession = takeOwnedSession(epoch)
+        runCatching { staleSession?.close() }
+        host.refreshDiagnostics()
+        host.finishTerminalOnMainThread(epoch)
+        synchronized(exitLock) {
+            if (host.sessionGeneration.isActive(epoch)) {
+                identityMaterial = null
+                identityLease?.retire()
+            }
+        }
+        if (scheduleDeferredCleanup && deferredAudioCleanupPending && !closed) {
+            scheduleDeferredSessionAudioReclamation(epoch)
+        }
+    }
+
+    private fun takeOwnedSession(epoch: Long): Ts3SessionClient? =
+        synchronized(exitLock) {
+            if (sessionEpoch == epoch && host.sessionGeneration.isActive(epoch)) {
+                sessionEpoch = null
+                session.also { session = null }
+            } else {
+                null
+            }
+        }
+
+    private suspend fun reclaimAudioResourcesLocked() {
+        runInterruptible {
+            try {
+                host.stopPlayback()
+            } finally {
+                host.clearPlaybackMuted()
+                if (!closed) host.stopAudioRouting()
+            }
+        }
+    }
+
+    private fun scheduleDeferredSessionAudioReclamation(epoch: Long) {
+        host.serviceScope.launch {
+            host.sessionMutex.withLock {
+                if (closed || !deferredAudioCleanupPending || !host.sessionGeneration.isActive(epoch)) return@withLock
+                val captureFailed =
+                    try {
+                        host.releaseCapture() != null
+                    } catch (error: Throwable) {
+                        if (error is CancellationException) throw error
+                        true
+                    }
+                val playbackFailed =
+                    try {
+                        reclaimAudioResourcesLocked()
+                        false
+                    } catch (error: Throwable) {
+                        if (error is CancellationException) throw error
+                        true
+                    }
+                if (!captureFailed && !playbackFailed) {
+                    deferredAudioCleanupPending = false
                 }
             }
         }
@@ -1166,6 +1461,12 @@ internal class ConnectionCoordinator(
 
         /** Total budget for one exit: capture stop, mutex wait, protocol exit and release. */
         const val EXIT_BUDGET_MS = 2_000L
+
+        /** Bounded wait for the shared session mutex when starting or recovering a session. */
+        const val SESSION_MUTEX_TIMEOUT_MS = 2_000L
+
+        /** Short wait before degrading terminal audio cleanup onto a background reclamation task. */
+        const val TERMINAL_CLEANUP_MUTEX_TIMEOUT_MS = 500L
 
         val interruptibleConnectionPhases =
             setOf(

@@ -8,7 +8,7 @@ internal class ConnectionAttemptGate {
 
     fun beginConnectedEmission(): Boolean = state.compareAndSet(State.Active, State.EmittingConnected)
 
-    fun completeConnectedEmission(): Throwable? {
+    fun completeConnectedEmission(): DeferredTerminalOutcome? {
         while (true) {
             when (val current = state.get()) {
                 State.EmittingConnected -> {
@@ -17,7 +17,13 @@ internal class ConnectionAttemptGate {
 
                 is State.FailurePending -> {
                     if (state.compareAndSet(current, State.Failed(current.error))) {
-                        return current.error
+                        return DeferredTerminalOutcome.Failure(current.error)
+                    }
+                }
+
+                is State.DisconnectPending -> {
+                    if (state.compareAndSet(current, State.Failed(current.error))) {
+                        return DeferredTerminalOutcome.ServerDisconnected(current.status)
                     }
                 }
 
@@ -26,12 +32,19 @@ internal class ConnectionAttemptGate {
         }
     }
 
-    fun recordFailure(error: Throwable): FailureDelivery {
+    fun recordFailure(
+        error: Throwable,
+        suppressActiveEmission: Boolean = false,
+    ): FailureDelivery {
         while (true) {
             when (val current = state.get()) {
                 State.Active -> {
                     if (state.compareAndSet(current, State.Failed(error))) {
-                        return FailureDelivery.EMIT_NOW
+                        return if (suppressActiveEmission) {
+                            FailureDelivery.SUPPRESSED_FOR_RETRY
+                        } else {
+                            FailureDelivery.EMIT_NOW
+                        }
                     }
                 }
 
@@ -48,6 +61,35 @@ internal class ConnectionAttemptGate {
                 }
 
                 is State.FailurePending,
+                is State.DisconnectPending,
+                is State.Failed,
+                -> return FailureDelivery.ALREADY_RECORDED
+            }
+        }
+    }
+
+    fun recordServerDisconnect(
+        status: ConnectionStatus,
+        error: Throwable,
+    ): FailureDelivery {
+        while (true) {
+            when (val current = state.get()) {
+                State.Active,
+                State.Connected,
+                -> {
+                    if (state.compareAndSet(current, State.Failed(error))) {
+                        return FailureDelivery.EMIT_NOW
+                    }
+                }
+
+                State.EmittingConnected -> {
+                    if (state.compareAndSet(current, State.DisconnectPending(status, error))) {
+                        return FailureDelivery.DEFER_UNTIL_CONNECTED_EMITTED
+                    }
+                }
+
+                is State.FailurePending,
+                is State.DisconnectPending,
                 is State.Failed,
                 -> return FailureDelivery.ALREADY_RECORDED
             }
@@ -57,13 +99,25 @@ internal class ConnectionAttemptGate {
     fun failureOrNull(): Throwable? =
         when (val current = state.get()) {
             is State.FailurePending -> current.error
+            is State.DisconnectPending -> current.error
             is State.Failed -> current.error
             else -> null
         }
 
+    sealed interface DeferredTerminalOutcome {
+        data class Failure(
+            val error: Throwable,
+        ) : DeferredTerminalOutcome
+
+        data class ServerDisconnected(
+            val status: ConnectionStatus,
+        ) : DeferredTerminalOutcome
+    }
+
     enum class FailureDelivery {
         EMIT_NOW,
         DEFER_UNTIL_CONNECTED_EMITTED,
+        SUPPRESSED_FOR_RETRY,
         ALREADY_RECORDED,
     }
 
@@ -75,6 +129,11 @@ internal class ConnectionAttemptGate {
         data object Connected : State
 
         data class FailurePending(
+            val error: Throwable,
+        ) : State
+
+        data class DisconnectPending(
+            val status: ConnectionStatus,
             val error: Throwable,
         ) : State
 

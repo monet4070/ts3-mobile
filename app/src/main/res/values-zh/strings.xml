@@ -450,6 +450,7 @@
     <string name="channel_unknown">频道不可用</string>
     <string name="bookmark_open">选择收藏服务器</string>
     <string name="status_identity_maintenance">正在维护身份，请完成后重新连接。</string>
+    <string name="status_previous_session_busy">上一次会话仍在清理音频或连接资源，请稍候重试连接。</string>
     <string name="identity_title">身份与备份</string>
     <string name="identity_explanation">备份此身份可在其他安装中保留原有服务器权限。</string>
     <string name="identity_unreadable">身份数据无法读取。请保留现有数据，恢复需要经过验证的外部备份。</string>

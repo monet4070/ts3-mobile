@@ -129,8 +129,9 @@ class NativeOpusCompatibilityTest {
         }
         TalkerJitterPipeline(count, factory).use { pipeline ->
             fixture.packets.forEachIndexed { index, packet ->
-                pipeline.offer(QueuedFrame(VoiceFrame(1, index, fixture.codec, packet, false), 0L))
-                pipeline.fillPcm(60_000_000L + index * 20_000_000L)
+                val arrivalNanos = index * 20_000_000L
+                pipeline.offer(QueuedFrame(VoiceFrame(1, index, fixture.codec, packet, false), arrivalNanos))
+                pipeline.fillPcm(arrivalNanos + 60_000_000L)
                 assertEquals(480, pipeline.readPcm(480).size)
                 assertEquals(480, pipeline.readPcm(480).size)
             }

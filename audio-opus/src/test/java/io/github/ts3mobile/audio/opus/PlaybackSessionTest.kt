@@ -27,6 +27,31 @@ class PlaybackSessionTest {
         }
     }
 
+    @Test fun recoveredUnstartedOutputRetiresWhenNoNewSpeechArrivesWithinIdleWindow() {
+        Fixture().use { fixture ->
+            fixture.routeReady = false
+            fixture.feed(0)
+            fixture.session.tick(60 * MS)
+            val first = fixture.outputs.single()
+            assertEquals(1, fixture.creations)
+
+            first.routeReady = true
+            fixture.routeReady = true
+            fixture.session.tick(200 * MS)
+            assertFalse(first.closed)
+            fixture.session.tick(699 * MS)
+            assertFalse(first.closed)
+            fixture.session.tick(700 * MS)
+            assertTrue(first.closed)
+            assertEquals(null, fixture.session.output)
+
+            fixture.feed(1000 * MS)
+            fixture.session.tick(1060 * MS)
+            assertEquals(2, fixture.creations)
+            assertTrue(fixture.outputs.last().accepted.isNotEmpty())
+        }
+    }
+
     @Test fun losingBluetoothRouteDuringRecoveryRetiresOutputBeforeAnyFurtherWrite() {
         Fixture().use { fixture ->
             fixture.feed(0)

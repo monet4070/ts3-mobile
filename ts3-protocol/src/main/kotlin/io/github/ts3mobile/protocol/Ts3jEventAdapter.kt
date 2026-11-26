@@ -27,18 +27,18 @@ internal class Ts3jEventAdapter(
     private val generation: SessionGenerationGate,
     private val snapshotStore: SessionSnapshotStore,
     private val client: Ts3jClientSocket,
+    private val isCurrentSocket: () -> Boolean = { true },
     private val publishSnapshot: () -> Unit,
     private val handleDisconnected: (DisconnectedEvent) -> Unit,
     private val onText: (Ts3TextEvent) -> Unit = {},
     private val onPoke: (Ts3PokeEvent) -> Unit = {},
 ) : TS3Listener {
     override fun onClientPoke(event: ClientPokeEvent) {
-        if (generation.isCurrent(token)) onPoke(event.map.toPokeEvent())
+        if (generation.withCurrent(token) { isCurrentSocket() } == true) onPoke(event.map.toPokeEvent())
     }
 
     override fun onTextMessage(event: TextMessageEvent) {
-        if (!generation.isCurrent(token)) return
-        onText(event.map.toTextEvent())
+        if (generation.withCurrent(token) { isCurrentSocket() } == true) onText(event.map.toTextEvent())
     }
 
     override fun onDisconnected(event: DisconnectedEvent) = handleDisconnected(event)
@@ -106,11 +106,12 @@ internal class Ts3jEventAdapter(
     }
 
     private fun publishSnapshotWhenConnected() {
-        if (client.isConnected) publishSnapshot()
+        if (generation.withCurrent(token) { isCurrentSocket() && client.isConnected } == true) publishSnapshot()
     }
 
     private fun applySnapshotMutation(mutation: () -> Unit): Unit? =
         generation.withCurrent(token) {
+            if (!isCurrentSocket()) return@withCurrent null
             mutation()
         }
 

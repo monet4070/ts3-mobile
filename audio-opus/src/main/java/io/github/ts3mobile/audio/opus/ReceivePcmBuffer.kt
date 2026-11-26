@@ -56,6 +56,26 @@ internal class ReceivePcmBuffer(private val stats: ReceiveStats) {
         return if (offset == output.size) output else output.copyOf(offset)
     }
 
+    fun dropExpired(
+        now: Long,
+        maxAgeNanos: Long,
+    ): Int {
+        var droppedTotal = 0
+        while (chunks.isNotEmpty()) {
+            val first = chunks.first()
+            if (first.lease.valid && now - first.lease.arrivalNanos <= maxAgeNanos) break
+            chunks.removeFirst()
+            val dropped = first.pcm.size - first.offset
+            available -= dropped
+            first.lease.release()
+            droppedTotal += dropped
+        }
+        if (droppedTotal > 0) {
+            stats.count(AudioReceiveCounter.PCM_RESET_DROPPED, droppedTotal.toLong())
+        }
+        return droppedTotal
+    }
+
     fun clear(): Int {
         val dropped = available
         stats.count(AudioReceiveCounter.PCM_RESET_DROPPED, dropped.toLong())

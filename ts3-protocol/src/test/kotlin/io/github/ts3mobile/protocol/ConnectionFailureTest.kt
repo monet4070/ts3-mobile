@@ -113,4 +113,36 @@ class ConnectionFailureTest {
             ConnectionStatus(category = ConnectionFailureCategory.CLONES_LIMIT).category,
         )
     }
+
+    @Test
+    fun knownTs3jHandshakeWidthExceptionIsRetryableWhileOtherIndexFailuresAreTerminal() {
+        val handshakeError =
+            ArrayIndexOutOfBoundsException("Index 128 out of bounds for length 128").apply {
+                stackTrace =
+                    arrayOf(
+                        StackTraceElement(
+                            "com.github.manevolent.ts3j.protocol.packet.handler.client.LocalClientHandlerConnecting",
+                            "handlePacket",
+                            "LocalClientHandlerConnecting.java",
+                            184,
+                        ),
+                    )
+            }
+        assertTrue(handshakeError.isTs3jHandshakeWidthFailure())
+        assertTrue(handshakeError.isRetryableConnectionFailure())
+        assertTrue(RuntimeException("wrapped", handshakeError).isRetryableConnectionFailure())
+
+        val unrelated =
+            ArrayIndexOutOfBoundsException("Index 3 out of bounds for length 3").apply {
+                stackTrace = arrayOf(StackTraceElement("io.github.ts3mobile.App", "foo", "App.kt", 1))
+            }
+        assertFalse(unrelated.isTs3jHandshakeWidthFailure())
+        assertFalse(unrelated.isRetryableConnectionFailure())
+    }
+
+    @Test
+    fun serverDisconnectedDuringConnectPreservesObservedRetryability() {
+        assertTrue(ServerDisconnectedDuringConnectException(reasonId = 3, retryable = true).isRetryableConnectionFailure())
+        assertFalse(ServerDisconnectedDuringConnectException(reasonId = 4, retryable = false).isRetryableConnectionFailure())
+    }
 }

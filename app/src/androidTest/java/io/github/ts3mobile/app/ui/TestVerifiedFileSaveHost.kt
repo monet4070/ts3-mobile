@@ -1,5 +1,6 @@
 package io.github.ts3mobile.app.ui
 
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
@@ -18,6 +19,9 @@ import io.github.ts3mobile.app.documents.removeVerifiedStaging
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
+import java.io.File
+
+internal fun Context.testVerifiedFileStagingDir(): File = cacheDir.resolve("fixture-verified-files")
 
 @Composable
 internal fun TestVerifiedFileSaveHost(content: @Composable () -> Unit) {
@@ -38,7 +42,7 @@ internal fun TestVerifiedFileSaveHost(content: @Composable () -> Unit) {
     DisposableEffect(saves) { onDispose { saves.close() } }
     val owner = LocalActivityResultRegistryOwner.current ?: remember { NoPickerOwner() }
     CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-        VerifiedFileSaveHost(saves, context.cacheDir.resolve("fixture-verified-files"), content)
+        VerifiedFileSaveHost(saves, context.testVerifiedFileStagingDir(), content)
     }
 }
 

@@ -79,92 +79,122 @@ class Ts3jSessionClient : Ts3SessionClient {
         emitStatus(token, ConnectionStatus(ConnectionPhase.CONNECTING))
 
         val identity = Ts3IdentityCodec.decode(identityMaterial)
-        val client = socketFactory.create()
-        val connectionAttempt = ConnectionAttemptGate()
-        client.setIdentity(identity)
-        client.setNickname(normalized.nickname)
-        client.setHWID(identity.uid.toBase64())
-        client.setMicrophone(voiceSource?.toMicrophone())
-        client.setExceptionHandler { error ->
-            val delivery =
-                generation.withCurrent(token) {
-                    connectionAttempt.recordFailure(error)
-                } ?: return@setExceptionHandler
-            logFailure("background protocol failure", error)
-            if (delivery == ConnectionAttemptGate.FailureDelivery.EMIT_NOW) {
-                emitConnectionFailureStatus(token, error)
-            }
-        }
-        client.setVoiceHandler { packet ->
-            try {
-                forwardVoicePacket(packet, token)
-            } catch (error: RuntimeException) {
-                logFailure("voice callback rejected", error)
-            }
-        }
-        client.setWhisperHandler { packet ->
-            try {
-                forwardWhisperPacket(packet, token)
-            } catch (error: RuntimeException) {
-                logFailure("whisper callback rejected", error)
-            }
-        }
-        client.addListener(createEventAdapter(client, token))
-        if (generation.withCurrent(token) {
-                socket = client
-                true
-            } != true
-        ) {
-            runCatching { client.close() }
-            return
-        }
-
-        try {
-            val address =
-                InetSocketAddress(
-                    InetAddress.getByName(normalized.host),
-                    normalized.port,
-                )
-            logDiagnostic("starting TeamSpeak UDP connection")
-            client.connect(address, normalized.password.toTs3jServerPassword(), CONNECT_TIMEOUT_MS)
-            if (!generation.isCurrent(token)) {
-                runCatching { client.close() }
-                return
-            }
-            try {
-                client.subscribeAll { generation.isCurrent(token) }
-            } catch (error: CommandException) {
-                logDiagnostic("event subscriptions unavailable: ${error.conciseMessage()}")
-            }
-            if (!generation.isCurrent(token)) {
-                runCatching { client.close() }
-                return
-            }
-            val connectedEmissionStarted =
-                generation.withCurrent(token) {
-                    connectionAttempt.beginConnectedEmission()
-                } ?: return
-            if (!connectedEmissionStarted) {
-                throw checkNotNull(connectionAttempt.failureOrNull())
-            }
-            try {
-                publishSnapshot(token)
-                emitStatus(token, ConnectionStatus(ConnectionPhase.CONNECTED))
-            } finally {
-                connectionAttempt.completeConnectedEmission()?.let { deferredFailure ->
-                    emitConnectionFailureStatus(token, deferredFailure)
+        var resolvedAddress: InetSocketAddress? = null
+        for (attemptIndex in 0..MAX_HANDSHAKE_WIDTH_RETRIES) {
+            if (!generation.isCurrent(token)) return
+            val client = socketFactory.create()
+            val connectionAttempt = ConnectionAttemptGate()
+            val canRetryHandshakeWidth = attemptIndex < MAX_HANDSHAKE_WIDTH_RETRIES
+            client.setIdentity(identity)
+            client.setNickname(normalized.nickname)
+            client.setHWID(identity.uid.toBase64())
+            client.setMicrophone(voiceSource?.toMicrophone(token, client))
+            client.setExceptionHandler { error ->
+                val delivery =
+                    generation.withCurrent(token) {
+                        if (socket !== client) return@withCurrent null
+                        connectionAttempt.recordFailure(
+                            error,
+                            suppressActiveEmission = canRetryHandshakeWidth && error.isTs3jHandshakeWidthFailure(),
+                        )
+                    } ?: return@setExceptionHandler
+                logFailure("background protocol failure", error)
+                if (delivery == ConnectionAttemptGate.FailureDelivery.EMIT_NOW) {
+                    emitConnectionFailureStatus(token, error, expectedSocket = client)
                 }
             }
-        } catch (error: Throwable) {
-            val reportedError = connectionAttempt.failureOrNull() ?: error.withNetworkDiagnostics(client)
-            logFailure("connection failed", reportedError)
-            reportConnectionFailure(token, connectionAttempt, reportedError)
-            runCatching { client.close() }
-            generation.withCurrent(token) {
-                failureReported = true
-                if (socket === client) socket = null
+            client.setVoiceHandler { packet ->
+                try {
+                    forwardVoicePacket(client, packet, token)
+                } catch (error: RuntimeException) {
+                    logFailure("voice callback rejected", error)
+                }
             }
-            throw reportedError
+            client.setWhisperHandler { packet ->
+                try {
+                    forwardWhisperPacket(client, packet, token)
+                } catch (error: RuntimeException) {
+                    logFailure("whisper callback rejected", error)
+                }
+            }
+            client.addListener(createEventAdapter(client, token, connectionAttempt))
+            if (generation.withCurrent(token) {
+                    socket = client
+                    failureReported = false
+                    snapshotStore.clear()
+                    true
+                } != true
+            ) {
+                runCatching { client.close() }
+                return
+            }
+
+            try {
+                val address =
+                    resolvedAddress ?: InetSocketAddress(
+                        InetAddress.getByName(normalized.host),
+                        normalized.port,
+                    ).also { resolvedAddress = it }
+                logDiagnostic("starting TeamSpeak UDP connection")
+                client.connect(address, normalized.password.toTs3jServerPassword(), CONNECT_TIMEOUT_MS)
+                if (shouldAbortCurrentSocket(token, client)) {
+                    runCatching { client.close() }
+                    return
+                }
+                try {
+                    client.subscribeAll { generation.withCurrent(token) { socket === client } == true }
+                } catch (error: CommandException) {
+                    logDiagnostic("event subscriptions unavailable: ${error.conciseMessage()}")
+                }
+                if (shouldAbortCurrentSocket(token, client)) {
+                    runCatching { client.close() }
+                    return
+                }
+                val connectedEmissionStarted =
+                    generation.withCurrent(token) {
+                        if (socket !== client) false else connectionAttempt.beginConnectedEmission()
+                    } ?: return
+                if (!connectedEmissionStarted) {
+                    throw checkNotNull(connectionAttempt.failureOrNull())
+                }
+                try {
+                    publishSnapshot(token, expectedSocket = client)
+                    emitStatus(token, ConnectionStatus(ConnectionPhase.CONNECTED))
+                } finally {
+                    when (val deferred = connectionAttempt.completeConnectedEmission()) {
+                        is ConnectionAttemptGate.DeferredTerminalOutcome.Failure ->
+                            emitConnectionFailureStatus(token, deferred.error)
+
+                        is ConnectionAttemptGate.DeferredTerminalOutcome.ServerDisconnected ->
+                            emitServerDisconnectedStatus(token, deferred.status)
+
+                        null -> Unit
+                    }
+                }
+                return
+            } catch (error: Throwable) {
+                val reportedError = connectionAttempt.failureOrNull() ?: error.withNetworkDiagnostics(client)
+                var currentGeneration = false
+                val shouldClose =
+                    generation.withCurrent(token) {
+                        currentGeneration = true
+                        if (socket === client) {
+                            socket = null
+                            true
+                        } else {
+                            false
+                        }
+                    } ?: true
+                if (shouldClose) runCatching { client.close() }
+                if (canRetryHandshakeWidth && currentGeneration && reportedError.isTs3jHandshakeWidthFailure()) {
+                    logDiagnostic("retrying transient TeamSpeak handshake failure")
+                    continue
+                }
+                logFailure("connection failed", reportedError)
+                reportConnectionFailure(token, connectionAttempt, reportedError)
+                generation.withCurrent(token) { failureReported = true }
+                throw reportedError
+            }
         }
     }
 
@@ -191,8 +221,13 @@ class Ts3jSessionClient : Ts3SessionClient {
     }
 
     override fun setVoiceSource(source: EncodedVoiceSource?) {
-        voiceSource = source
-        socket?.setMicrophone(source?.toMicrophone())
+        val token = generation.currentToken()
+        val current =
+            generation.withCurrent(token) {
+                voiceSource = source
+                socket
+            }
+        current?.setMicrophone(source?.toMicrophone(token, current))
     }
 
     /**
@@ -484,14 +519,16 @@ class Ts3jSessionClient : Ts3SessionClient {
     private fun createEventAdapter(
         client: Ts3jClientSocket,
         token: Long,
+        attempt: ConnectionAttemptGate,
     ): TS3Listener =
         Ts3jEventAdapter(
             token = token,
             generation = generation,
             snapshotStore = snapshotStore,
             client = client,
-            publishSnapshot = { publishSnapshot(token) },
-            handleDisconnected = { event -> handleServerDisconnect(client, token, event) },
+            isCurrentSocket = { socket === client },
+            publishSnapshot = { publishSnapshot(token, expectedSocket = client) },
+            handleDisconnected = { event -> handleServerDisconnect(client, token, attempt, event) },
             onText = { event ->
                 val target =
                     generation.withCurrent(token) {
@@ -508,29 +545,53 @@ class Ts3jSessionClient : Ts3SessionClient {
     private fun handleServerDisconnect(
         client: Ts3jClientSocket,
         token: Long,
+        attempt: ConnectionAttemptGate,
         event: DisconnectedEvent,
+    ) {
+        val retryable = event.reasonId !in TERMINAL_DISCONNECT_REASONS
+        val status =
+            ConnectionStatus(
+                ConnectionPhase.DISCONNECTED,
+                "Server closed the connection (${event.reasonId})",
+                retryable = retryable,
+            )
+        val outcome =
+            generation.withCurrent(token) {
+                if (socket !== client) return@withCurrent null
+                val delivery = attempt.recordServerDisconnect(status, ServerDisconnectedDuringConnectException(event.reasonId, retryable))
+                failureReported = true
+                socket = null
+                snapshotStore.clear()
+                delivery to listener
+            } ?: return
+        runCatching { client.close() }
+        val (delivery, targetListener) = outcome
+        if (delivery == ConnectionAttemptGate.FailureDelivery.EMIT_NOW && targetListener != null) {
+            targetListener.onSnapshotChanged(SessionSnapshot.Empty)
+            targetListener.onStatusChanged(status)
+        }
+    }
+
+    private fun emitServerDisconnectedStatus(
+        token: Long,
+        status: ConnectionStatus,
     ) {
         val targetListener =
             generation.withCurrent(token) {
                 failureReported = true
-                socket = null
-                snapshotStore.clear()
                 listener
             } ?: return
-        runCatching { client.close() }
         targetListener.onSnapshotChanged(SessionSnapshot.Empty)
-        targetListener.onStatusChanged(
-            ConnectionStatus(
-                ConnectionPhase.DISCONNECTED,
-                "Server closed the connection (${event.reasonId})",
-                retryable = event.reasonId !in TERMINAL_DISCONNECT_REASONS,
-            ),
-        )
+        targetListener.onStatusChanged(status)
     }
 
-    private fun publishSnapshot(token: Long) {
+    private fun publishSnapshot(
+        token: Long,
+        expectedSocket: Ts3jClientSocket? = null,
+    ) {
         val pending =
             generation.withCurrent(token) {
+                if (expectedSocket != null && socket !== expectedSocket) return@withCurrent null
                 val connected = socket?.takeIf { it.isConnected }
                 listener to
                     snapshotStore.snapshot().copy(
@@ -550,10 +611,12 @@ class Ts3jSessionClient : Ts3SessionClient {
     }
 
     private fun forwardVoicePacket(
+        client: Ts3jClientSocket,
         packet: PacketBody0Voice,
         token: Long,
     ) {
         forwardVoiceFrame(
+            client = client,
             clientId = packet.clientId,
             packetId = packet.packetId,
             codecType = packet.codecType,
@@ -564,10 +627,12 @@ class Ts3jSessionClient : Ts3SessionClient {
     }
 
     private fun forwardWhisperPacket(
+        client: Ts3jClientSocket,
         packet: PacketBody1VoiceWhisper,
         token: Long,
     ) {
         forwardVoiceFrame(
+            client = client,
             clientId = packet.clientId,
             packetId = packet.packetId,
             codecType = packet.codecType,
@@ -578,6 +643,7 @@ class Ts3jSessionClient : Ts3SessionClient {
     }
 
     private fun forwardVoiceFrame(
+        client: Ts3jClientSocket,
         clientId: Int,
         packetId: Int,
         codecType: CodecType,
@@ -592,7 +658,10 @@ class Ts3jSessionClient : Ts3SessionClient {
                 CodecType.OPUS_MUSIC -> VoiceCodec.OPUS_MUSIC
                 else -> return
             }
-        val targetListener = generation.withCurrent(token) { listener } ?: return
+        val targetListener =
+            generation.withCurrent(token) {
+                listener.takeIf { socket === client && client.isConnected }
+            } ?: return
         targetListener.onVoiceFrame(
             VoiceFrame(
                 clientId = clientId,
@@ -609,6 +678,11 @@ class Ts3jSessionClient : Ts3SessionClient {
         runCatching { current.disconnect("Replacing connection") }
         runCatching { current.close() }
     }
+
+    private fun shouldAbortCurrentSocket(
+        token: Long,
+        client: Ts3jClientSocket,
+    ): Boolean = generation.withCurrent(token) { socket != null && socket !== client } != false
 
     private fun reportConnectionFailure(
         token: Long,
@@ -627,11 +701,13 @@ class Ts3jSessionClient : Ts3SessionClient {
     private fun emitConnectionFailureStatus(
         token: Long,
         error: Throwable,
+        expectedSocket: Ts3jClientSocket? = null,
     ) {
         // Mark and fetch inside one gate block so a replacement generation can
         // never inherit the failure report of the session it replaced.
         val targetListener =
             generation.withCurrent(token) {
+                if (expectedSocket != null && socket !== expectedSocket) return@withCurrent null
                 failureReported = true
                 listener
             } ?: return
@@ -645,13 +721,14 @@ class Ts3jSessionClient : Ts3SessionClient {
         )
     }
 
-    private fun EncodedVoiceSource.toMicrophone(): Microphone {
-        val token = generation.currentToken()
-        return TalkspurtMicrophone(this) { error ->
+    private fun EncodedVoiceSource.toMicrophone(
+        token: Long,
+        client: Ts3jClientSocket,
+    ): Microphone =
+        TalkspurtMicrophone(this) { error ->
             logFailure("microphone source failed", error)
-            emitConnectionFailureStatus(token, error)
+            emitConnectionFailureStatus(token, error, expectedSocket = client)
         }
-    }
 
     private fun Throwable.conciseMessage(): String {
         var cursor: Throwable? = this
@@ -692,6 +769,7 @@ class Ts3jSessionClient : Ts3SessionClient {
 
     private companion object {
         const val CONNECT_TIMEOUT_MS = 10_000L
+        const val MAX_HANDSHAKE_WIDTH_RETRIES = 2
         const val REGULAR_CLIENT_TYPE = 0
         val TERMINAL_DISCONNECT_REASONS = setOf(4, 5)
     }

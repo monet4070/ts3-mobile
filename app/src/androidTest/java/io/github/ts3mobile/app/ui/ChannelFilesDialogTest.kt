@@ -80,7 +80,7 @@ class ChannelFilesDialogTest {
     @Test fun providerSaveWritesEveryByteAndRemovesPrivateStaging() {
         val bytes = ByteArray(32_769) { (it % 251).toByte() }
         val fixture = FakeFiles(payload = bytes)
-        val destination = Uri.parse("content://io.github.ts3mobile.app.test.backup-documents/${UUID.randomUUID()}")
+        val destination = newDestination()
         val resolver = rule.activity.contentResolver
         try {
             openWithDestination(fixture, destination)
@@ -94,7 +94,7 @@ class ChannelFilesDialogTest {
 
     @Test fun unwritableDocumentWarnsAboutTheTargetAndKeepsStagingForRetry() {
         val fixture = FakeFiles()
-        val rejectedDocument = Uri.parse("content://io.github.ts3mobile.app.test.backup-documents/unsupported-fixture")
+        val rejectedDocument = Uri.parse("content://$backupDocumentsAuthority/unsupported-fixture")
         openWithDestination(fixture, rejectedDocument)
         rule.onNodeWithText("The destination may contain an incomplete file.", substring = true).assertIsDisplayed()
         rule.onNodeWithText("Save verified file…").assertIsEnabled()
@@ -221,7 +221,10 @@ class ChannelFilesDialogTest {
                 }
         }
 
-    private fun newDestination(): Uri = Uri.parse("content://io.github.ts3mobile.app.test.backup-documents/${UUID.randomUUID()}")
+    private val backupDocumentsAuthority: String
+        get() = "${InstrumentationRegistry.getInstrumentation().context.packageName}.backup-documents"
+
+    private fun newDestination(): Uri = Uri.parse("content://$backupDocumentsAuthority/${UUID.randomUUID()}")
 
     private class FakeFiles(
         private val failure: ChannelFileFailure? = null,

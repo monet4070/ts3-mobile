@@ -572,6 +572,139 @@ class Ts3jSessionClientTest {
             client.close()
         }
 
+    @Test fun serverDisconnectDuringSubscribeRejectsAttemptWithoutPublishingConnected() {
+        for (reasonId in listOf(3, 4)) {
+            val socket = FakeSocket()
+            socket.beforeSubscription = { socket.fireDisconnected(reasonId) }
+            val listener = RecordingListener()
+            val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+
+            val thrown =
+                assertThrows(ServerDisconnectedDuringConnectException::class.java) {
+                    client.connect(testConfig(), Ts3IdentityCodec.generate(), listener)
+                }
+
+            assertEquals(reasonId != 4, thrown.isRetryableConnectionFailure())
+            assertTrue(listener.statuses.none { it.phase == ConnectionPhase.CONNECTED })
+            assertTrue(listener.statuses.none { it.phase == ConnectionPhase.ERROR })
+            val disconnected = listener.statuses.last()
+            assertEquals(ConnectionPhase.DISCONNECTED, disconnected.phase)
+            assertEquals(reasonId != 4, disconnected.retryable)
+            assertEquals(1, socket.closeCalls)
+            assertNull(client.transportConnected)
+            client.close()
+        }
+    }
+
+    @Test fun serverDisconnectDuringConnectedDeliveryIsReportedAfterConnected() {
+        val socket = FakeSocket()
+        val listener =
+            RecordingListener { status ->
+                if (status.phase == ConnectionPhase.CONNECTED) {
+                    socket.fireDisconnected(reasonId = 3)
+                }
+            }
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { socket })
+
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), listener)
+
+        assertEquals(
+            listOf(ConnectionPhase.CONNECTING, ConnectionPhase.CONNECTED, ConnectionPhase.DISCONNECTED),
+            listener.statuses.map(ConnectionStatus::phase),
+        )
+        assertEquals(1, socket.closeCalls)
+        assertNull(client.transportConnected)
+        client.close()
+    }
+
+    @Test fun transientTs3jHandshakeWidthFailuresRetryUpToThreeAttemptsAndEventuallySucceed() {
+        val first = FakeSocket(failureOnConnect = ts3jHandshakeWidthError())
+        val second = FakeSocket(failureOnConnect = ts3jHandshakeWidthError())
+        val third = FakeSocket()
+        val sockets = ConcurrentLinkedQueue(listOf(first, second, third))
+        val listener = RecordingListener()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { sockets.remove() })
+
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), listener)
+
+        assertTrue(sockets.isEmpty())
+        assertEquals(1, first.closeCalls)
+        assertEquals(1, second.closeCalls)
+        assertEquals(0, third.closeCalls)
+        assertEquals(listOf(ConnectionPhase.CONNECTING, ConnectionPhase.CONNECTED), listener.statuses.map(ConnectionStatus::phase))
+        assertEquals(true, client.transportConnected)
+        client.close()
+    }
+
+    @Test fun exhaustedTs3jHandshakeWidthRetriesCloseAllSocketsAndEmitSingleRetryableError() {
+        val created = mutableListOf<FakeSocket>()
+        val listener = RecordingListener()
+        val client =
+            Ts3jSessionClient(
+                Ts3jClientSocketFactory {
+                    FakeSocket(failureOnConnect = ts3jHandshakeWidthError()).also { created += it }
+                },
+            )
+
+        val thrown =
+            assertThrows(ArrayIndexOutOfBoundsException::class.java) {
+                client.connect(testConfig(), Ts3IdentityCodec.generate(), listener)
+            }
+
+        assertTrue(thrown.isTs3jHandshakeWidthFailure())
+        assertEquals(3, created.size)
+        assertTrue(created.all { it.closeCalls == 1 })
+        assertTrue(listener.statuses.none { it.phase == ConnectionPhase.CONNECTED })
+        assertEquals(1, listener.statuses.count { it.phase == ConnectionPhase.ERROR })
+        assertTrue(listener.statuses.last().retryable)
+        client.close()
+    }
+
+    @Test fun lateEventsVoiceAndDisconnectFromRetriedSocketCannotPolluteReplacementAttempt() {
+        val first = FakeSocket(failureOnConnect = ts3jHandshakeWidthError())
+        val second = FakeSocket()
+        val sockets = ConcurrentLinkedQueue(listOf(first, second))
+        val listener = RecordingListener()
+        val client = Ts3jSessionClient(Ts3jClientSocketFactory { sockets.remove() })
+
+        client.connect(testConfig(), Ts3IdentityCodec.generate(), listener)
+        second.fireClientJoin(clientId = 20, channelId = 1, nickname = "Active")
+
+        // Retried first socket emits late snapshot/text/poke/voice/disconnect/exception events.
+        first.fireClientJoin(clientId = 99, channelId = 2, nickname = "Ghost")
+        first.fireText("stale text")
+        first.firePoke("stale poke")
+        first.fireVoice(clientId = 99, packetId = 1)
+        first.fireWhisper(clientId = 99, packetId = 2)
+        first.fireDisconnected(reasonId = 4)
+        first.emitException(IllegalStateException("stale exception"))
+
+        second.fireClientJoin(clientId = 21, channelId = 1, nickname = "Active2")
+        second.fireVoice(clientId = 20, packetId = 3)
+        second.fireWhisper(clientId = 20, packetId = 4)
+
+        assertEquals(listOf(20, 21), listener.snapshots.last().participants.map(Ts3Participant::id))
+        assertTrue(listener.texts.isEmpty())
+        assertTrue(listener.pokes.isEmpty())
+        assertEquals(listOf(3 to false, 4 to true), listener.voiceFrames.map { it.packetId to it.isWhisper })
+        assertEquals(listOf(ConnectionPhase.CONNECTING, ConnectionPhase.CONNECTED), listener.statuses.map(ConnectionStatus::phase))
+        assertEquals(true, client.transportConnected)
+        client.close()
+    }
+
+    private fun ts3jHandshakeWidthError(): ArrayIndexOutOfBoundsException =
+        ArrayIndexOutOfBoundsException("Index 128 out of bounds for length 128").apply {
+            stackTrace =
+                arrayOf(
+                    StackTraceElement(
+                        "com.github.manevolent.ts3j.protocol.packet.handler.client.LocalClientHandlerConnecting",
+                        "handlePacket",
+                        "LocalClientHandlerConnecting.java",
+                        184,
+                    ),
+                )
+        }
+
     private class RecordingListener(
         private val onStatus: ((ConnectionStatus) -> Unit)? = null,
     ) : Ts3SessionListener {
@@ -579,6 +712,7 @@ class Ts3jSessionClientTest {
         val snapshots = mutableListOf<SessionSnapshot>()
         val texts = mutableListOf<Ts3TextEvent>()
         val pokes = mutableListOf<Ts3PokeEvent>()
+        val voiceFrames = mutableListOf<VoiceFrame>()
 
         override fun onPoke(event: Ts3PokeEvent) {
             pokes += event
@@ -597,7 +731,9 @@ class Ts3jSessionClientTest {
             snapshots += snapshot
         }
 
-        override fun onVoiceFrame(frame: VoiceFrame) = Unit
+        override fun onVoiceFrame(frame: VoiceFrame) {
+            voiceFrames += frame
+        }
     }
 
     private class MinimalSessionClient : Ts3SessionClient {
@@ -628,6 +764,8 @@ class Ts3jSessionClientTest {
         private val onBoundedDisconnect: (() -> Unit)? = null,
     ) : Ts3jClientSocket {
         private var exceptionHandler: ((Throwable) -> Unit)? = null
+        private var voiceHandler: ((PacketBody0Voice) -> Unit)? = null
+        private var whisperHandler: ((PacketBody1VoiceWhisper) -> Unit)? = null
         private var connected = false
         private var eventListener: TS3Listener? = null
         var textCalls = 0
@@ -690,9 +828,13 @@ class Ts3jSessionClientTest {
             exceptionHandler = handler
         }
 
-        override fun setVoiceHandler(handler: (PacketBody0Voice) -> Unit) = Unit
+        override fun setVoiceHandler(handler: (PacketBody0Voice) -> Unit) {
+            voiceHandler = handler
+        }
 
-        override fun setWhisperHandler(handler: (PacketBody1VoiceWhisper) -> Unit) = Unit
+        override fun setWhisperHandler(handler: (PacketBody1VoiceWhisper) -> Unit) {
+            whisperHandler = handler
+        }
 
         override fun addListener(listener: TS3Listener) {
             eventListener = listener
@@ -810,6 +952,34 @@ class Ts3jSessionClientTest {
         fun fireDisconnected(reasonId: Int) {
             eventListener?.onDisconnected(
                 DisconnectedEvent(mapOf("reasonid" to reasonId.toString())),
+            )
+        }
+
+        fun fireVoice(
+            clientId: Int,
+            packetId: Int,
+        ) {
+            voiceHandler?.invoke(
+                PacketBody0Voice(com.github.manevolent.ts3j.protocol.ProtocolRole.SERVER).apply {
+                    this.clientId = clientId
+                    this.packetId = packetId
+                    codecType = com.github.manevolent.ts3j.enums.CodecType.OPUS_VOICE
+                    codecData = byteArrayOf(1, 2, 3)
+                },
+            )
+        }
+
+        fun fireWhisper(
+            clientId: Int,
+            packetId: Int,
+        ) {
+            whisperHandler?.invoke(
+                PacketBody1VoiceWhisper(com.github.manevolent.ts3j.protocol.ProtocolRole.SERVER).apply {
+                    this.clientId = clientId
+                    this.packetId = packetId
+                    codecType = com.github.manevolent.ts3j.enums.CodecType.OPUS_VOICE
+                    codecData = byteArrayOf(4, 5, 6)
+                },
             )
         }
     }

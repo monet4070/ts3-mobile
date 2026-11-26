@@ -11,9 +11,26 @@ enum class ConnectionFailureCategory {
     CLONES_LIMIT,
 }
 
+/** Synthesized locally when the server closes a connection before the connect attempt finishes. */
+internal class ServerDisconnectedDuringConnectException(
+    val reasonId: Int,
+    val retryable: Boolean,
+) : IOException("Server closed the connection ($reasonId)")
+
 fun Throwable.connectionFailureCategory(): ConnectionFailureCategory = classifyConnectionFailure().category
 
 fun Throwable.isRetryableConnectionFailure(): Boolean = classifyConnectionFailure().retryable
+
+/** Matches the known upstream ts3j RSA handshake array-width exception that succeeds on retry. */
+internal fun Throwable.isTs3jHandshakeWidthFailure(): Boolean {
+    val visited = mutableSetOf<Throwable>()
+    var current: Throwable? = this
+    while (current != null && visited.add(current)) {
+        if (current.isDirectTs3jHandshakeWidthFailure()) return true
+        current = current.cause
+    }
+    return false
+}
 
 /** The first protocol error takes precedence over network wrappers and deeper causes. */
 private fun Throwable.classifyConnectionFailure(): ClassifiedFailure {
@@ -29,13 +46,29 @@ private fun Throwable.classifyConnectionFailure(): ClassifiedFailure {
             )
         }
         if (current is CommandException) return ClassifiedFailure(ConnectionFailureCategory.UNCLASSIFIED, false)
-        if (current is IOException || current is TimeoutException || current is InterruptedException) networkFailure = true
+        if (current is ServerDisconnectedDuringConnectException) {
+            return ClassifiedFailure(ConnectionFailureCategory.UNCLASSIFIED, current.retryable)
+        }
+        if (current is IOException ||
+            current is TimeoutException ||
+            current is InterruptedException ||
+            current.isDirectTs3jHandshakeWidthFailure()
+        ) {
+            networkFailure = true
+        }
         current = current.cause
     }
     return ClassifiedFailure(ConnectionFailureCategory.UNCLASSIFIED, networkFailure)
 }
 
+private fun Throwable.isDirectTs3jHandshakeWidthFailure(): Boolean =
+    this is ArrayIndexOutOfBoundsException &&
+        stackTrace.any { it.className.startsWith(TS3J_CONNECTING_HANDLER_CLASS) }
+
 private data class ClassifiedFailure(val category: ConnectionFailureCategory, val retryable: Boolean)
 
 /** Only this observed CommandProcessException text qualifies; no error code is guessed. */
 private const val CLONES_LIMIT_TEXT = "too many clones already connected"
+
+private const val TS3J_CONNECTING_HANDLER_CLASS =
+    "com.github.manevolent.ts3j.protocol.packet.handler.client.LocalClientHandlerConnecting"

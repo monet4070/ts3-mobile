@@ -138,7 +138,13 @@ internal class FloatingPttProbeService : Service() {
         }
         if (session.arm()) {
             try {
-                ServiceCompat.startForeground(this, NOTICE, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                val foregroundType =
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                    } else {
+                        0
+                    }
+                ServiceCompat.startForeground(this, NOTICE, notification(), foregroundType)
                 foreground = true
                 val type = if (Build.VERSION.SDK_INT >= 29) foregroundServiceType else 0
                 ProbeJournal.event("ready foreground_type=$type")

@@ -793,6 +793,88 @@ class ConnectionCoordinatorTest {
         assertEquals(listOf(false), host.connectionAttempts)
     }
 
+    @Test
+    fun nextConnectAfterDegradedExitFailsBoundedlyWhenMutexStaysHeldWithoutPreemptingAudioAndAllowsRetry() {
+        connectEstablished()
+        assertTrue(host.sessionMutex.tryLock())
+
+        coordinator.requestDisconnect()
+        // Exceed both the 2s exit budget and the 500ms exit cleanup mutex wait.
+        advance(2_600L)
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(0, host.playbackStops)
+        assertEquals(0, host.routingStops)
+
+        val captureStopsBeforeConnect = host.timeline.count { it == "stopMicrophone" }
+        val routingStartsBeforeConnect = host.routingStarts
+        val playbackStartsBeforeConnect = host.playbackStarts
+        val identityCallsBeforeConnect = host.identityCalls
+        val sessionConnectsBeforeConnect = host.session.connectCalls
+
+        assertTrue(coordinator.beginConnection(CONFIG))
+        assertEquals(ConnectionPhase.CONNECTING, host.state.value.status.phase)
+        advance(1_000L)
+        assertEquals(ConnectionPhase.CONNECTING, host.state.value.status.phase)
+
+        // Past the 2s sessionMutex acquire budget: must fail clearly without preempting the lock or audio.
+        advance(1_100L)
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        assertEquals(UserMessage.PreviousSessionBusy, host.state.value.statusMessage)
+        assertFalse(host.state.value.status.retryable)
+        assertEquals(IdentityUseState.IDLE, identityGate.state.value)
+        assertEquals(captureStopsBeforeConnect, host.timeline.count { it == "stopMicrophone" })
+        assertEquals(routingStartsBeforeConnect, host.routingStarts)
+        assertEquals(playbackStartsBeforeConnect, host.playbackStarts)
+        assertEquals(identityCallsBeforeConnect, host.identityCalls)
+        assertEquals(sessionConnectsBeforeConnect, host.session.connectCalls)
+        host.runPendingTeardowns()
+        assertTrue(host.stopSelfRequested)
+
+        // Once the stuck operation unlocks sessionMutex, lingering audio is reclaimed and manual retry succeeds.
+        host.sessionMutex.unlock()
+        host.advance()
+        assertEquals(1, host.playbackStops)
+        assertEquals(1, host.routingStops)
+
+        connectEstablished()
+        assertEquals(sessionConnectsBeforeConnect + 1, host.session.connectCalls)
+    }
+
+    @Test
+    fun degradedAudioReclaimFailureTransitionsToRetryableErrorAndPreservesPendingCleanup() {
+        connectEstablished()
+        assertTrue(host.sessionMutex.tryLock())
+
+        coordinator.requestDisconnect()
+        advance(2_600L)
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+
+        host.sessionMutex.unlock()
+        host.playbackStopAction = { error("fixture playback stop failure") }
+        val connectsBeforeRetry = host.session.connectCalls
+
+        assertTrue(coordinator.beginConnection(CONFIG))
+        host.advance()
+
+        assertFalse(host.sessionMutex.isLocked)
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        assertEquals("IllegalStateException", host.state.value.status.detail)
+        assertFalse(host.state.value.status.retryable)
+        assertEquals(IdentityUseState.IDLE, identityGate.state.value)
+        assertEquals(connectsBeforeRetry, host.session.connectCalls)
+        assertEquals(1, host.routingStops)
+        host.runPendingTeardowns()
+        assertTrue(host.stopSelfRequested)
+
+        // Deferred cleanup stays pending across failure, so clearing the playback fault lets the retry finish cleanup and connect.
+        host.playbackStopAction = {}
+        val stopsBeforeSecondRetry = host.playbackStops
+        connectEstablished()
+        assertEquals(stopsBeforeSecondRetry + 1, host.playbackStops)
+        assertEquals(2, host.routingStops)
+        assertEquals(connectsBeforeRetry + 1, host.session.connectCalls)
+    }
+
     private fun availableNetwork(generation: Long) =
         DefaultNetworkState(
             isAvailable = true,
@@ -1639,6 +1721,8 @@ class ConnectionCoordinatorTest {
         var stopSelfRequested = false
         var removeForegroundNotificationCalls = 0
         var playbackStops = 0
+        var playbackStarts = 0
+        var routingStarts = 0
         var routingStops = 0
         var microphoneStops = 0
         var manualSessionStarts = 0
@@ -1680,7 +1764,9 @@ class ConnectionCoordinatorTest {
             return identityAction()
         }
 
-        override fun startAudioRouting() = Unit
+        override fun startAudioRouting() {
+            routingStarts++
+        }
 
         override fun stopAudioRouting() {
             routingStops++
@@ -1688,7 +1774,9 @@ class ConnectionCoordinatorTest {
 
         override fun applySelectedPlaybackMuted() = Unit
 
-        override suspend fun startPlayback() = Unit
+        override suspend fun startPlayback() {
+            playbackStarts++
+        }
 
         override fun stopPlayback() {
             playbackStops++

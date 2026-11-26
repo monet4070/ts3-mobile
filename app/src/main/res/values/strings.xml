@@ -482,6 +482,7 @@
     <string name="channel_unknown">Channel unavailable</string>
     <string name="bookmark_open">Choose a saved server</string>
     <string name="status_identity_maintenance">Identity maintenance is in progress. Try connecting again when it finishes.</string>
+    <string name="status_previous_session_busy">The previous session is still finishing cleanup. Wait a moment and try connecting again.</string>
     <string name="identity_title">Identity and backups</string>
     <string name="identity_explanation">Back up this identity to keep your server permissions on another installation.</string>
     <string name="identity_unreadable">Identity data cannot be read. Keep the existing data; a verified external backup is needed for recovery.</string>

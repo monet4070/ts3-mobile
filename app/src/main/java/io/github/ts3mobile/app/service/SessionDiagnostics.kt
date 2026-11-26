@@ -67,6 +67,8 @@ internal class SessionDiagnostics(
         )
     }
 
+    suspend fun awaitReady() = writer.awaitLoaded()
+
     fun export(
         snapshot: DiagnosticsSnapshot,
         audio: String? = null,

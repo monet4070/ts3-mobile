@@ -53,3 +53,16 @@ fun TeamSpeakServiceState.withStatus(
     status: ConnectionStatus,
     message: UserMessage? = null,
 ): TeamSpeakServiceState = copy(status = status, statusMessage = message)
+
+/**
+ * Resets session-scoped fields after disconnect while preserving persistent user settings
+ * and process-wide diagnostics status.
+ */
+internal fun TeamSpeakServiceState.resetForDisconnected(diagnostics: DiagnosticsSnapshot): TeamSpeakServiceState =
+    TeamSpeakServiceState(
+        microphoneMode = microphoneMode,
+        microphoneSettings = microphoneSettings,
+        diagnostics = diagnostics,
+        audioDiagnostics = audioDiagnostics,
+        backgroundRuntime = backgroundRuntime,
+    )

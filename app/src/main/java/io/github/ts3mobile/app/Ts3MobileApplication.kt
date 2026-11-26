@@ -29,7 +29,10 @@ class Ts3MobileApplication : Application() {
     private val audioDiagnosticScope = CoroutineScope(SupervisorJob() + audioDiagnosticDispatcher)
 
     internal val sessionDiagnosticWriter by lazy {
-        SessionDiagnosticWriter(DiagnosticJournal(File(noBackupFilesDir, "session-events.tsv")), audioDiagnosticScope)
+        SessionDiagnosticWriter(
+            DiagnosticJournal(File(noBackupFilesDir, "session-events.tsv"), loadImmediately = false),
+            audioDiagnosticScope,
+        )
     }
 
     /**

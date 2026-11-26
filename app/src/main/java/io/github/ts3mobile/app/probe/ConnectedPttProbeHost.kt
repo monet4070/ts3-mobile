@@ -39,17 +39,30 @@ internal class ConnectedPttProbeHost(
     private var active: Press? = null
     private var registered = false
     private var watchingScreen = false
+    private var lastDetailsSnapshot: io.github.ts3mobile.protocol.SessionSnapshot? = null
+    private var lastDetailsMode: MicrophoneMode? = null
+    private var cachedDetails: ProbeOverlayDetails? = null
+    private var lastRenderKey: RenderKey? = null
     private val overlay =
         ProbeOverlay(
             context,
             ::press,
             ::release,
             stop = preparation::disarm,
-            details = { context.connectedPttOverlayDetails(state.value, preparation.mode) },
+            details = ::overlayDetails,
             windowLost = { main.post { if (registered) preparation.disarm() } },
             holdLabel = R.string.ptt_connected_hold,
             selectMode = ::selectMode,
         )
+
+    private data class RenderKey(
+        val snapshot: io.github.ts3mobile.protocol.SessionSnapshot,
+        val mode: MicrophoneMode?,
+        val label: Int,
+        val activeTone: Boolean,
+        val transmitting: Boolean,
+    )
+
     private val screenOff =
         object : BroadcastReceiver() {
             override fun onReceive(
@@ -115,23 +128,40 @@ internal class ConnectedPttProbeHost(
         power.isInteractive && !keyguard.isKeyguardLocked && Settings.canDrawOverlays(context) &&
             notifications.areNotificationsEnabled() && audio.mode != AudioManager.MODE_IN_CALL && audio.mode != AudioManager.MODE_RINGTONE
 
+    private fun overlayDetails(): ProbeOverlayDetails {
+        val currentState = state.value
+        val mode = preparation.mode
+        val existing = cachedDetails
+        if (existing != null && lastDetailsSnapshot === currentState.snapshot && lastDetailsMode == mode) {
+            return existing
+        }
+        return context.connectedPttOverlayDetails(currentState, mode).also { built ->
+            lastDetailsSnapshot = currentState.snapshot
+            lastDetailsMode = mode
+            cachedDetails = built
+        }
+    }
+
     private fun renderMicrophone() {
         val session = state.value
         val recording = session.actualAudioDevices.recording
         val requested = preparation.captureRequested
         val transmitting = requested && session.isTransmitting
-        overlay.renderLabel(
+        val mode = preparation.mode
+        val label =
             when {
                 transmitting -> R.string.ptt_connected_frames
                 recording && !requested -> R.string.ptt_overlay_releasing
-                recording && preparation.mode == MicrophoneMode.VOLUME_GATE -> R.string.ptt_connected_listening
+                recording && mode == MicrophoneMode.VOLUME_GATE -> R.string.ptt_connected_listening
                 recording -> R.string.ptt_connected_capture
                 requested -> R.string.ptt_overlay_starting
                 else -> R.string.ptt_overlay_idle
-            },
-            activeTone = recording || transmitting,
-            transmitting = transmitting,
-        )
+            }
+        val activeTone = recording || transmitting
+        val key = RenderKey(session.snapshot, mode, label, activeTone, transmitting)
+        if (key == lastRenderKey) return
+        lastRenderKey = key
+        overlay.renderLabel(label, activeTone = activeTone, transmitting = transmitting)
     }
 
     private fun selectMode(mode: MicrophoneMode) {
@@ -167,6 +197,10 @@ internal class ConnectedPttProbeHost(
     private fun close() {
         main.removeCallbacksAndMessages(null)
         overlay.hide()
+        cachedDetails = null
+        lastDetailsSnapshot = null
+        lastDetailsMode = null
+        lastRenderKey = null
         if (watchingScreen) context.unregisterReceiver(screenOff)
         if (registered) owner.application.unregisterActivityLifecycleCallbacks(this)
         registered = false

@@ -15,6 +15,10 @@ internal class BluetoothPlaybackGuard {
     @Synchronized
     fun expectsBluetooth(): Boolean = required || bluetoothSeen
 
+    /** Auto system routes and Bluetooth-protected routes must sample live to detect silent transitions. */
+    @Synchronized
+    fun requiresLiveRouteCheck(): Boolean = required || bluetoothSeen || routeId == SYSTEM_AUDIO_ROUTE_ID
+
     @Synchronized
     fun acknowledgeSafetyMute() {
         if (!required) bluetoothSeen = false

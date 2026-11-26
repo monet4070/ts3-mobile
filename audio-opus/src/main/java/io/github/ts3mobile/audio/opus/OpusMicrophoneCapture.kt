@@ -57,9 +57,14 @@ class OpusMicrophoneCapture private constructor(
     val actualInputType: Int? get() = control?.takeIf { it.running.get() }?.routedDeviceType
 
     val isInputSilenced: Boolean
-        get() =
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                resources?.record?.activeRecordingConfiguration?.isClientSilenced == true
+        get() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+            return synchronized(lifecycleLock) {
+                if (control?.running?.get() != true) return@synchronized false
+                val active = resources?.takeIf { !it.released } ?: return@synchronized false
+                runCatching { active.record.activeRecordingConfiguration?.isClientSilenced == true }.getOrDefault(false)
+            }
+        }
 
     override fun configure(
         settings: MicrophoneSettings,
@@ -303,18 +308,40 @@ class OpusMicrophoneCapture private constructor(
     }
 
     private fun publishState(current: CaptureControl) {
+        if (control !== current) return
+        val running = current.running.get()
+        val capturing = resources?.released == false
+        val transmitting = running && current.frames.isTransmitting()
+        val echo = if (running) current.echoState else EchoCancellationState.PENDING
+        val deviceType = if (running) current.routedDeviceType else null
+        val previous = current.lastState
+        if (previous != null &&
+            previous.capturing == capturing &&
+            previous.transmitting == transmitting &&
+            previous.echoCancellation == echo &&
+            previous.recording == running &&
+            current.lastPublishedDeviceType == deviceType
+        ) {
+            return
+        }
         synchronized(lifecycleLock) {
             if (control !== current) return
+            val lockedRunning = current.running.get()
+            val lockedDeviceType = if (lockedRunning) current.routedDeviceType else null
             val snapshot =
                 MicrophoneCaptureState(
                     capturing = resources?.released == false,
-                    transmitting = current.running.get() && current.frames.isTransmitting(),
-                    echoCancellation = if (current.running.get()) current.echoState else EchoCancellationState.PENDING,
-                    recording = current.running.get(),
-                    actualInputDevice = if (current.running.get()) actualAudioDevice(current.routedDeviceType) else null,
+                    transmitting = lockedRunning && current.frames.isTransmitting(),
+                    echoCancellation = if (lockedRunning) current.echoState else EchoCancellationState.PENDING,
+                    recording = lockedRunning,
+                    actualInputDevice = actualAudioDevice(lockedDeviceType),
                 )
-            if (snapshot == current.lastState) return
+            if (snapshot == current.lastState) {
+                current.lastPublishedDeviceType = lockedDeviceType
+                return
+            }
             current.lastState = snapshot
+            current.lastPublishedDeviceType = lockedDeviceType
             onStateChanged(snapshot)
         }
     }
@@ -327,11 +354,14 @@ class OpusMicrophoneCapture private constructor(
         val routeRevision = AtomicLong()
 
         @Volatile var echoState = EchoCancellationState.PENDING
-        var lastState: MicrophoneCaptureState? = null
+
+        @Volatile var lastState: MicrophoneCaptureState? = null
         lateinit var routingListener: AudioRouting.OnRoutingChangedListener
         var routedDeviceId: Int? = null
 
         @Volatile var routedDeviceType: Int? = null
+
+        @Volatile var lastPublishedDeviceType: Int? = null
     }
 
     companion object {

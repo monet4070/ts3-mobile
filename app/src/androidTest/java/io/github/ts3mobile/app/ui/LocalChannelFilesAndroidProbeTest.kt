@@ -245,7 +245,7 @@ class LocalChannelFilesAndroidProbeTest {
     }
 
     private fun stagedBytes(): Long =
-        rule.activity.cacheDir.listFiles { file -> file.name.startsWith("ts3-download-") }?.sumOf { it.length() } ?: 0L
+        rule.activity.testVerifiedFileStagingDir().listFiles { file -> file.name.startsWith("ts3-download-") }?.sumOf { it.length() } ?: 0L
 
     private fun AudioReceiveDiagnostics.count(counter: AudioReceiveCounter): Long = counters[counter] ?: 0L
 
