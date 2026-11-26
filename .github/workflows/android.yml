@@ -38,6 +38,9 @@ jobs:
         shell: pwsh
         run: ./tools/check-repository-privacy.ps1
 
+      - name: Test Python release tools
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py'
+
       - name: Set up JDK 17
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -159,7 +162,6 @@ jobs:
           sha256sum -c "$reports/apk.sha256"
           pwsh -NoProfile -File ./tools/check-release-identity.ps1 -DeviceSerial emulator-5554 -SdkRoot "$ANDROID_HOME" -ApkPath "$fallback" | tee "$reports/art-identity.log"
           python3 tools/check-release-codec.py --device emulator-5554 --sdk "$ANDROID_HOME" --apk "$fallback" | tee "$reports/art-opus.log"
-          python3 -m unittest discover -s tools/tests -p 'test_*.py'
           ./gradlew :audio-opus:connectedDebugAndroidTest --max-workers=2 \
             -Pandroid.testInstrumentationRunnerArguments.notAnnotation=io.github.ts3mobile.audio.opus.ManualInstrumentation
           python3 - <<'PY'

@@ -5,7 +5,7 @@ used milestone naming. After 1.0.0, patch versions are intended for compatible f
 and minor versions for compatible features; Android versionCode increases for
 each distributed update.
 
-## Unreleased — Bookmark Hotfix
+## Unreleased — 1.3.0 Candidate (versionCode 17)
 
 - Changing a bookmark's host or port clears both saved passwords and the old default
   channel from the draft. Changing only the default channel clears its password, not
@@ -13,11 +13,9 @@ each distributed update.
 - If you previously edited a bookmark's address and connected to an untrusted server,
   check the saved settings and ask the relevant administrator to rotate passwords if needed.
   This fix does not undo previous authentication attempts.
-- 收藏热修：修改地址或端口会清空草稿中的两种旧密码和默认频道；只改频道则只清频道密码。
+- 收藏凭据隔离：修改地址或端口会清空草稿中的两种旧密码和默认频道；只改频道则只清频道密码。
   若曾改址并连到不受信任的服务器，请核对收藏，必要时联系管理员更换相关口令。
   此修复不会撤回历史认证，也不会批量更改既有收藏或独立连接表单。
-
-## Unreleased — 1.3.0 Candidate (versionCode 17)
 
 - Channel files and chat attachments support explicit, read-only downloads. The Users list shows avatars in the existing leading tile and opens a preview on tap.
   Channel member rows keep their voice status icons without an avatar action.

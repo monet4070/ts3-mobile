@@ -117,7 +117,9 @@ identity crash harness still runs separately in CI.
 
 Notification tests that publish a card clear and wait for their own ID before
 and after execution. Restore any changed global state (DND, IME, overlay or
-accessibility settings) even on failure. Run tests that revoke runtime
+accessibility settings) even on failure. Tests that write through the real
+connection settings vault restore the original value or absence through the
+same DataStore; do not delete open DataStore files. Run tests that revoke runtime
 permissions or modify persistent channel policy on a dedicated, freshly
 prepared emulator: revocation can terminate the app and instrumentation.
 

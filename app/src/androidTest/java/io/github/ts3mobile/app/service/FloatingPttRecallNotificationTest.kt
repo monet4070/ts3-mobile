@@ -39,7 +39,6 @@ import org.junit.Test
 class FloatingPttRecallNotificationTest {
     @get:Rule val rule = createEmptyComposeRule()
 
-    @get:Rule val notifications = NotificationCleanup(SessionNotifications.NOTIFICATION_ID)
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
     private val automation = instrumentation.uiAutomation

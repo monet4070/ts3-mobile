@@ -12,12 +12,19 @@ class NotificationCleanup(private val notificationId: Int) : ExternalResource() 
 
     private fun clear() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val manager = context.getSystemService(NotificationManager::class.java)
-        manager.cancel(notificationId)
-        val deadline = SystemClock.uptimeMillis() + 5_000
-        while (manager.activeNotifications.any { it.id == notificationId }) {
-            check(SystemClock.uptimeMillis() < deadline) { "Fixture notification $notificationId did not clear" }
-            SystemClock.sleep(20)
-        }
+        context.getSystemService(NotificationManager::class.java).cancelFixtureNotification(notificationId)
+    }
+}
+
+internal fun NotificationManager.cancelFixtureNotification(notificationId: Int) {
+    cancel(notificationId)
+    awaitFixtureNotificationRemoval(notificationId)
+}
+
+internal fun NotificationManager.awaitFixtureNotificationRemoval(notificationId: Int) {
+    val deadline = SystemClock.uptimeMillis() + 5_000
+    while (activeNotifications.any { it.id == notificationId }) {
+        check(SystemClock.uptimeMillis() < deadline) { "Fixture notification $notificationId did not clear" }
+        SystemClock.sleep(20)
     }
 }

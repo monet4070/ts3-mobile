@@ -19,6 +19,8 @@ import io.github.ts3mobile.app.settings.RememberedConnection
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
@@ -34,8 +36,7 @@ class ConnectionMemoryTest {
     }
 
     @Test fun editedDetailsAreSavedAndFilledAgainWithoutAConnectionAttempt(): Unit =
-        runBlocking {
-            val context = InstrumentationRegistry.getInstrumentation().targetContext
+        withRestoredConnectionSettings { vault ->
             val fixture = RememberedConnection("edited.example.com", "10012", "Edited Alex", "edited-fixture-password")
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 rule.waitForIdle()
@@ -45,7 +46,7 @@ class ConnectionMemoryTest {
                 rule.onNodeWithText(
                     scenario.text(R.string.field_server_password),
                 ).performScrollTo().performTextReplacement(fixture.password)
-                rule.waitUntil(5_000L) { runBlocking { ConnectionSettingsVault(context).read() == fixture } }
+                rule.waitUntil(5_000L) { runBlocking { vault.read() == fixture } }
             }
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 rule.waitUntil(5_000L) {
@@ -62,10 +63,10 @@ class ConnectionMemoryTest {
         }
 
     @Test fun encryptedDetailsSurviveANewVaultAndANewActivityWithoutConnecting() =
-        runBlocking {
+        withRestoredConnectionSettings { vault ->
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             val fixture = RememberedConnection("saved.example.com", "10011", "Remembered Alex", "fixture-only-password")
-            ConnectionSettingsVault(context).write(fixture)
+            vault.write(fixture)
             assertEquals(fixture, ConnectionSettingsVault(context).read())
             val file = File(context.filesDir, "datastore/ts3_connection_settings.preferences_pb")
             val disk = file.readBytes().toString(Charsets.ISO_8859_1)
@@ -84,6 +85,35 @@ class ConnectionMemoryTest {
                         fixture.nickname,
                     ).assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(fixture.nickname)))
                 }
+            }
+        }
+
+    @Test fun earlierSettingsAreRestoredAfterAFixtureFailure() =
+        withRestoredConnectionSettings { vault ->
+            val original = RememberedConnection("original.example.invalid", "10013", "Original Alex", "original-fixture-password")
+            val replacement = original.copy(host = "replacement.example.invalid")
+            val fixtureFailure = IllegalStateException("fixture failure")
+            vault.write(original)
+            val failure =
+                assertThrows(IllegalStateException::class.java) {
+                    withRestoredConnectionSettings { innerVault ->
+                        innerVault.write(replacement)
+                        throw fixtureFailure
+                    }
+                }
+            assertEquals(fixtureFailure, failure)
+            assertEquals(original, vault.read())
+        }
+
+    private fun withRestoredConnectionSettings(test: suspend (ConnectionSettingsVault) -> Unit) =
+        runBlocking {
+            val vault = ConnectionSettingsVault(InstrumentationRegistry.getInstrumentation().targetContext)
+            val original = vault.read()
+            try {
+                test(vault)
+            } finally {
+                if (original == null) vault.clear() else vault.write(original)
+                assertTrue("Connection settings were not restored", original == vault.read())
             }
         }
 }

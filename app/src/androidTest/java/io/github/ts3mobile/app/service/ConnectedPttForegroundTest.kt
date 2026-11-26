@@ -23,8 +23,6 @@ import org.junit.Test
 class ConnectedPttForegroundTest {
     @get:Rule val rule = createEmptyComposeRule()
 
-    @get:Rule val notifications = NotificationCleanup(SessionNotifications.NOTIFICATION_ID)
-
     @Test fun visibleConnectedSessionCanPrepareMicrophoneTypeWithoutRecordingAndKeepListeningOnDisarm() {
         assumeTrue(Build.VERSION.SDK_INT >= 34)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
