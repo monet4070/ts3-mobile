@@ -65,6 +65,18 @@ each distributed update.
 - Voice playback adds a read-only actual-device panel and redacted timing diagnostics.
   Exact UDP timing requires the separate local TS3j QA build.
 - 语音播放添加实际设备面板和脱敏计时诊断；精确 UDP 计时仅在单独的本地 TS3j 验证构建中可用。
+- Harden session exit/connect concurrency, preserve user microphone settings and diagnostics
+  across user disconnects, bound degraded exit reclamation, and safely recover from stale
+  or failed cleanup without leaving the connection stuck.
+- 加固会话退出与连接并发竞争：断开保留用户麦克风参数与诊断状态，退出预算耗尽时安全回收资源并从失败中恢复，避免新连接卡死在连接中或被过期失败误关。
+- Detect unnotified Bluetooth auto-route fallbacks continuously at output boundaries,
+  retire idle delayed Bluetooth tracks cleanly, and bound stale-packet eviction to 360 ms
+  without blocking the main thread on local microphone test cleanup or diagnostics I/O.
+- 持续检测无回调的蓝牙自动回退输出并安全静音，及时回收延迟就绪后已结束发言的音轨，将过期媒体淘汰收紧至 360 ms，并将本地试麦清理与诊断读取移出主线程。
+- Accept empty, wildcard, and dual-stack multi-address download offers via offline numeric
+  validation against the active peer address; add bounded handshake width retries (within
+  the pinned `ts3mobile-1` dependency) and include playback and update DataStores in backup exclusions.
+- 通过离线纯数值校验兼容服务端下发的空值、通配与双栈多地址文件传输字段；为已识别的握手定宽异常补充有界重试缓解，并在备份排除规则中补齐播放与更新配置存储。
 
 ## 1.2.0 — 2026-11-20
 

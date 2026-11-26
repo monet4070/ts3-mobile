@@ -284,7 +284,7 @@ app/src/main (Android UI / ForegroundService / DataStore / Keystore)
 #### [AUD-005] 频道文件与头像/图标下载拒绝标准 TS3 服务器常见的空或通配 `ip=` 响应，阻断正常文件与图片获取
 
 - **ID**：`AUD-005`
-- **标题**：`Ts3jChannelFileReplies` / `Ts3jChannelFileTcp` 未兼容服务器返回 `ip=`、`ip=0.0.0.0` 或多地址 `ip=0.0.0.0, ::` 的常规 `notifystartdownload` 报文
+- **标题**：`Ts3jChannelFileReplies` / `Ts3jChannelFileTcp` 未兼容服务器返回 `ip=`、全零 IPv4 通配地址或双栈多地址列表的常规 `notifystartdownload` 报文
 - **严重级别**：`P2`
 - **置信度**：`Confirmed — Reproduced`
 - **所属模块**：`ts3-protocol` (`io.github.ts3mobile.protocol`)
@@ -292,23 +292,23 @@ app/src/main (Android UI / ForegroundService / DataStore / Keystore)
   - [Ts3jChannelFileReplies.kt#L120-L129](file:///Users/monet/Documents/TS3-mobile/ts3-protocol/src/main/kotlin/io/github/ts3mobile/protocol/Ts3jChannelFileReplies.kt#L120-L129)
   - [Ts3jChannelFileTcp.kt#L55-L56](file:///Users/monet/Documents/TS3-mobile/ts3-protocol/src/main/kotlin/io/github/ts3mobile/protocol/Ts3jChannelFileTcp.kt#L55-L56)
 - **问题归属**：TS3-Mobile 一方协议解析与校验缺陷
-- **问题描述**：客户端为防止重定向 SSRF 攻击，在 `Ts3jChannelFileTcp.receive()` 中约束 `if (offer.address != null && offer.address != peer.hostAddress) throw FileReplyFailure(INVALID_RESPONSE)`，且直接原样保存 `fields["ip"]` 到 `Ts3DownloadOffer.address`。然而按照 TeamSpeak 3 Server 默认配置（`filetransfer_ip=0.0.0.0` 或 `0.0.0.0, ::` 或为空 `ip=` 省略具体接口），服务端在 `notifystartdownload` 中可能返回空字符串 `ip=`（`fields["ip"]` 是 `""` 而非 `null`）、未指定地址 `"0.0.0.0"`、`"::"`，或逗号分隔的多绑定地址列表 `"0.0.0.0, ::"`；此时客户端仍然连向本会话已连接的 `peer`，却会在握手检查处全部直接报错 `INVALID_RESPONSE` 拒绝下载。
+- **问题描述**：客户端为防止重定向 SSRF 攻击，在 `Ts3jChannelFileTcp.receive()` 中约束 `if (offer.address != null && offer.address != peer.hostAddress) throw FileReplyFailure(INVALID_RESPONSE)`，且直接原样保存 `fields["ip"]` 到 `Ts3DownloadOffer.address`。然而按照 TeamSpeak 3 Server 默认配置（`filetransfer_ip` 为全零 IPv4 通配地址、通配双栈列表或空值 `ip=` 省略具体接口），服务端在 `notifystartdownload` 中可能返回空字符串 `ip=`（`fields["ip"]` 是 `""` 而非 `null`）、IPv4 未指定通配地址、`"::"`，或逗号分隔的双栈绑定地址列表；此时客户端仍然连向本会话已连接的 `peer`，却会在握手检查处全部直接报错 `INVALID_RESPONSE` 拒绝下载。
 - **复现路径或触发时序**：
-  1. 连接使用默认 `filetransfer_ip=0.0.0.0` / `ip=` / 双栈绑定的公网或内网（含经过端口映射/NAT/域名的）TS3 服务器（注：`1.3.0` Release 已默认开启 `channel_files_probe_enabled=true`）；
+  1. 连接使用默认通配 `filetransfer_ip` / `ip=` / 双栈绑定的公网或内网（含经过端口映射/NAT/域名的）TS3 服务器（注：`1.3.0` Release 已默认开启 `channel_files_probe_enabled=true`）；
   2. 打开频道文件、点击聊天文件附件，或在“用户”页/频道列表加载服务端头像及图标（`downloadImage` 同走该校验）；
-  3. 服务端响应 `notifystartdownload ... port=30033 size=... ftkey=... proto=1 ip=0.0.0.0`（或 `ip=` / `ip=0.0.0.0,\s::`）；
-  4. `Ts3jChannelFileTcp.receive()` 检查 `"0.0.0.0" != peer.hostAddress`（如 `"198.51.100.10"`），直接抛出 `INVALID_RESPONSE`，导致页面报错无法下载。
-- **影响分析**：**直接破坏 `1.3.0` 新增三大可见特性（频道文件下载、聊天附件下载、头像与图标预览）在常规/默认配置 TS3 服务器上的可用性**；此前仅用单地址显式回环 `127.0.0.1` 夹具验收掩盖了该真实服务端字段形态。
-- **根因分析**：作者意图防止恶意服务器下发跨服第三方 IP 进行 SSRF（如把 `127.0.0.1` 会话跳去局域网另一主机），但直接做了朴素字符串全等校验，未区分“空值 / 服务端通配监听占位符（`""`、`0.0.0.0`、`::`、或逗号列表中不含恶意第三方的通配符）”与“实际指向其它单播目标 IP”。
+  3. 服务端响应 `notifystartdownload ... port=30033 size=... ftkey=... proto=1` 且携带空 `ip=`、IPv4 全零通配地址或通配双栈列表；
+  4. `Ts3jChannelFileTcp.receive()` 将通配占位符与已解析对端地址 `peer.hostAddress` 直接做全等比较，不等则直接抛出 `INVALID_RESPONSE`，导致页面报错无法下载。
+- **影响分析**：**直接破坏 `1.3.0` 新增三大可见特性（频道文件下载、聊天附件下载、头像与图标预览）在常规/默认配置 TS3 服务器上的可用性**；此前仅用单地址显式 IPv4 回环夹具验收掩盖了该真实服务端字段形态。
+- **根因分析**：作者意图防止恶意服务器下发跨服第三方 IP 进行 SSRF（如把本地回环会话跳去另一主机），但直接做了朴素字符串全等校验，未区分“空值 / 服务端通配监听占位符（`""`、全零 IPv4 通配地址、`::`、或逗号列表中不含恶意第三方的通配符）”与“实际指向其它单播目标 IP”。
 - **代码证据**：
-  - [Ts3jChannelFileReplies.kt#L128](file:///Users/monet/Documents/TS3-mobile/ts3-protocol/src/main/kotlin/io/github/ts3mobile/protocol/Ts3jChannelFileReplies.kt#L128)：`fields["ip"]` 在 `ip=` 时返回空串 `""`；在双栈时经 ts3j `Ts3String.unescape` 成为 `"0.0.0.0, ::"`。
+  - [Ts3jChannelFileReplies.kt#L128](file:///Users/monet/Documents/TS3-mobile/ts3-protocol/src/main/kotlin/io/github/ts3mobile/protocol/Ts3jChannelFileReplies.kt#L128)：`fields["ip"]` 在 `ip=` 时返回空串 `""`；在双栈时经 ts3j `Ts3String.unescape` 成为逗号分隔的通配 IPv4 与 `::` 字符串。
   - [Ts3jChannelFileTcp.kt#L56](file:///Users/monet/Documents/TS3-mobile/ts3-protocol/src/main/kotlin/io/github/ts3mobile/protocol/Ts3jChannelFileTcp.kt#L56)：`if (offer.address != null && offer.address != peer.hostAddress) throw FileReplyFailure(ChannelFileFailure.INVALID_RESPONSE)`（另同路径 `Ts3jChannelFiles.kt:162` 硬编码 `cpw=""` 见 `RISK-005`）。
 - **复现/验证证据**：
-  - 本次已通过 `jshell` 核对真实 `ts3j` `SingleCommand.parse` 返回 `ip=""`、`ip="0.0.0.0"`、`ip="0.0.0.0, ::"`；
+  - 本次已通过 `jshell` 核对真实 `ts3j` `SingleCommand.parse` 返回空 `ip=""`、IPv4 全零通配地址以及双栈通配组合列表；
   - 通过 `/tmp/ts3_audit_repro/AuditRepro.kt` 的 `repro7_channelFilesRejectsEmptyAndWildcardIp()` 实测全部 3 种格式：均返回 `Failed(reason=INVALID_RESPONSE)`。
-- **建议修复方案**：保持“TCP 目标只允许已连接 `peer` 地址（不按 `offer.address` 重定向连接）”的安全边界不变，并将 `offer.address` 校验规则修改为：拆解空白及逗号分隔条目并过滤通配占位地址（`""`、`0.0.0.0`、`::`、`[::]` / `InetAddress.getByName(token).isAnyLocalAddress` 规范化后判等，且注意避免对域名做 DNS 解析），只有当报文给出具体非通配单播 IP 且其中**不包含**标准化后的 `peer` 地址时才拒收 `INVALID_RESPONSE`（例如 NAT 后服务器若下发自身内网 IP 或多网卡绑定列表需先明确安全策略；至少对空串和全零通配地址/列表放行并直连 `peer`）。
-- **修复风险与兼容性注意**：严格避免在解析 `offer.address` 时触发阻塞式 DNS 解析（使用数值字面量解析或无 DNS 解析方式校验 IP 字面量）；保留对明确异机 IP（如 `127.0.0.2` 测试用例）的拒绝断言不倒退。
-- **回归测试建议**：在 `Ts3jChannelFilesTest` 与 `ServerImagesTest` 中补充 `ip=""`、`ip="0.0.0.0"`、`ip="::"`、`ip="0.0.0.0, ::"` 与 `ip="${peer.hostAddress}, ::"` 通过用例，继续保留 `127.0.0.2` 与非法跨址拒绝用例。
+- **建议修复方案**：保持“TCP 目标只允许已连接 `peer` 地址（不按 `offer.address` 重定向连接）”的安全边界不变，并将 `offer.address` 校验规则修改为：拆解空白及逗号分隔条目并过滤通配占位地址（`""`、全零 IPv4 通配地址、`::`、`[::]` / `InetAddress` 通配地址规范化后判等，且注意避免对域名做 DNS 解析），只有当报文给出具体非通配单播 IP 且其中**不包含**标准化后的 `peer` 地址时才拒收 `INVALID_RESPONSE`（例如 NAT 后服务器若下发自身内网 IP 或多网卡绑定列表需先明确安全策略；至少对空串和全零通配地址/列表放行并直连 `peer`）。
+- **修复风险与兼容性注意**：严格避免在解析 `offer.address` 时触发阻塞式 DNS 解析（使用数值字面量解析或无 DNS 解析方式校验 IP 字面量）；保留对明确异机 IPv4 回环地址（`byteArrayOf(127, 0, 0, 2)`）的拒绝断言不倒退。
+- **回归测试建议**：在 `Ts3jChannelFilesTest` 与 `ServerImagesTest` 中补充空 `ip=`、全零 IPv4 通配地址、`::`、通配双栈列表与 `${peer.hostAddress}, ::` 通过用例，继续保留异机回环地址与非法跨址拒绝用例。
 - **关联历史/ADR**：[CHANNEL_FILES_PROBE_2026-11-24_ZH.md](file:///Users/monet/Documents/TS3-mobile/docs/testing/CHANNEL_FILES_PROBE_2026-11-24_ZH.md)。
 
 ---
@@ -686,7 +686,7 @@ app/src/main (Android UI / ForegroundService / DataStore / Keystore)
 | **7. 性能与资源效率** | **6.5** *(低置信)* | 受限于无真机 Perfetto / Battery Historian 实测，仅能指出静态高耗点（`AUD-008` 100 Hz 枚举+IPC、`AUD-011` 常驻 50 Hz 忙等、`AUD-013` 1 Hz/10 Hz 轮询、`AUD-014` 主线程同步读盘）。实机热节流表现**未验证**。 |
 | **8. 安全性与隐私合规** | **8.0** | 一方隐私、备份容器 AES-GCM + AAD、Keystore 单用途封装、路径/尺寸校验与日志零泄漏处于高水准；失分主要是固定外部 `ts3j` 库采用 `java.util.Random`、缺服务端公钥固定（`AUD-012`）与老旧传递库。 |
 | **9. 错误处理与可观测性** | **7.5** | 错误分类清晰（尤其是网络/拒绝/麦克风权限区分与闭集隐私安全诊断归档），但不应把未分类的 `RuntimeException` 一刀切算不可重连（`AUD-004`）。 |
-| **10. 自动化测试与 CI 可信度** | **8.0** | 939 项离线 JVM 单测 + 34 项 Python 安全/打包测试 + 118 文件仪器测试构成极其扎实的离线防护网；缺口在于对复杂并发跨方法空窗（`AUD-001`/`002`/`009`）以及真实世界默认 TS3 `ip=0.0.0.0` 报文（`AUD-005`）缺乏测试向量。 |
+| **10. 自动化测试与 CI 可信度** | **8.0** | 939 项离线 JVM 单测 + 34 项 Python 安全/打包测试 + 118 文件仪器测试构成极其扎实的离线防护网；缺口在于对复杂并发跨方法空窗（`AUD-001`/`002`/`009`）以及真实世界默认 TS3 全零通配 `ip=` 报文（`AUD-005`）缺乏测试向量。 |
 | **11. 文档一致性与发布工程成熟度** | **9.0** | `ADR`、`CANDIDATE_STATUS`、测试探针记录、Strict Lockfile 与诚实列出未验收门禁的态度极专业透明，无夸大包装。 |
 
 ---
@@ -712,7 +712,7 @@ app/src/main (Android UI / ForegroundService / DataStore / Keystore)
    - **验证要求**：固定新版本 `ts3j` 后复跑所有探针及真机实服连接验证。
 
 ### Stage B：核心音频、蓝牙与文件可用性修复（P2 重点——强烈建议随 1.3.0 闭合）
-5. **修复 `AUD-005`（兼容 TS3 服务器 `ip=` / `0.0.0.0` / `::` 文件传输下发）** — 高优先建议立即随 `1.3.0` 合入，否则标准服务器全量 `channel_files_probe_enabled=true` 后文件、附件、头像均不可用。
+5. **修复 `AUD-005`（兼容 TS3 服务器空 `ip=` / 全零 IPv4 通配地址 / `::` 文件传输下发）** — 高优先建议立即随 `1.3.0` 合入，否则标准服务器全量 `channel_files_probe_enabled=true` 后文件、附件、头像均不可用。
 6. **修复 `AUD-006`（`PlaybackSession` 蓝牙延迟就绪后及时回收空闲 `AudioTrack`）** — 局部修改，附加强断言验证既不破坏 5 s 路由探测也不再在静音期轮询与泄漏音轨。
 7. **修复 `AUD-007`（解除 `VoiceReceiveQueue` 60 ms 过期导致的整客户端 `budget.invalidate` 级联失效）** — 局部修改，确保仅释放超时单包并验证重缓冲指标稳步改善。
 8. **修复 `AUD-008`（解耦 `AndroidPlaybackOutput.write()` 10 ms 热路径设备枚举与无条件 `setVolume` IPC）** — 局部架构调整，须经蓝牙异常断连实机测试与 Perfetto 验证安全不降级。
@@ -735,7 +735,7 @@ app/src/main (Android UI / ForegroundService / DataStore / Keystore)
 
 | 使用场景 | 就绪度评估 | 核心依据与障碍 |
 | --- | :---: | --- |
-| **1. 日常 Wi-Fi 语音开黑** | **有条件可用** | 基础编解码与多端状态机稳健，但面临约 1/256 握手越界（`AUD-004`）、点击断开再重连即被洗掉用户自定义麦降噪/门限（`AUD-003`）、极低概率断连瞬间的进程崩溃（`AUD-001`）以及频道文件在标准 `ip=0.0.0.0` 服务器全线报错（`AUD-005`）。 |
+| **1. 日常 Wi-Fi 语音开黑** | **有条件可用** | 基础编解码与多端状态机稳健，但面临约 1/256 握手越界（`AUD-004`）、点击断开再重连即被洗掉用户自定义麦降噪/门限（`AUD-003`）、极低概率断连瞬间的进程崩溃（`AUD-001`）以及频道文件在标准通配 `filetransfer_ip` 服务器全线报错（`AUD-005`）。 |
 | **2. 移动网络切换 / 弱网环境** | **尚未就绪** | 自动重连期遭遇服务端断流可能卡入永久僵尸态（`AUD-002`）或被握手 AIOOBE 误杀终身断重连（`AUD-004`）；无抖动与无上限的重连循环会在长时间弱网耗电（`AUD-015` / `RISK-003`）。 |
 | **3. 蓝牙耳机 + 游戏伴随（ADR-0039）** | **尚未完全就绪** | 虽在路由切换与隐私静音逻辑上考虑周全，但存在短发言后永久泄漏播放中 `AudioTrack`（`AUD-006`）、10 ms 热路径持续设备枚举与 IPC（`AUD-008`）、慢切轨易致级联重缓冲（`AUD-007`），且本版本尚未完成物理真机蓝牙/LE Audio 组合验收（`RISK-002`）。 |
 | **4. 后台长时挂机与锁屏（60+ 分钟）** | **未知 / 缺真机数据** | 常驻 `TS3J AudioThread` 即使纯听也在 50 Hz 唤醒自旋（`AUD-011`），缺少 `WifiLock` 与系统级 OEM 策略对后台 UDP 保活的影响需真实手机长测验证（`RISK-003` / `RISK-004`）。 |
@@ -747,5 +747,5 @@ app/src/main (Android UI / ForegroundService / DataStore / Keystore)
 - **最终判定：`Conditionally Ready`（当前 Commit `codex/release-1.3.0 @ 26dec7b7fe` 尚不建议直接作为正式版向终端用户公开发行；须完成最小阻塞放行集合与真机门禁后方可发布）。**
 - **建议发版硬门槛（放行条件）**：
   1. 修复 **Stage A 全部 4 项 P1 缺陷**（`AUD-001` 主线程退出崩溃、`AUD-002` 握手期断开僵尸态、`AUD-003` 退出抹除麦配置与诊断计数、`AUD-004` 启用已验妥的 `ts3j` 定宽补丁新标签并完善异常重连分类）；
-  2. 修复直接破坏 `1.3.0` 核心新特性或存在明显资源泄漏的 P2 项（**重点包含 `AUD-005` 文件/头像 `ip=`/`0.0.0.0` 兼容、`AUD-006` 蓝牙 `AudioTrack` 泄漏、`AUD-007` 60 ms 过期级联复位、以及 `AUD-009` / `AUD-010` 超时无锁与主线程阻塞**）；
+  2. 修复直接破坏 `1.3.0` 核心新特性或存在明显资源泄漏的 P2 项（**重点包含 `AUD-005` 文件/头像空 `ip=`/全零通配地址兼容、`AUD-006` 蓝牙 `AudioTrack` 泄漏、`AUD-007` 60 ms 过期级联复位、以及 `AUD-009` / `AUD-010` 超时无锁与主线程阻塞**）；
   3. 跑通仓库自身的真机与官方服务器发版门禁（实际服务器文件/头像双向互通 + 多机型蓝牙/LE Audio/锁屏 30 分钟实机验收 + 全量 `androidTest` 与正式签名覆盖升级）。
