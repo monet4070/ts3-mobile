@@ -14,14 +14,16 @@ import io.github.ts3mobile.protocol.Ts3SessionListener
 import io.github.ts3mobile.protocol.VoiceFrame
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -369,6 +371,7 @@ class ConnectionExitConcurrencyTest {
             )
         val hookEntered = CountDownLatch(1)
         val resumeHook = CountDownLatch(1)
+        val staleFailureFinished = CountDownLatch(1)
         val testLockOwner = Any()
         var testHoldsMutex = false
         try {
@@ -379,6 +382,7 @@ class ConnectionExitConcurrencyTest {
                     hookEntered.countDown()
                     resumeHook.await(WAIT_SECONDS, TimeUnit.SECONDS)
                 }
+                host.finishTerminalAction = { staleFailureFinished.countDown() }
                 assertTrue(raceCoordinator.beginConnection(CONFIG))
                 assertTrue(hookEntered.await(WAIT_SECONDS, TimeUnit.SECONDS))
                 host.connectionFailureAction = {}
@@ -395,11 +399,13 @@ class ConnectionExitConcurrencyTest {
                 }
             }
 
+            assertTrue("stale busy-failure cleanup did not finish", staleFailureFinished.await(WAIT_SECONDS, TimeUnit.SECONDS))
             assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.CONNECTED })
             assertEquals(1, createdSessions.size)
             assertEquals(0, replacementSession.closeCalls.get())
             assertEquals(SECOND_CONFIG, replacementSession.connectedConfig)
         } finally {
+            host.finishTerminalAction = {}
             raceCoordinator.close()
         }
     }
@@ -603,8 +609,16 @@ class ConnectionExitConcurrencyTest {
         }
 
         fun close() {
-            serviceScope.cancel()
-            executor.shutdownNow()
+            runBlocking {
+                withTimeoutOrNull(TimeUnit.SECONDS.toMillis(WAIT_SECONDS)) {
+                    serviceScope.coroutineContext[Job]?.cancelAndJoin()
+                }
+            }
+            executor.shutdown()
+            if (!executor.awaitTermination(WAIT_SECONDS, TimeUnit.SECONDS)) {
+                executor.shutdownNow()
+                executor.awaitTermination(WAIT_SECONDS, TimeUnit.SECONDS)
+            }
         }
     }
 
