@@ -1,8 +1,8 @@
 # TS3 Mobile — System Architecture Design Document (English Version)
 
 > Historical design snapshot. Its diagrams and implementation details predate 1.1.0.
-> See the [maintained architecture](../ARCHITECTURE.md) for current implementation
-> details and [1.1.0 release acceptance](release/1.1.0/CHECKLIST.md) for the shipped scope.
+> See the [maintained 1.3.0 architecture](../ARCHITECTURE.md) for current implementation
+> details and the [releases index](release/README.md) for version scope and verification status.
 
 ---
 

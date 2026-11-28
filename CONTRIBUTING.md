@@ -8,6 +8,11 @@ User documentation starts at the [README](README.md). The
 [release index](docs/release/README.md) records the published stable version,
 candidate status, artifact/signature requirements and open acceptance items.
 Do not mark a release or a device-matrix row passed merely because docs are ready.
+For 1.3.0 and later changes, keep the English and Simplified Chinese README, user guides,
+troubleshooting, privacy notes, and release notes in sync whenever behavior changes.
+Keep public download links pointed at published GitHub Releases; the
+[1.3.0 verification status](docs/release/CANDIDATE_STATUS_2026-11-25.md) separates CI
+results from signed-device coverage.
 
 ## Before opening a change
 

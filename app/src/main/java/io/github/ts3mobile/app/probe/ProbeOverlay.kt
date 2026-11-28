@@ -30,6 +30,7 @@ internal class ProbeOverlay(
     private val windowLost: () -> Unit = stop,
     private val holdLabel: Int,
     private val selectMode: ((MicrophoneMode) -> Unit)? = null,
+    private val minimalStyle: Boolean = false,
 ) {
     private val windowContext by lazy {
         if (Build.VERSION.SDK_INT >= 30) {
@@ -61,6 +62,7 @@ internal class ProbeOverlay(
                     ::lost,
                     ::displayChanged,
                     selectMode?.let { ::changeMode },
+                    minimalStyle,
                 )
             val params = buildLayout()
             attachGestures(view, params)

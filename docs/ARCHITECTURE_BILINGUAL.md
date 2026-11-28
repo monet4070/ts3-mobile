@@ -7,7 +7,8 @@ diagrams. Use the maintained top-level architecture document for current details
 
 - English / 英文: [`ARCHITECTURE_EN.md`](ARCHITECTURE_EN.md)
 - 中文 / Chinese: [`ARCHITECTURE_ZH.md`](ARCHITECTURE_ZH.md)
-- Top-level architecture note (canonical) / 顶层架构说明（权威）: [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
+- Maintained architecture for 1.3.0 / 1.3.0 维护中的架构说明: [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
+- Source and artifact scope / 源码与发布范围: [Release index / 发布资料](release/README.md)
 
 ## Historical diagrams / 历史图示
 

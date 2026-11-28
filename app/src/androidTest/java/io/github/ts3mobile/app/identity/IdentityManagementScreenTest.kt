@@ -19,7 +19,7 @@ import org.junit.Test
 class IdentityManagementScreenTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun passwordInputsAreClearedBeforeExportAndVerifiedStateExplainsReadbackLimits() {
+    @Test fun passwordFieldsAreHiddenUntilRequestedAndAreClearedAfterExport() {
         val summary = Ts3IdentitySummary("synthetic-uid", 23, 4)
         val state = mutableStateOf(IdentityExportState(IdentitySnapshot(summary, summary, false, "fixture"), IdentityExportStatus.READY))
         var calls = 0
@@ -34,13 +34,23 @@ class IdentityManagementScreenTest {
                 }, {}, {}, {})
             }
         }
-        rule.onNodeWithText("Backup passphrase").performScrollTo().performTextInput("synthetic passphrase")
-        rule.onNodeWithText("Confirm passphrase").performScrollTo().performTextInput("synthetic passphrase")
-        rule.onNodeWithText("Export encrypted backup…").performScrollTo().performClick()
+        val label = "Password (at least 12 characters)"
+        val create = rule.onNodeWithText("Create encrypted backup")
+        rule.onNodeWithText(label).assertDoesNotExist()
+        rule.onNodeWithText("UID: synthetic-uid").assertDoesNotExist()
+        create.performScrollTo().performClick()
+        rule.onNodeWithText(label).performScrollTo().performTextInput("synthetic passphrase")
+        rule.onNodeWithText("Confirm password").performScrollTo().performTextInput("synthetic passphrase")
+        rule.onNodeWithText("Choose where to save").performClick()
         rule.runOnIdle { assertEquals(1, calls) }
-        rule.onNodeWithText("Backup passphrase").assertTextEquals("Backup passphrase", "")
+        rule.onNodeWithText(label).assertDoesNotExist()
+        create.performClick()
+        rule.onNodeWithText(label).assertTextEquals(label, "")
+        rule.onNodeWithText("Cancel").performClick()
         rule.runOnIdle { state.value = state.value.copy(status = IdentityExportStatus.VERIFIED, exported = summary) }
-        rule.onNodeWithText("Backup verified.", substring = true).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Backup saved and verified").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("View identity details").performScrollTo().performClick()
+        rule.onNodeWithText("UID: synthetic-uid").assertIsDisplayed()
     }
 
     @Test fun connectionWorkAndUnreadableIdentityDisableExportEvenWhenUiHasASummary() {
@@ -50,18 +60,18 @@ class IdentityManagementScreenTest {
         rule.setContent {
             Ts3MobileTheme { IdentityManagementScreen(state.value, useState.value, { _, _ -> error("must not export") }, {}, {}, {}) }
         }
-        rule.onNodeWithText("Export encrypted backup…").performScrollTo().assertIsNotEnabled()
+        rule.onNodeWithText("Create encrypted backup").performScrollTo().assertIsNotEnabled()
         rule.runOnIdle {
             useState.value = IdentityUseState.IDLE
             state.value = state.value.copy(snapshot = state.value.snapshot!!.copy(unreadable = true))
         }
-        rule.onNodeWithText("Export encrypted backup…").assertIsNotEnabled()
+        rule.onNodeWithText("Create encrypted backup").assertIsNotEnabled()
     }
 
     @Test fun unreadableStoredIdentityIsNotMisreportedAsAnIdentityNeverCreated() {
         val state = IdentityExportState(IdentitySnapshot(null, null, true, "fixture"), IdentityExportStatus.READY)
         rule.setContent { Ts3MobileTheme { IdentityManagementScreen(state, IdentityUseState.IDLE, { _, _ -> }, {}, {}, {}) } }
         rule.onNodeWithText("Identity data cannot be read.", substring = true).assertIsDisplayed()
-        rule.onNodeWithText("No identity has been created.", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("No identity yet.", substring = true).assertDoesNotExist()
     }
 }

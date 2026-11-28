@@ -35,6 +35,8 @@ class BluetoothOutputComparisonTest(unittest.TestCase):
         self.assertFalse(compare(baseline, summarize(fixture(0, route="SPEAKER")))["supportsModeComparison"])
         self.assertFalse(compare(baseline, summarize(fixture(0, profile=2)))["supportsModeComparison"])
         self.assertFalse(compare(baseline, summarize(fixture(0, device="BLUETOOTH_SCO")))["supportsModeComparison"])
+        self.assertFalse(compare(baseline, summarize(fixture(0, device="BLUETOOTH_LE")))["supportsModeComparison"])
+        self.assertEqual(["BLUETOOTH_LE"], summarize(fixture(0, device="BLUETOOTH_LE"))["actualOutputDevices"])
         self.assertFalse(compare(baseline, summarize(fixture(0, device="UNKNOWN")))["supportsModeComparison"])
 
     def test_counts_across_generations_and_relative_marks_without_duplicate_cumulative_samples(self):

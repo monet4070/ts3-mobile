@@ -43,6 +43,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -436,6 +437,11 @@ class ConnectionCoordinatorTest {
         host.network.value = false
         coordinator.onNetworkChanged(false)
 
+        advance(ConnectionLivenessPolicy.DEFAULT_NETWORK_LOSS_GRACE_MS - 1L)
+        coordinator.onNetworkChanged(false)
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        advance(2L)
+
         assertEquals(ConnectionPhase.RECONNECTING, host.state.value.status.phase)
         assertTrue(host.state.value.status.retryable)
 
@@ -454,6 +460,7 @@ class ConnectionCoordinatorTest {
 
         host.network.value = false
         coordinator.onNetworkChanged(false)
+        advancePastDefaultNetworkLossGrace()
 
         assertEquals(UserMessage.WaitingForNetwork, host.state.value.statusMessage)
     }
@@ -466,6 +473,7 @@ class ConnectionCoordinatorTest {
 
         host.network.value = false
         coordinator.onNetworkChanged(false)
+        advancePastDefaultNetworkLossGrace()
         assertEquals(UserMessage.WaitingForNetwork, host.state.value.statusMessage)
 
         host.network.value = true
@@ -533,6 +541,7 @@ class ConnectionCoordinatorTest {
         host.microphoneStopAction = { error("fixture capture still held") }
         host.network.value = false
         coordinator.onNetworkChanged(false)
+        advancePastDefaultNetworkLossGrace()
         host.advance()
         host.runPendingTeardowns()
         host.network.value = true
@@ -631,6 +640,75 @@ class ConnectionCoordinatorTest {
 
         assertEquals(1, host.session.livenessCalls)
         assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+        assertEquals(1, host.session.connectCalls)
+    }
+
+    @Test
+    fun aBriefDefaultNetworkGapInEitherDirectionKeepsTheSameLiveSession() {
+        coordinator.onNetworkChanged(availableNetwork(1))
+        connectEstablished()
+        val listener = checkNotNull(host.session.listener)
+        listener.onSnapshotChanged(SessionSnapshot.Empty.copy(ownClientId = 57))
+        val closeCalls = host.session.closeCalls
+        val playbackStops = host.playbackStops
+
+        for (generation in 2L..3L) {
+            host.network.value = false
+            coordinator.onNetworkChanged(DefaultNetworkState(generation = generation - 1L))
+            advance(116L)
+            assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+            assertEquals(57, host.state.value.snapshot.ownClientId)
+
+            coordinator.onNetworkChanged(DefaultNetworkState(isPending = true, generation = generation))
+            host.network.value = true
+            coordinator.onNetworkChanged(availableNetwork(generation))
+            advancePastDefaultNetworkLossGrace()
+
+            assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+            assertEquals(57, host.state.value.snapshot.ownClientId)
+            assertSame(listener, host.session.listener)
+            assertEquals(1, host.session.connectCalls)
+            assertEquals(closeCalls, host.session.closeCalls)
+            assertEquals(playbackStops, host.playbackStops)
+        }
+        assertEquals(2, host.session.livenessCalls)
+        assertTrue(host.connectionFailures.isEmpty())
+    }
+
+    @Test
+    fun anExitDuringTheDefaultNetworkGapCancelsThePendingLoss() {
+        coordinator.onNetworkChanged(availableNetwork(1))
+        connectEstablished()
+        host.network.value = false
+        coordinator.onNetworkChanged(DefaultNetworkState(generation = 1))
+        advance(116L)
+
+        coordinator.requestExit(ExitTrigger.USER_DISCONNECT)
+        host.network.value = true
+        coordinator.onNetworkChanged(availableNetwork(2))
+        advancePastDefaultNetworkLossGrace()
+
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+        assertEquals(0, host.session.livenessCalls)
+        assertEquals(1, host.session.connectCalls)
+        assertTrue(host.connectionFailures.isEmpty())
+    }
+
+    @Test
+    fun aRealTransportFailureIsNotHiddenByTheDefaultNetworkGrace() {
+        coordinator.onNetworkChanged(availableNetwork(1))
+        connectEstablished()
+        val listener = checkNotNull(host.session.listener)
+        host.network.value = false
+        coordinator.onNetworkChanged(DefaultNetworkState(generation = 1))
+        advance(116L)
+
+        val transportFailure = ConnectionStatus(ConnectionPhase.ERROR, "fixture transport failure", retryable = true)
+        listener.onStatusChanged(transportFailure)
+        assertEquals(ConnectionPhase.RECONNECTING, host.state.value.status.phase)
+        advancePastDefaultNetworkLossGrace()
+
+        assertEquals(listOf(transportFailure), host.connectionFailures)
         assertEquals(1, host.session.connectCalls)
     }
 
@@ -777,6 +855,7 @@ class ConnectionCoordinatorTest {
 
         host.network.value = false
         coordinator.onNetworkChanged(false)
+        advancePastDefaultNetworkLossGrace()
 
         val failure = host.connectionFailures.last()
         assertEquals(ConnectionPhase.DISCONNECTED, failure.phase)
@@ -1560,6 +1639,107 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun afterAConfirmedHandoffOneDelayedAttemptCanRecoverTheSession() {
+        prepareIdentityRefusalOnRecovery()
+        host.session.livenessResult = false
+        coordinator.onNetworkChanged(availableNetwork(2))
+        host.advance()
+
+        assertEquals(2, host.session.connectCalls)
+        assertEquals(ConnectionPhase.RECONNECTING, host.state.value.status.phase)
+        assertEquals(UserMessage.HandoffIdentityWait(RECOMMENDED_RETRY_WAIT_SECONDS), host.state.value.statusMessage)
+        assertTrue(DiagnosticEventKind.NETWORK_HANDOFF_RETRY_DEFERRED in host.diagnostics)
+        advance(RECOMMENDED_RETRY_WAIT_SECONDS * 1_000L - 100L)
+        assertEquals(2, host.session.connectCalls)
+
+        host.session.connectAction = {}
+        host.advance()
+        assertEquals(3, host.session.connectCalls)
+        assertEquals(ConnectionPhase.CONNECTED, host.state.value.status.phase)
+    }
+
+    @Test
+    fun aHandoffViaOfflineWaitsForNetworkAndStopsAfterASecondRefusal() {
+        prepareIdentityRefusalOnRecovery()
+        host.session.livenessResult = false
+        host.network.value = false
+        coordinator.onNetworkChanged(DefaultNetworkState(generation = 1))
+        host.advance()
+        assertEquals(1, host.session.connectCalls)
+
+        coordinator.onNetworkChanged(availableNetwork(2))
+        host.network.value = true
+        host.advance()
+        assertEquals(2, host.session.connectCalls)
+        host.network.value = false
+        coordinator.onNetworkChanged(DefaultNetworkState(generation = 2))
+        advance(120_000L)
+        assertEquals(2, host.session.connectCalls)
+
+        coordinator.onNetworkChanged(availableNetwork(3))
+        host.network.value = true
+        host.advance()
+        advance(300_000L)
+        assertEquals(3, host.session.connectCalls)
+        assertEquals(ConnectionPhase.ERROR, host.state.value.status.phase)
+        assertEquals(UserMessage.ConnectionLimitWait, host.state.value.statusMessage)
+    }
+
+    @Test
+    fun aRefusalFollowingAnOrdinarySameNetworkDropDoesNotRetry() {
+        prepareIdentityRefusalOnRecovery()
+        host.session.listener!!.onStatusChanged(ConnectionStatus(ConnectionPhase.DISCONNECTED, retryable = true))
+        host.advance()
+        advance(300_000L)
+
+        assertEquals(2, host.session.connectCalls)
+        assertEquals(UserMessage.ConnectionLimitWait, host.state.value.statusMessage)
+        assertFalse(DiagnosticEventKind.NETWORK_HANDOFF_RETRY_DEFERRED in host.diagnostics)
+    }
+
+    @Test
+    fun aSuccessfulSwitchProbeUpdatesTheBaselineForTheNextTransportLoss() {
+        prepareIdentityRefusalOnRecovery()
+        host.session.livenessResult = true
+        coordinator.onNetworkChanged(availableNetwork(2))
+        host.advance()
+        assertEquals(1, host.session.connectCalls)
+
+        host.session.listener!!.onStatusChanged(ConnectionStatus(ConnectionPhase.DISCONNECTED, retryable = true))
+        host.advance()
+        advance(120_000L)
+        assertEquals(2, host.session.connectCalls)
+        assertEquals(UserMessage.ConnectionLimitWait, host.state.value.statusMessage)
+    }
+
+    @Test
+    fun cancellingDuringTheHandoffWaitPreventsTheScheduledAttempt() {
+        prepareIdentityRefusalOnRecovery()
+        host.session.livenessResult = false
+        coordinator.onNetworkChanged(availableNetwork(2))
+        host.advance()
+        assertEquals(UserMessage.HandoffIdentityWait(RECOMMENDED_RETRY_WAIT_SECONDS), host.state.value.statusMessage)
+
+        coordinator.requestDisconnect()
+        host.advance()
+        advance(300_000L)
+        assertEquals(2, host.session.connectCalls)
+        assertEquals(ConnectionPhase.DISCONNECTED, host.state.value.status.phase)
+    }
+
+    private fun prepareIdentityRefusalOnRecovery() {
+        host.network.value = true
+        coordinator.onNetworkChanged(availableNetwork(1))
+        connectEstablished()
+        host.session.connectAction = {
+            host.session.listener!!.onStatusChanged(
+                ConnectionStatus(ConnectionPhase.ERROR, category = ConnectionFailureCategory.CLONES_LIMIT),
+            )
+            throw IOException("handshake interrupted")
+        }
+    }
+
+    @Test
     fun aFirstConnectThatFailsWithANetworkErrorStaysTerminal() {
         host.session.connectAction = { throw IOException("offline") }
         coordinator.beginConnection(CONFIG)
@@ -1597,6 +1777,8 @@ class ConnectionCoordinatorTest {
         host.nowMs += millis
         host.testScope.advanceTimeBy(millis)
     }
+
+    private fun advancePastDefaultNetworkLossGrace() = advance(ConnectionLivenessPolicy.DEFAULT_NETWORK_LOSS_GRACE_MS + 1L)
 
     private class FakeSession(
         private val timeline: MutableList<String> = mutableListOf(),

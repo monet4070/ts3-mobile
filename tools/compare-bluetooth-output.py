@@ -10,6 +10,7 @@ MODES = {0: "STANDARD", 1: "LOW_LATENCY", 2: "POWER_SAVING"}
 RETIREMENTS = {1: "DRAINED", 2: "ROUTE_UNAVAILABLE", 3: "OUTPUT_FAILURE", 4: "INVALIDATED", 5: "STOPPED"}
 COUNTERS = ("OUTPUT_UNDERRUNS", "OUTPUTS_CREATED", "OUTPUT_FAILURES", "OUTPUT_RECOVERIES", "REBUFFERS")
 ROUTES = ("BLUETOOTH", "WIRED", "USB")
+OUTPUT_DEVICES = ("BLUETOOTH_A2DP", "BLUETOOTH_SCO", "BLUETOOTH_LE", "BLUETOOTH_OTHER", "WIRED", "USB")
 MAX_EXPORT_BYTES = 2 * 1024 * 1024
 
 
@@ -42,8 +43,7 @@ def summarize(export, session_id=None):
     actual_routes = sorted({route if route in ROUTES else "OTHER" for route in (sample["actualRoute"] for sample in route_samples)})
     comparable = [sample for sample in route_samples if sample.get("playback") == "PLAYING"]
     exact_devices = {sample.get("actualOutputDevice", "UNKNOWN") for sample in comparable} - {"UNKNOWN"}
-    exact_devices = sorted({device if device in ("BLUETOOTH_A2DP", "BLUETOOTH_SCO", "BLUETOOTH_OTHER", "WIRED", "USB") else "OTHER"
-                            for device in exact_devices})
+    exact_devices = sorted({device if device in OUTPUT_DEVICES else "OTHER" for device in exact_devices})
     networks = {sample["networkGeneration"] for sample in comparable}
     counter_keys = export["counterKeys"]
     generation_totals = defaultdict(dict)

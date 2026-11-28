@@ -3,6 +3,7 @@ package io.github.ts3mobile.audio.opus
 import android.media.AudioDeviceInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -10,6 +11,87 @@ class AudioDeviceRouterPolicyTest {
     private val speaker = AudioRouteOption(1, AudioRouteKind.SPEAKER)
     private val bluetooth = AudioRouteOption(2, AudioRouteKind.BLUETOOTH)
     private val secondBluetooth = AudioRouteOption(3, AudioRouteKind.BLUETOOTH)
+    private val bluetoothCall = AudioRouteOption(5, AudioRouteKind.BLUETOOTH, bluetoothCall = true)
+
+    @Test fun callRouteIsNeverSelectedAutomatically() {
+        val platform = Platform(listOf(speaker, bluetoothCall))
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.start()
+            assertEquals(SYSTEM_AUDIO_ROUTE_ID, router.state.selectedRouteId)
+            platform.change(listOf(speaker, bluetoothCall, bluetooth))
+            assertEquals(bluetooth.id, router.state.selectedRouteId)
+            assertTrue(platform.callRequests.isEmpty())
+        }
+    }
+
+    @Test fun callRouteStagesOfflineAndReleasesOnMediaSelectionOrSessionStop() {
+        val microphone = AudioInputOption(12, AudioInputKind.USB)
+        val platform = Platform(listOf(bluetooth, bluetoothCall)).apply { inputs = listOf(microphone) }
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.watchDevices()
+            router.selectInput(microphone.id)
+            router.selectRoute(bluetoothCall.id)
+            assertTrue(platform.callRequests.isEmpty())
+            assertFalse(router.isBluetoothCallActive())
+            router.start()
+            assertEquals(listOf(bluetoothCall.id), platform.callRequests)
+            assertTrue(router.isBluetoothCallActive())
+            router.preferredInputDevice()
+            assertTrue(platform.selectedInputs.isEmpty())
+            router.selectInput(SYSTEM_AUDIO_ROUTE_ID)
+            platform.change(listOf(bluetooth, secondBluetooth, bluetoothCall))
+            assertEquals(bluetoothCall.id, router.state.selectedRouteId)
+            router.selectRoute(bluetooth.id)
+            assertFalse(platform.callActive)
+            router.preferredInputDevice()
+            assertEquals(listOf(microphone.id), platform.selectedInputs)
+            router.selectRoute(bluetoothCall.id)
+            router.stop()
+            assertFalse(platform.callActive)
+            router.start()
+            assertEquals(bluetooth.id, router.state.selectedRouteId)
+            assertEquals(2, platform.callRequests.size)
+        }
+    }
+
+    @Test fun rejectedCallRouteReleasesTheRequestAndKeepsMediaSelected() {
+        val platform = Platform(listOf(bluetooth, bluetoothCall))
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.start()
+            platform.accept = false
+            router.selectRoute(bluetoothCall.id)
+            assertFalse(platform.callActive)
+            assertEquals(bluetooth.id, router.state.selectedRouteId)
+            assertEquals(AudioRoutingErrorKind.SWITCH_DENIED, router.state.error?.kind)
+            assertTrue(router.state.safetyMuted)
+        }
+    }
+
+    @Test fun removingCallDeviceMutesBeforeReturningToMedia() {
+        val platform = Platform(listOf(bluetooth, bluetoothCall))
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.start()
+            router.selectRoute(bluetoothCall.id)
+            platform.beforeSelect = { assertTrue(router.state.safetyMuted) }
+            platform.change(listOf(bluetooth))
+            assertFalse(platform.callActive)
+            assertEquals(bluetooth.id, router.state.selectedRouteId)
+            assertTrue(router.state.safetyMuted)
+        }
+    }
+
+    @Test fun unconfirmedCallOutputReleasesTheCallEvenWhenTheHeadsetRemainsAvailable() {
+        val platform = Platform(listOf(bluetooth, bluetoothCall))
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.start()
+            router.selectRoute(bluetoothCall.id)
+            router.onBluetoothRouteLost()
+            assertFalse(platform.callActive)
+            assertEquals(bluetooth.id, router.state.selectedRouteId)
+            assertEquals(AudioRoutingErrorKind.BLUETOOTH_ROUTE_LOST, router.state.error?.kind)
+            assertTrue(router.state.safetyMuted)
+        }
+    }
 
     @Test fun selectsAlreadyConnectedBluetoothOnStart() {
         val platform = Platform(listOf(speaker, bluetooth))
@@ -197,15 +279,88 @@ class AudioDeviceRouterPolicyTest {
         router.close()
     }
 
+    @Test fun devicesCanBeSelectedBeforeStartingAConnection() {
+        val microphone = AudioInputOption(11, AudioInputKind.LE_AUDIO)
+        val platform = Platform(listOf(speaker, bluetooth)).apply { inputs = listOf(microphone) }
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.watchDevices()
+            assertTrue(router.state.routes.contains(bluetooth))
+            assertTrue(router.state.input.routes.contains(microphone))
+            router.selectRoute(speaker.id)
+            router.selectInput(microphone.id)
+            router.preferredInputDevice()
+            assertEquals(listOf(microphone.id), platform.selectedInputs)
+            assertTrue(platform.selections.isEmpty())
+            router.start()
+            assertEquals(speaker.id, router.state.selectedRouteId)
+            assertEquals(microphone.id, router.state.input.selectedId)
+            assertEquals(listOf(speaker.id), platform.selections)
+            router.stop()
+            assertTrue(router.state.routes.contains(bluetooth))
+            assertEquals(microphone.id, router.state.input.selectedId)
+            assertFalse(router.state.safetyMuted)
+        }
+    }
+
+    @Test fun unpluggingOnlyTheInputFallsBackWithoutChangingPlayback() {
+        val microphone = AudioInputOption(12, AudioInputKind.USB)
+        val platform = Platform(listOf(bluetooth)).apply { inputs = listOf(microphone) }
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.start()
+            router.selectInput(microphone.id)
+            platform.inputs = emptyList()
+            platform.changed()
+            assertEquals(SYSTEM_AUDIO_ROUTE_ID, router.state.input.selectedId)
+            assertEquals(AudioRoutingErrorKind.DEVICE_DISCONNECTED, router.state.input.error)
+            assertEquals(bluetooth.id, router.state.selectedRouteId)
+            assertFalse(router.state.safetyMuted)
+            router.selectInput(microphone.id)
+            assertEquals(AudioRoutingErrorKind.DEVICE_UNAVAILABLE, router.state.input.error)
+            router.selectInput(SYSTEM_AUDIO_ROUTE_ID)
+            assertNull(router.state.input.error)
+        }
+    }
+
+    @Test fun simultaneousBluetoothRemovalStillMutesBeforeSwitchingOutput() {
+        val microphone = AudioInputOption(13, AudioInputKind.LE_AUDIO)
+        val platform = Platform(listOf(bluetooth)).apply { inputs = listOf(microphone) }
+        AudioDeviceRouter(platform) {}.use { router ->
+            router.start()
+            router.selectInput(microphone.id)
+            platform.beforeSelect = { assertTrue(router.state.safetyMuted) }
+            platform.inputs = emptyList()
+            platform.change(listOf(speaker))
+            assertTrue(router.state.safetyMuted)
+            assertEquals(SYSTEM_AUDIO_ROUTE_ID, router.state.input.selectedId)
+            assertEquals(AudioRoutingErrorKind.DEVICE_DISCONNECTED, router.state.input.error)
+        }
+    }
+
+    @Test fun communicationOnlyAndVirtualSourcesAreNotExposedAsMediaChoices() {
+        assertEquals(AudioInputKind.LE_AUDIO, AudioRouteDevices.inputKind(AudioDeviceInfo.TYPE_BLE_HEADSET))
+        assertEquals(AudioInputKind.BUILTIN, AudioRouteDevices.inputKind(AudioDeviceInfo.TYPE_BUILTIN_MIC))
+        assertEquals(AudioInputKind.USB, AudioRouteDevices.inputKind(AudioDeviceInfo.TYPE_USB_HEADSET))
+        assertNull(AudioRouteDevices.inputKind(AudioDeviceInfo.TYPE_BLUETOOTH_SCO))
+        assertNull(AudioRouteDevices.inputKind(AudioDeviceInfo.TYPE_REMOTE_SUBMIX))
+        assertFalse(AudioRouteDevices.isSelectableMediaOutput(AudioDeviceInfo.TYPE_BLUETOOTH_SCO))
+        assertTrue(AudioRouteDevices.isSelectableMediaOutput(AudioDeviceInfo.TYPE_HDMI))
+    }
+
     private class Platform(var available: List<AudioRouteOption>) : AudioRoutePlatform {
+        var inputs = emptyList<AudioInputOption>()
         var changed: () -> Unit = {}
         var noisy: () -> Unit = {}
         var beforeSelect: () -> Unit = {}
         var accept = true
         var failure: RuntimeException? = null
+        var callActive = false
         val selections = mutableListOf<Int>()
+        val selectedInputs = mutableListOf<Int>()
+        val callRequests = mutableListOf<Int>()
 
         override fun routes() = listOf(AudioRoutingState.SystemRoute) + available
+
+        override fun inputRoutes() = listOf(AudioInputRouting.Automatic) + inputs
 
         override fun start(
             onDevicesChanged: () -> Unit,
@@ -224,7 +379,22 @@ class AudioDeviceRouterPolicyTest {
 
         override fun preferredOutput(routeId: Int): AudioDeviceInfo? = null
 
+        override fun selectBluetoothCall(routeId: Int): Boolean {
+            callActive = true
+            callRequests += routeId
+            return accept
+        }
+
+        override fun clearBluetoothCall() {
+            callActive = false
+        }
+
         override fun preferredInput(routeId: Int): AudioDeviceInfo? = null
+
+        override fun inputDevice(id: Int): AudioDeviceInfo? {
+            selectedInputs += id
+            return null
+        }
 
         override fun stop() = Unit
 

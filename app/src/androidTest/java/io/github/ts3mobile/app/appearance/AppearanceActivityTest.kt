@@ -90,8 +90,8 @@ class AppearanceActivityTest {
                     )
                 }
                 rule.onNodeWithText("Identity and backups").performScrollTo().performClick()
-                waitForText("Export encrypted backup…")
-                rule.onNodeWithText("Export encrypted backup…").performScrollTo().assertIsDisplayed()
+                waitForText("Create encrypted backup")
+                rule.onNodeWithText("Create encrypted backup").performScrollTo().assertIsDisplayed()
                 instrumentation.runOnMainSync {
                     val activity = resumed().filterIsInstance<IdentityManagementActivity>().single()
                     assertFalse(WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightStatusBars)

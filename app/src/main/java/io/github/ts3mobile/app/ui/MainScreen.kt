@@ -121,6 +121,7 @@ fun MainScreen(
     openServerImages: ((String) -> io.github.ts3mobile.protocol.ServerImages?)? = null,
     openChatAttachment: OpenChatAttachment? = null,
     featureHelpAvailable: Boolean = true,
+    onAudioInputSelected: (Int) -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     var guideVisit by rememberSaveable { mutableStateOf<GuideRoute?>(null) }
@@ -233,6 +234,8 @@ fun MainScreen(
             onMarkAudioIssue = onMarkAudioIssue,
             onCheckUpdates = onCheckUpdates,
             onOpenRepository = onOpenRepository,
+            onAudioInputSelected = onAudioInputSelected,
+            onAudioOutputSelected = onAudioRouteSelected,
             guideRoute = guideVisit,
             onHelpTopicRequested = { title ->
                 pendingHelpTitle = title

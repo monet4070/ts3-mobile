@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.ViewModelProvider
@@ -30,13 +31,18 @@ class IdentityActivityTest {
             rule.waitUntil(
                 5_000,
             ) { rule.onAllNodes(androidx.compose.ui.test.hasText("Reading identity summary…")).fetchSemanticsNodes().isEmpty() }
-            rule.onNodeWithText("Backup passphrase").performScrollTo().performTextInput("synthetic rotation secret")
+            val restore = rule.onNodeWithText("Restore from backup")
+            val password = rule.onNodeWithText("Backup password")
+            restore.performScrollTo().performClick()
+            password.performTextInput("synthetic rotation secret")
             rule.activityRule.scenario.onActivity {
                 assertTrue(it.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
             }
             rule.activityRule.scenario.recreate()
-            rule.onNodeWithText("Backup passphrase").performScrollTo().assertTextEquals("Backup passphrase", "")
-            rule.onNodeWithText("Export encrypted backup…").performScrollTo().assertIsDisplayed()
+            password.assertDoesNotExist()
+            rule.onNodeWithText("Create encrypted backup").performScrollTo().assertIsDisplayed()
+            restore.performScrollTo().performClick()
+            password.assertTextEquals("Backup password", "")
             assertEquals(before, identities.snapshot())
         }
 

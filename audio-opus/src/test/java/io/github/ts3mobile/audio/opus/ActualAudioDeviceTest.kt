@@ -6,10 +6,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ActualAudioDeviceTest {
-    @Test fun mediaAndCallBluetoothTypesRemainSeparateAndBleDoesNotGuessMode() {
+    @Test fun mediaCallAndLeAudioAreReportedSeparately() {
         assertEquals(ActualAudioDevice.BLUETOOTH_A2DP, actualAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP))
         assertEquals(ActualAudioDevice.BLUETOOTH_SCO, actualAudioDevice(AudioDeviceInfo.TYPE_BLUETOOTH_SCO))
-        assertEquals(ActualAudioDevice.BLUETOOTH_OTHER, actualAudioDevice(AudioDeviceInfo.TYPE_BLE_HEADSET))
+        assertEquals(ActualAudioDevice.BLUETOOTH_LE, actualAudioDevice(AudioDeviceInfo.TYPE_BLE_HEADSET))
+        assertEquals(ActualAudioDevice.BLUETOOTH_OTHER, actualAudioDevice(AudioDeviceInfo.TYPE_HEARING_AID))
         assertEquals(ActualAudioDevice.BUILTIN_MIC, actualAudioDevice(AudioDeviceInfo.TYPE_BUILTIN_MIC))
         assertNull(actualAudioDevice(AudioDeviceInfo.TYPE_UNKNOWN))
         assertNull(actualAudioDevice(null))

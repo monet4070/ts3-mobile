@@ -38,6 +38,7 @@ import io.github.ts3mobile.app.identity.IdentityRestoreState
 import io.github.ts3mobile.app.identity.IdentitySnapshot
 import io.github.ts3mobile.app.identity.IdentityUseState
 import io.github.ts3mobile.app.probe.FloatingPttSettingsScreen
+import io.github.ts3mobile.app.probe.FloatingPttStyle
 import io.github.ts3mobile.app.service.BackgroundRuntimeState
 import io.github.ts3mobile.app.ui.theme.Ts3MobileTheme
 import io.github.ts3mobile.protocol.Ts3IdentitySummary
@@ -50,29 +51,36 @@ import java.util.Locale
 class SettingsDetailLayoutTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun identityTabsAndPassphraseRemainReachableAtLargeText() {
-        val label = "Backup passphrase"
+    @Test fun identityActionsAndPasswordDialogRemainReachableAtLargeText() {
+        val label = "Password (at least 12 characters)"
         rule.setContent {
             ConfiguredTheme("en", 1.8f, dark = true) {
                 Box(Modifier.width(320.dp)) { IdentityFixture() }
             }
         }
         savePreview("identity-en-dark-large.png")
-        rule.onNodeWithText("Export backup").performScrollTo().assertIsSelected()
+        rule.onNodeWithText(label).assertDoesNotExist()
+        val create = rule.onNodeWithText("Create encrypted backup")
+        create.performScrollTo().performClick()
         rule.onNodeWithText(label).performScrollTo().performTextInput("synthetic draft")
-        rule.onNodeWithText("Import or restore").performScrollTo().performClick().assertIsSelected()
-        rule.onNodeWithText("Choose encrypted backup…").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Export backup").performScrollTo().performClick().assertIsSelected()
+        rule.onNodeWithText("Cancel").performClick()
+        rule.onNodeWithText("Restore from backup").performScrollTo().performClick()
+        rule.onNodeWithText("Choose backup file").assertIsDisplayed()
+        rule.onNodeWithText("Cancel").performClick()
+        create.performScrollTo().performClick()
         rule.onNodeWithText(label).performScrollTo().assertTextEquals(label, "")
     }
 
     @Test fun chineseIdentityFormsShareTheSameVisualSections() {
         rule.setContent { ConfiguredTheme("zh-CN", 1f, dark = false) { IdentityFixture() } }
-        rule.onNodeWithText("当前身份").assertIsDisplayed()
+        rule.onNodeWithText("创建加密备份").assertIsDisplayed()
         savePreview("identity-export-zh.png")
-        rule.onNodeWithText("导入与恢复").performClick()
-        rule.onNodeWithText("本机旧身份").performScrollTo().assertIsDisplayed()
-        savePreview("identity-restore-zh.png")
+        rule.onNodeWithText("恢复上一个身份").assertDoesNotExist()
+        rule.onNodeWithText("从备份恢复").performScrollTo().performClick()
+        savePreview("identity-restore-zh.png", includeDialog = true)
+        rule.onNodeWithText("原备份密码").assertIsDisplayed()
+        rule.onNodeWithText("原备份密码").performTextInput("synthetic restore password")
+        rule.onNodeWithText("选择备份文件").assertIsDisplayed()
     }
 
     @Test fun backgroundStatusAndSwitchStayReadableAndInteractiveAtLargeText() {
@@ -105,19 +113,31 @@ class SettingsDetailLayoutTest {
     @Test fun chineseFloatingPttDistinguishesAutoShowFromTheManualAction() {
         rule.setContent {
             ConfiguredTheme("zh-CN", 1f, dark = false) {
-                FloatingPttSettingsScreen(true, true, {}, {}, {}, true, {})
+                FloatingPttSettingsScreen(true, true, {}, {}, {}, true, {}, FloatingPttStyle.STANDARD, {})
             }
         }
-        rule.onNodeWithText("退到后台时自动显示浮窗").assertIsOn()
-        rule.onNodeWithText("开启浮窗").assertIsDisplayed()
+        rule.onNodeWithText("标准浮窗").assertIsSelected()
+        rule.onNodeWithText("极简浮窗").assertIsDisplayed()
+        rule.onNodeWithText("退到后台时自动显示浮窗").performScrollTo().assertIsOn()
+        rule.onNodeWithText("开启浮窗").performScrollTo().assertIsDisplayed()
         savePreview("floating-auto-zh.png")
     }
 
-    private fun savePreview(filename: String) {
+    private fun savePreview(
+        filename: String,
+        includeDialog: Boolean = false,
+    ) {
         if (InstrumentationRegistry.getArguments().getString("captureSettingsReview") != "true") return
+        rule.waitForIdle()
+        val preview =
+            if (includeDialog) {
+                checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+            } else {
+                rule.onRoot().captureToImage().asAndroidBitmap()
+            }
         val folder = File(rule.activity.filesDir, "settings-review").apply { mkdirs() }
         File(folder, filename).outputStream().use { output ->
-            check(rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, output))
+            check(preview.compress(Bitmap.CompressFormat.PNG, 100, output))
         }
     }
 }

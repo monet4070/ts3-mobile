@@ -71,7 +71,7 @@ class FeatureHelpTest {
         openHelp("Test your mic without going live")
         rule.onNodeWithText("Tap the highlighted row in Settings.").assertIsDisplayed()
         touch("Voice playback")
-        rule.onNodeWithText("Stability first").assertDoesNotExist()
+        rule.onNodeWithText("Stability first (default)").assertDoesNotExist()
         touch("Microphone settings")
         rule.onNodeWithText("Test your mic without going live").assertIsDisplayed()
         rule.onNodeWithText("Back to guide").assertDoesNotExist()
@@ -97,7 +97,7 @@ class FeatureHelpTest {
         click("Close tip")
         rule.onNodeWithText("Settings").assertIsDisplayed()
         click("Voice playback")
-        rule.onNodeWithText("Stability first").assertExists()
+        rule.onNodeWithText("Stability first (default)").assertExists()
         rule.onNodeWithText("Close tip").assertDoesNotExist()
     }
 

@@ -48,6 +48,8 @@ class OpusMicrophoneCapture private constructor(
     @Volatile
     private var preferredDevice: AudioDeviceInfo? = null
 
+    @Volatile private var bluetoothCallInput = false
+
     @Volatile
     private var worker: Thread? = null
 
@@ -82,11 +84,19 @@ class OpusMicrophoneCapture private constructor(
         }
     }
 
-    override fun setPreferredDevice(device: AudioDeviceInfo?) {
+    override fun setPreferredDevice(device: AudioDeviceInfo?) = setInputRoute(device, bluetoothCall = false)
+
+    override fun setInputRoute(
+        device: AudioDeviceInfo?,
+        bluetoothCall: Boolean,
+    ) {
         synchronized(lifecycleLock) {
-            if (preferredDevice?.id == device?.id) return
+            val deviceChanged = preferredDevice?.id != device?.id
+            if (!deviceChanged && bluetoothCallInput == bluetoothCall) return
+            bluetoothCallInput = bluetoothCall
             preferredDevice = device
             invalidateRouting()
+            if (!deviceChanged) return
             resources?.record?.let { record ->
                 runCatching {
                     check(record.setPreferredDevice(device)) { "Microphone device preference was rejected" }
@@ -253,6 +263,7 @@ class OpusMicrophoneCapture private constructor(
                 if (read < 0) error("AudioRecord read failed: $read")
                 if (read == 0) continue
                 if (revision != captureControl.frames.revision()) continue
+                if (bluetoothCallInput && record.routedDevice?.type != AudioDeviceInfo.TYPE_BLUETOOTH_SCO) continue
                 val denoiserPcm = assembler.append(inputPcm, read) ?: continue
                 encodedTimestamps.clear()
                 val encoded = pipeline.process(denoiserPcm, current, revision, routeRevision, levelMeter.isObserved(), encodedTimestamps)

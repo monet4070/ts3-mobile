@@ -1,5 +1,11 @@
 # Architecture
 
+This document describes the **TS3 Mobile 1.3.0 (versionCode 17)** source architecture. See the [releases index](docs/release/README.md) for published builds and [1.3.0 verification status](docs/release/CANDIDATE_STATUS_2026-11-25.md) for device and artifact coverage.
+
+TS3 Mobile is a single-server Android client. It keeps the TeamSpeak session in a foreground service, exposes immutable state to Compose, and isolates protocol and audio implementations behind small interfaces.
+
+## In-app updates
+
 The independent `updates` page checks public GitHub Releases only when the user opens
 it, changes the remembered prerelease choice, or explicitly retries. `UpdateController`
 owns page state and rejects canceled/stale results; its mutex serializes blocking
@@ -17,6 +23,8 @@ images render labels/alt text without navigation or fetching. Explicit official
 release/download buttons retain navigation ownership. No HTML/image-loading plugin
 or WebView is used. See [ADR 0036](docs/decisions/0036-manual-update-checks.md).
 
+## Offline audio diagnostics
+
 Offline audio diagnostics retain numeric receive/playback evidence without USB.
 `PlaybackDiagnostics` exposes per-generation counters and interval peaks; the service
 samples them on IO and observes only coarse route/focus/network categories.
@@ -32,6 +40,8 @@ without caching extra snapshots or blocking playback.
 No voice, endpoint, identity, client/device name or payload is stored. Formatting,
 clipboard preparation and document writes stay off the audio/UI threads. See
 [ADR 0035](docs/decisions/0035-offline-audio-diagnostics.md).
+
+## Audio playback and capture lifecycle
 
 The audio review follow-up is specified in
 [the repair plan](docs/plans/AUDIO_REVIEW_FIXES_2026-10-24_ZH.md).
@@ -78,10 +88,6 @@ blocked HAL cannot be safely forced to release from Java. Such a timeout records
 fixed event and keeps resource ownership. Volume updates preserve denoiser history
 and frame assembly; acoustic route revisions reconfigure effects and DSP. Unrelated
 route-list/error updates do not invalidate capture.
-
-TS3 Mobile is a single-server Android client. It keeps the TeamSpeak session in a
-foreground service, exposes immutable state to Compose, and isolates protocol
-and audio implementations behind small interfaces.
 
 ## Modules and boundaries
 
@@ -149,8 +155,12 @@ Facts carry the captured session, listener, epoch and (for probes) network
 generation. It owns no scope, service state or recovery action. The coordinator
 retains identity-lease job registration, validates facts, atomically claims the
 listener and applies existing terminal/reconnect/exit policy. Clock gaps are
-observations only; voice silence never triggers a probe. Watch/probe timing is
-unchanged. See [ADR-0034](docs/decisions/0034-session-bound-connection-monitoring.md).
+observations only; voice silence never triggers a probe. A default-network gap
+gets two seconds before recovery; if a usable default returns first, the
+coordinator probes the existing TS3 transport without exiting or pausing audio.
+An explicit network block or actual transport failure still takes precedence.
+This does not migrate a session across server-visible source IP changes. See
+[ADR-0034](docs/decisions/0034-session-bound-connection-monitoring.md).
 
 `SessionSnapshotStore` is the protocol adapter's synchronized mutable boundary.
 It converts ts3j events into immutable `SessionSnapshot` values before crossing
@@ -160,7 +170,7 @@ Read-only channel files are scoped to a channel visit. The separate server image
 port is scoped to the connection and can only construct icon or avatar paths in
 the server asset namespace. Both share the fixed TS3j transfer negotiation and
 exact-length TCP reader. Preview decoding and the bounded, session-local memory
-cache live in Android UI code. These read-only media features are enabled in the standard app.
+cache live in Android UI code. These read-only media features are enabled in standard 1.3.0 builds.
 See [image preview qualification](docs/testing/SERVER_IMAGE_PREVIEW_2026-11-24_ZH.md).
 
 Chat attachments are parsed as bounded, typed file references, not URLs for the
@@ -177,11 +187,11 @@ obtaining sockets through an internal `Ts3jClientSocket` port. The production
 adapter delegates to ts3j; JVM facade tests use a fake port to exercise session
 replacement, stale event delivery and connection-status ordering without UDP.
 
-`OpusAudioPlayer` plays incoming speech on the media stream without acquiring audio focus.
-`AudioDeviceRouter` observes devices without setting Android's audio mode or communication route.
-`AudioTrack` and `AudioRecord` receive per-stream route preferences; Bluetooth media output does
-not request SCO, and capture prefers the built-in microphone with Bluetooth selected.
-`BluetoothPlaybackGuard` checks the actual `AudioTrack` route across output lifetimes. While a
+`OpusAudioPlayer` plays incoming speech on the media stream by default without acquiring audio focus.
+`AudioDeviceRouter` observes available media outputs and physical inputs separately without setting Android's audio mode or communication route in media mode.
+`AudioDeviceSettingsScreen` exposes temporary, non-persisted microphone and playback choices (labeling built-in microphone positions when known and numbering duplicate names without raw addresses), including independent LE Audio input/output preferences on `AudioRecord`/`AudioTrack`.
+When Android exposes a classic Bluetooth communication device, `BluetoothCallRoute` backs an explicit, non-persisted **Bluetooth call (use headset microphone)** output option that is never auto-selected; selecting it enables SCO playback and paired headset capture, and leaving the route, disconnecting, or hitting output failure releases the call request.
+`BluetoothPlaybackGuard` checks the actual `AudioTrack` route across output lifetimes (and waits for SCO confirmation when Bluetooth call is selected). While a
 required Bluetooth route is unconfirmed, the track stays silent and stale PCM is discarded.
 Device removal, unexpected Bluetooth fallback, and output route timeout latch a safety mute.
 Only manual unmute clears it; reconnecting a headset cannot resume playback.
@@ -298,14 +308,23 @@ See [ADR-0008](docs/decisions/0008-task-removal-bounded-exit.md).
 ## Terminal identity-limit refusal
 
 `ConnectionFailure` owns a cycle-safe classifier with terminal command precedence.
-`CLONES_LIMIT` is nonretryable. `ConnectionCoordinator` atomically detaches the
-refused listener, stops `ReconnectEngine`, closes the captured handshake before
-cancellation, and publishes localized manual-wait guidance. Epoch checks reject
-late callbacks and isolate replacement connections. The former clone recovery
-engine/window are removed. Ordinary network recovery retains its existing policy.
-The 60-second recommendation is a message constant, not a scheduler or unban
-promise. Old journal enum values remain readable for historical diagnostics.
+`CLONES_LIMIT` is nonretryable at the protocol boundary. On manual connection or
+an established-session refusal, `ConnectionCoordinator` detaches the listener,
+closes the captured handshake before cancellation and publishes manual guidance.
+For a reconnect rejected after a confirmed default-network generation change,
+`ReconnectEngine` may wait 60 seconds and try once more. It never loops on clone
+refusals, and a failed final attempt stops recovery. A healthy post-switch probe
+updates the live session’s network generation so a later same-network failure
+does not inherit the exception. The wait is not a server cleanup or unban promise.
+Epoch checks reject late callbacks and cancel waits on exit or replacement.
 See [ADR-0011](docs/decisions/0011-manual-refusal-and-form-memory.md).
+
+During the ts3j `RETRIEVING_DATA` phase, `Ts3jHandshakeReplyHandler` records
+the server rejection on the socket before the disconnect can interrupt the
+waiting connect operation. The connect path reports that outcome once, even
+if the asynchronous exception callback is late. Sanitized logging includes
+only the failure class, retryability and the numeric server error ID if present,
+not the rejection text. See the [handoff investigation](docs/testing/NETWORK_HANDOFF_2026-11-28_ZH.md).
 
 `TalkspurtMicrophone` separates active capture from queue readiness. A temporarily
 empty queue returns an empty frame while still ready, which the pinned ts3j
@@ -451,14 +470,14 @@ production reachability, storage or network behavior. This packaging regression
 complements JVM tests and device connection acceptance; see
 [the issue #3 report](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
 
-The public app API is intentionally small and internal to the Android app. The
-protocol facade pins a ts3j revision. Stable 1.1.0 (versionCode 15) builds on the
-single-server feature set with manual update checks, offline audio diagnostics,
-encrypted identity backups, and saved microphone tuning and appearance. File
-transfer and multi-server tabs remain outside this implementation. The
-[release pack](docs/release/README.md) records signing, exact-artifact and device
-evidence. [ADR-0021](docs/decisions/0021-stable-release-acceptance.md) records the
-publication decision and remaining physical-device checks.
+The app exposes a single active TeamSpeak session. 1.3.0 adds
+read-only channel files and same-session attachments, local chat history and
+connected floating PTT to the existing update, diagnostics and identity backup
+workflows. Uploads, server administration and multiple active sessions remain out
+of scope. The protocol still pins `ts3mobile-1`; bounded retries for recognized
+handshake failures do not replace the transport dependency. The [release index](docs/release/README.md)
+records signing, exact-artifact and device evidence; [ADR-0021](docs/decisions/0021-stable-release-acceptance.md)
+preserves the first stable release decision.
 
 ## Channel and private text
 
@@ -666,6 +685,8 @@ Samples release incrementally when read for the mix. Each client is limited to
 Age/overload invalidation retires only affected leases and clears the old decoder
 state rather than concealing intentionally discarded backlog. Still-fresh queued
 packets retain their original arrival and are readmitted under the new generation.
+The later per-talker jitter pipeline separately expires pending packets and decoded
+PCM older than 360 ms. This does not replace the 60 ms input queue residence limit.
 
 `AdaptiveJitterDelay` uses a 64-observation window of continuous, equal-duration,
 non-uncertain arrivals, a high quantile and 10 ms target steps. Stable decreases
@@ -680,7 +701,8 @@ persist the Balanced (60 ms initial, 40–120 ms) or Stability first (90 ms init
 before starting each playback worker. A saved change within a connection invalidates the
 old receive queue and resets the streams and output on the existing worker without
 restarting the transport, capture or routing. Diagnostics record the effective profile
-when playback starts and when the worker applies a switch; installs without a saved choice use Balanced.
+when playback starts and when the worker applies a switch. Without a saved choice,
+playback uses Stability first; saved selections and DSP bounds are unchanged.
 For device A/B, the opt-in `bluetoothStandardOutputExperiment` build parameter
 requests the ordinary AudioTrack path only when Bluetooth is expected. It does
 not change route admission, buffering parameters, or default builds.
@@ -876,7 +898,9 @@ no dependency on the target APK or its Kotlin runtime. See
 
 ## Confirmed identity restore (C2.3)
 
-The private identity Activity provides mutually qualified export/restore tabs.
+The private identity Activity presents direct backup and restore actions with
+on-demand password dialogs. The previous-identity action is visible only when
+a usable rollback exists. Failures and explicit replacement confirmation remain.
 `IdentityRestoreController` owns one OpenDocument slot, an opaque operation id,
 a private `ImportedIdentity` candidate and the comparison revision. Candidate
 bytes are strictly UTF-8 decoded and inspected after bounded container/KDF checks
@@ -908,6 +932,15 @@ before and after pulling a frame. Both variants share the overlay; a private set
 activity owns manual preparation and notification recall. The optional local preference
 also permits preparing on user departure from the main screen or floating PTT settings,
 then showing only after that activity stops. The preference cannot start capture.
+While a connected overlay is armed, `FloatingPttSpeakerActivity` tracks the last
+nonempty channel voice frame per client. The host renders recent IDs against the
+current channel membership rather than treating snapshot talking flags as live.
+Whispers are excluded and disarming clears the in-memory tracker. The two
+device-local styles share the appearance selector's radio cards and retain the
+existing preference key. Both styles share the hold target, drag handle, and
+expanded mode controls without changing the microphone lease or the debug lab.
+The expanded connected speaker strip uses one height for idle and active
+states; it lays out up to three names and reserves space for the overflow count.
 Ordinary Release has no
 local recorder, lab service or exported lab entry. No new audio or network path.
 See [ADR-0041](docs/decisions/0041-floating-ptt-platform-gate.md).

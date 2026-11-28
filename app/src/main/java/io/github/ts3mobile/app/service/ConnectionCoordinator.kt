@@ -235,6 +235,9 @@ internal class ConnectionCoordinator(
     @Volatile
     private var livenessJob: Job? = null
 
+    @Volatile
+    private var networkLossJob: Job? = null
+
     private val monitor = ConnectionMonitor(clockMs)
     private val reconnectEngine =
         ReconnectEngine(host, this) { block ->
@@ -273,9 +276,7 @@ internal class ConnectionCoordinator(
         channelRestore.reset()
         config.defaultChannelId?.let { channelRestore.rememberManualJoin(it, config.channelPassword) }
         activeListener = null
-        stableConnectionJob?.cancel()
-        connectedWatchJob?.cancel()
-        livenessJob?.cancel()
+        cancelConnectionObservers()
         reconnectEngine.cancel()
         connectionJob?.cancel()
 
@@ -422,9 +423,7 @@ internal class ConnectionCoordinator(
         activeListener = null
         connectionJob?.cancel()
         reconnectEngine.cancel()
-        stableConnectionJob?.cancel()
-        connectedWatchJob?.cancel()
-        livenessJob?.cancel()
+        cancelConnectionObservers()
         // Best effort and non-blocking: detaching the voice source stops the old
         // socket's microphone timer, so no further frame can be sent while the
         // exit is still being prepared. A failure here is not fatal because the
@@ -523,18 +522,19 @@ internal class ConnectionCoordinator(
     /**
      * Identity-aware default-network update fed by [DefaultNetworkMonitor].
      *
-     * A pending identity (capabilities not reported yet) is never a loss, so the
-     * brief `onAvailable` -> `onCapabilitiesChanged` gap cannot force a healthy
-     * session to reconnect. Confirmed availability loss reuses the existing
-     * reconnect path; a confirmed identity change only triggers a bounded
-     * liveness check, never a blind reconnect.
+     * Android can briefly have no default network during a handoff. Leave a live
+     * session intact during that gap and probe the same transport once the
+     * replacement is usable. Pending capabilities alone do not start recovery.
      */
     fun onNetworkChanged(state: DefaultNetworkState) {
         val epoch = host.sessionGeneration.activeEpoch
         when (monitor.networkChanged(state)) {
             NetworkTransition.PENDING, NetworkTransition.UNCHANGED -> Unit
             NetworkTransition.UNAVAILABLE -> if (epoch != null) onNetworkUnavailable(state, epoch)
-            NetworkTransition.SWITCHED -> verifySessionAfterNetworkSwitch(state.generation)
+            NetworkTransition.SWITCHED -> {
+                networkLossJob?.cancel()
+                verifySessionAfterNetworkSwitch(state.generation)
+            }
         }
     }
 
@@ -562,15 +562,17 @@ internal class ConnectionCoordinator(
         epoch: Long,
     ) {
         if (host.mutableState.value.status.phase == ConnectionPhase.CONNECTED && monitor.networkState == state) {
+            livenessJob?.cancel()
             activeListener?.takeIf { it.epoch == epoch && it.connected }?.let { listener ->
-                onEstablishedSessionEnded(
-                    listener,
-                    ConnectionStatus(
-                        ConnectionPhase.DISCONNECTED,
-                        ConnectionLivenessPolicy.NETWORK_LOST_DETAIL,
-                        retryable = true,
-                    ),
-                )
+                if (state.isBlocked) {
+                    endSessionForNetworkLoss(listener) { monitor.networkState == state }
+                } else if (networkLossJob?.isActive != true) {
+                    networkLossJob =
+                        launchIdentityWork(epoch) {
+                            delay(ConnectionLivenessPolicy.DEFAULT_NETWORK_LOSS_GRACE_MS)
+                            endSessionForNetworkLoss(listener) { isActive && !monitor.networkState.isAvailable }
+                        }
+                }
             }
         }
         if (host.mutableState.value.status.phase == ConnectionPhase.RECONNECTING) {
@@ -591,6 +593,15 @@ internal class ConnectionCoordinator(
         }
     }
 
+    private fun endSessionForNetworkLoss(
+        listener: SessionListener,
+        lossStillCurrent: () -> Boolean,
+    ) = onEstablishedSessionEnded(
+        listener,
+        ConnectionStatus(ConnectionPhase.DISCONNECTED, ConnectionLivenessPolicy.NETWORK_LOST_DETAIL, retryable = true),
+        canEndSession = lossStillCurrent,
+    )
+
     /**
      * Verifies a session that survived a default-network switch with one bounded
      * control round trip. The result is discarded when the listener was replaced
@@ -608,10 +619,13 @@ internal class ConnectionCoordinator(
                 val observation = monitor.probe(binding, generation)
                 if (!isActive) return@launchIdentityWork
                 if (!isMonitoredSessionActive(observation.binding) || !listener.connected) return@launchIdentityWork
-                // A second switch (B -> C) must not let a stale B probe end a
-                // healthy C session.
-                if (!monitor.isCurrentNetwork(observation.networkGeneration)) return@launchIdentityWork
-                if (!observation.alive) {
+                if (observation.alive) {
+                    host.sessionGeneration.withActive(listener.epoch) {
+                        if (isActive && activeListener === listener && monitor.isCurrentNetwork(observation.networkGeneration)) {
+                            listener.establishedNetworkGeneration = generation
+                        }
+                    }
+                } else {
                     onEstablishedSessionEnded(
                         listener,
                         ConnectionStatus(
@@ -619,6 +633,7 @@ internal class ConnectionCoordinator(
                             ConnectionLivenessPolicy.NETWORK_SWITCH_UNVERIFIED_DETAIL,
                             retryable = true,
                         ),
+                        canEndSession = { isActive && monitor.isCurrentNetwork(observation.networkGeneration) },
                     )
                 }
             }
@@ -632,9 +647,7 @@ internal class ConnectionCoordinator(
         activeListener = null
         connectionJob?.cancel()
         reconnectEngine.cancel()
-        stableConnectionJob?.cancel()
-        connectedWatchJob?.cancel()
-        livenessJob?.cancel()
+        cancelConnectionObservers()
         synchronized(exitLock) { exitJobs.toList() }.forEach { it.cancel() }
         // Destruction releases local resources only: the session an exit captured is
         // closed here instead of starting a new network exit on a scope that is
@@ -655,6 +668,8 @@ internal class ConnectionCoordinator(
         val config = desiredConfig ?: return AttemptResult.Stale
         return performConnectionAttempt(config, epoch, reconnecting = true)
     }
+
+    override fun confirmedNetworkGeneration(): Long? = monitor.confirmedNetworkGeneration()
 
     /** Stop a refused handshake immediately, even if the blocking call ignores interruption. */
     private fun stopRefusedAttempt(epoch: Long) {
@@ -753,6 +768,7 @@ internal class ConnectionCoordinator(
             }
         priorSession?.close()
 
+        var attemptListener: SessionListener? = null
         return try {
             host.startAudioRouting()
             val identity = identityMaterial ?: host.createIdentity()
@@ -766,6 +782,7 @@ internal class ConnectionCoordinator(
 
             val newSession = sessionFactory()
             val listener = SessionListener(epoch, reconnecting, chat?.historyAccount(config, identity))
+            attemptListener = listener
             val accepted =
                 synchronized(exitLock) {
                     if (!isEpochActive(epoch) || refusedEpoch == epoch) {
@@ -783,6 +800,11 @@ internal class ConnectionCoordinator(
             }
             host.attachMicrophoneTo(newSession)
             runInterruptible { newSession.connect(config, identity, listener) }
+            listener.reconnectRefusal?.let { refusal ->
+                listenerRef.compareAndSet(listener, null)
+                takeOwnedSession(epoch)?.close()
+                return reportFailedAttempt(refusal, epoch, reconnecting)
+            }
             if (!isListenerActive(listener)) {
                 newSession.close()
                 synchronized(exitLock) {
@@ -823,33 +845,34 @@ internal class ConnectionCoordinator(
             if (refusedEpoch == epoch) return AttemptResult.Stale
 
             val status =
-                ConnectionStatus(
+                attemptListener?.reconnectRefusal ?: ConnectionStatus(
                     ConnectionPhase.ERROR,
                     host.conciseMessage(error),
                     retryable = error.isRetryableConnectionFailure(),
                     category = error.connectionFailureCategory(),
                 )
-            val message = failureMessageFor(status, reconnecting)
-            host.mutableState.update { current ->
-                if (reconnecting && status.retryable) {
-                    current.withStatus(
-                        ConnectionStatus(
-                            ConnectionPhase.RECONNECTING,
-                            status.detail,
-                            retryable = status.retryable,
-                            category = status.category,
-                        ),
-                        message,
-                    )
-                } else {
-                    current.withStatus(status, message)
-                }.copy(snapshot = SessionSnapshot.Empty)
-            }
-            host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
-            host.onConnectionFailure(status)
-            host.refreshDiagnostics()
-            AttemptResult.Failed(status, status.retryable && reconnecting)
+            reportFailedAttempt(status, epoch, reconnecting)
         }
+    }
+
+    private fun reportFailedAttempt(
+        status: ConnectionStatus,
+        epoch: Long,
+        reconnecting: Boolean,
+    ): AttemptResult {
+        val reported =
+            host.sessionGeneration.withActive(epoch) {
+                if (!reconnecting || status.category != ConnectionFailureCategory.CLONES_LIMIT) {
+                    val message = failureMessageFor(status, reconnecting)
+                    val display = if (reconnecting && status.retryable) status.copy(phase = ConnectionPhase.RECONNECTING) else status
+                    host.mutableState.update { current -> current.withStatus(display, message).copy(snapshot = SessionSnapshot.Empty) }
+                }
+                host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
+                host.onConnectionFailure(status)
+            }
+        if (!reported) return AttemptResult.Stale
+        host.refreshDiagnostics()
+        return AttemptResult.Failed(status, status.retryable && reconnecting)
     }
 
     private inner class SessionListener(
@@ -859,6 +882,11 @@ internal class ConnectionCoordinator(
     ) : Ts3SessionListener {
         @Volatile
         var connected = false
+        var establishedNetworkGeneration: Long? = null
+
+        @Volatile
+        var reconnectRefusal: ConnectionStatus? = null
+            private set
         val chatAttempt = nextChatAttempt.incrementAndGet()
 
         override fun onTextMessage(event: Ts3TextEvent) {
@@ -872,14 +900,13 @@ internal class ConnectionCoordinator(
         }
 
         override fun onStatusChanged(status: ConnectionStatus) {
-            if (!isListenerActive(this)) return
+            if (!isListenerActive(this) || reconnectRefusal != null) return
             when (status.phase) {
                 ConnectionPhase.CONNECTING -> {
                     if (!reconnecting) withCurrentListener { host.mutableState.update { it.withStatus(status) } }
                 }
 
                 ConnectionPhase.CONNECTED -> {
-                    connected = true
                     onSessionConnected(this)
                 }
 
@@ -887,6 +914,10 @@ internal class ConnectionCoordinator(
                 ConnectionPhase.ERROR,
                 -> {
                     when {
+                        reconnecting && !connected && status.category == ConnectionFailureCategory.CLONES_LIMIT -> {
+                            withCurrentListener { reconnectRefusal = status.copy(phase = ConnectionPhase.ERROR, retryable = false) }
+                        }
+
                         status.category == ConnectionFailureCategory.CLONES_LIMIT -> onConnectionRefused(this, status)
 
                         connected -> onEstablishedSessionEnded(this, status)
@@ -940,7 +971,7 @@ internal class ConnectionCoordinator(
         /** Registration and callback mutation share one short atomic epoch boundary. */
         private fun withCurrentListener(action: () -> Unit) {
             host.sessionGeneration.withActive(epoch) {
-                if (activeListener === this) action()
+                if (activeListener === this && reconnectRefusal == null) action()
             }
         }
     }
@@ -948,7 +979,9 @@ internal class ConnectionCoordinator(
     private fun onSessionConnected(listener: SessionListener) {
         if (!isListenerActive(listener)) return
         host.sessionGeneration.withActive(listener.epoch) {
-            if (activeListener !== listener) return@withActive
+            if (activeListener !== listener || listener.reconnectRefusal != null) return@withActive
+            listener.connected = true
+            listener.establishedNetworkGeneration = monitor.confirmedNetworkGeneration()
             connectedOnce = true
             host.diagnosticsRecorder.recordConnectionSuccess()
             host.mutableState.update { current ->
@@ -1042,6 +1075,7 @@ internal class ConnectionCoordinator(
         listener: SessionListener,
         status: ConnectionStatus,
         transportSession: Ts3SessionClient? = null,
+        canEndSession: () -> Boolean = { true },
     ) {
         val epoch = listener.epoch
         if (!isEpochActive(epoch)) return
@@ -1049,6 +1083,7 @@ internal class ConnectionCoordinator(
         var shouldReconnect = false
         var recovery: Job? = null
         host.sessionGeneration.withActive(epoch) {
+            if (!canEndSession()) return@withActive
             if (transportSession != null && session !== transportSession) return@withActive
             if (!listenerRef.compareAndSet(listener, null)) return@withActive
             chat?.pause(epoch, listener.chatAttempt)
@@ -1057,7 +1092,7 @@ internal class ConnectionCoordinator(
             host.diagnosticsRecorder.recordConnectionFailure(status.retryable)
             host.stopMicrophoneImmediately()
             shouldReconnect = status.retryable && connectedOnce
-            if (shouldReconnect) recovery = reconnectEngine.reserveLoss(status, epoch)
+            if (shouldReconnect) recovery = reconnectEngine.reserveLoss(status, epoch, listener.establishedNetworkGeneration)
             claimed = true
         }
         if (!claimed) return
@@ -1094,6 +1129,7 @@ internal class ConnectionCoordinator(
         stableConnectionJob?.cancel()
         connectedWatchJob?.cancel()
         livenessJob?.cancel()
+        networkLossJob?.cancel()
     }
 
     private fun onConnectionRefused(

@@ -232,8 +232,8 @@ class MicrophoneControllerTest {
 
     @Test fun outputOnlyRouteChangeInvalidatesCaptureEvenWithUnchangedInputPreference() =
         Fixture().use { fixture ->
-            fixture.controller.setPreferredDevice(null)
-            fixture.controller.setPreferredDevice(null)
+            fixture.controller.setInputRoute(null, bluetoothCall = false)
+            fixture.controller.setInputRoute(null, bluetoothCall = false)
             fixture.controller.invalidateRouting()
             assertEquals(1, fixture.capture.routeInvalidations)
             assertEquals(0, fixture.capture.starts)
@@ -400,7 +400,7 @@ class MicrophoneControllerTest {
                 trialInputReleased = trialInputReleased,
             )
 
-        fun preparation() = ConnectedPttPreparation(controller, { true }, { foreground += it })
+        fun preparation() = ConnectedPttPreparation(controller, { true }, FloatingPttSpeakerActivity { 0L }) { foreground += it }
 
         fun bindFloatingSource(): EncodedVoiceSource {
             state.value =

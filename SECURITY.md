@@ -2,9 +2,8 @@
 
 ## Supported versions
 
-The [release index](docs/release/README.md) identifies the current stable build.
-Fixes target the latest
-stable patch and the current development branch on `main`; old milestone APKs are
+The [release index](docs/release/README.md) distinguishes the current stable build
+from unpublished candidates. Fixes target the latest stable patch and development on `main`; old milestone APKs are
 not maintained separately. There is no long-term support
 promise for superseded patches or third-party re-signed builds.
 
@@ -31,7 +30,7 @@ the issue is caused by TS3 Mobile's integration.
 
 ## 中文说明
 
-当前稳定版本以[发布索引](docs/release/README.md)为准。
+当前稳定版本以[发布索引](docs/release/README.md)为准，未发布的候选版不视为公开修复。
 安全修复面向最新稳定补丁和 `main` 开发分支，
 不单独维护旧里程碑 APK，不承诺长期维护被替代的补丁或第三方重签包。
 

@@ -17,7 +17,7 @@ body:
     id: distribution
     attributes:
       label: Download source and package
-      description: Release URL or local build; note whether this is TS3 Mobile, TS3 Mobile UI, or another test package.
+      description: Give the public Release URL or local candidate commit. Identify TS3 Mobile, TS3 Mobile UI, or any other test build.
     validations:
       required: true
   - type: input
@@ -45,7 +45,7 @@ body:
     id: description
     attributes:
       label: What happened?
-      description: Describe the observed behavior and what you expected.
+      description: Describe what happened and what you expected. For file or attachment issues, say whether listing, downloading or saving failed, without attaching private content.
     validations:
       required: true
   - type: textarea

@@ -22,24 +22,25 @@ import java.io.File
 class PlaybackPreferencesTest {
     @get:Rule val folder = TemporaryFolder()
 
-    @Test fun newInstallDefaultsToBalancedAndSavedSelectionSurvivesReconstruction() =
+    @Test fun newInstallDefaultsToStabilityAndExplicitBalancedSurvivesReconstruction() =
         runBlocking {
             val file = File(folder.root, "playback.preferences_pb")
             var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             try {
                 val initial = PlaybackPreferences(PreferenceDataStoreFactory.create(scope = scope) { file }, scope)
-                assertEquals(ReceiveDelayProfile.BALANCED, initial.awaitIdle().profile)
-                initial.select(ReceiveDelayProfile.STABILITY)
-                assertEquals(ReceiveDelayProfile.STABILITY, initial.awaitIdle().profile)
                 assertEquals(ReceiveDelayProfile.STABILITY, initial.read())
+                assertEquals(ReceiveDelayProfile.STABILITY, initial.awaitIdle().profile)
+                initial.select(ReceiveDelayProfile.BALANCED)
+                assertEquals(ReceiveDelayProfile.BALANCED, initial.awaitIdle().profile)
+                assertEquals(ReceiveDelayProfile.BALANCED, initial.read())
 
                 scope.coroutineContext.job.cancelAndJoin()
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
                 val reopened = PlaybackPreferences(PreferenceDataStoreFactory.create(scope = scope) { file }, scope)
-                assertEquals(ReceiveDelayProfile.STABILITY, reopened.awaitIdle().profile)
-                reopened.select(ReceiveDelayProfile.BALANCED)
                 assertEquals(ReceiveDelayProfile.BALANCED, reopened.awaitIdle().profile)
-                assertEquals(ReceiveDelayProfile.BALANCED, reopened.read())
+                reopened.select(ReceiveDelayProfile.STABILITY)
+                assertEquals(ReceiveDelayProfile.STABILITY, reopened.awaitIdle().profile)
+                assertEquals(ReceiveDelayProfile.STABILITY, reopened.read())
             } finally {
                 scope.coroutineContext.job.cancelAndJoin()
             }

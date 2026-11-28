@@ -9,6 +9,7 @@ import com.github.manevolent.ts3j.protocol.client.ClientConnectionState
 import com.github.manevolent.ts3j.protocol.packet.PacketBody0Voice
 import com.github.manevolent.ts3j.protocol.packet.PacketBody2Command
 import com.github.manevolent.ts3j.protocol.packet.PacketBodyType
+import com.github.manevolent.ts3j.protocol.packet.handler.PacketHandler
 import com.github.manevolent.ts3j.protocol.socket.client.AbstractTeamspeakClientSocket
 import com.github.manevolent.ts3j.protocol.socket.client.LocalTeamspeakClientSocket
 import java.util.concurrent.CountDownLatch
@@ -41,6 +42,10 @@ internal open class StateAwareTeamspeakClientSocket :
     @Volatile
     private var disconnectNotificationPending = false
 
+    @Volatile
+    var handshakeRejection: Ts3jHandshakeRejectedException? = null
+        private set
+
     /** Counted down once this socket observes its own leave notification. */
     private val selfLeaveNotification = CountDownLatch(1)
     private val operations = SocketOperations()
@@ -64,6 +69,13 @@ internal open class StateAwareTeamspeakClientSocket :
     @Volatile var closeChannelFiles: (() -> Unit)? = null
 
     fun <T> withOperation(block: () -> T): T = operations.run(block)
+
+    fun recordHandshakeRejection(error: Ts3jHandshakeRejectedException) {
+        handshakeRejection = error
+    }
+
+    override fun getHandlerClass(state: ClientConnectionState): Class<out PacketHandler> =
+        if (state == ClientConnectionState.RETRIEVING_DATA) Ts3jHandshakeReplyHandler::class.java else super.getHandlerClass(state)
 
     override fun writePacket(packet: Packet) {
         val voice = packet.body as? PacketBody0Voice

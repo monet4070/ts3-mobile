@@ -90,6 +90,7 @@ class Ts3jSessionClient : Ts3SessionClient {
             client.setHWID(identity.uid.toBase64())
             client.setMicrophone(voiceSource?.toMicrophone(token, client))
             client.setExceptionHandler { error ->
+                if (client.handshakeRejection != null) return@setExceptionHandler
                 val delivery =
                     generation.withCurrent(token) {
                         if (socket !== client) return@withCurrent null
@@ -173,7 +174,7 @@ class Ts3jSessionClient : Ts3SessionClient {
                 }
                 return
             } catch (error: Throwable) {
-                val reportedError = connectionAttempt.failureOrNull() ?: error.withNetworkDiagnostics(client)
+                val reportedError = client.handshakeRejection ?: connectionAttempt.failureOrNull() ?: error.withNetworkDiagnostics(client)
                 var currentGeneration = false
                 val shouldClose =
                     generation.withCurrent(token) {
@@ -761,9 +762,10 @@ class Ts3jSessionClient : Ts3SessionClient {
         stage: String,
         error: Throwable,
     ) {
+        val refusalCode = (error as? Ts3jHandshakeRejectedException)?.serverErrorId?.let { "; serverErrorId=$it" }.orEmpty()
         System.err.println(
             "TS3_DIAG: $stage; types=${error.sanitizedFailureTypes()}; " +
-                "retryable=${error.isRetryableConnectionFailure()}",
+                "retryable=${error.isRetryableConnectionFailure()}$refusalCode",
         )
     }
 

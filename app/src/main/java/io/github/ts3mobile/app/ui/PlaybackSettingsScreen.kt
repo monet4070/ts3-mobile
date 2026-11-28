@@ -40,17 +40,17 @@ internal fun PlaybackSettingsScreen(
             )
             Column(Modifier.selectableGroup().guideAnchor(GuideAnchor.PLAYBACK_PROFILE), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 PlaybackProfileOption(
-                    R.string.playback_profile_balanced,
-                    R.string.playback_profile_balanced_summary,
-                    state,
-                    ReceiveDelayProfile.BALANCED,
-                    onSelect,
-                )
-                PlaybackProfileOption(
                     R.string.playback_profile_stability,
                     R.string.playback_profile_stability_summary,
                     state,
                     ReceiveDelayProfile.STABILITY,
+                    onSelect,
+                )
+                PlaybackProfileOption(
+                    R.string.playback_profile_balanced,
+                    R.string.playback_profile_balanced_summary,
+                    state,
+                    ReceiveDelayProfile.BALANCED,
                     onSelect,
                 )
             }

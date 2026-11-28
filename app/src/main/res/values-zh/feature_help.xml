@@ -13,14 +13,14 @@
     <string name="guide_bookmarks_title">收藏服务器和默认频道</string>
     <string name="guide_bookmarks_body">打开「服务器收藏」新增收藏或保存当前连接。在收藏的「更多设置」选默认频道；也能在线保存频道列表，之后离线选。密码可选保存；连接其他收藏前先断开当前会话。</string>
     <string name="guide_identity_title">迁移与备份身份</string>
-    <string name="guide_identity_body">到「设置 → 身份与备份」导出加密身份，妥善保管文件和口令。换手机后在「恢复」页验证再确认导入。身份备份不包含收藏和连接表单。</string>
+    <string name="guide_identity_body">在「设置 → 身份与备份」点「创建加密备份」，保管好文件和密码。换手机后点「从备份恢复」。备份不包含收藏和连接表单。</string>
     <string name="guide_identity_desktop">此构建也支持导入桌面 TS3 的 INI。文件可能含私钥，不要分享给别人。</string>
     <string name="guide_trial_title">先试麦，再进频道发话</string>
     <string name="guide_trial_body">在「设置 → 麦克风设置 → 本机试麦」检查输入，不会向服务器发声。门控漏掉说话时，可试着调低门控阈值。普通「按住说话」按钮则可能把声音发到当前频道。</string>
     <string name="guide_playback_title">选耳机、蓝牙或外放</string>
-    <string name="guide_playback_body">用连接页语音栏的设备入口选输出，喇叭图标只静音收听，不关麦。蓝牙断开后先确认输出设备再恢复收听。语音断续时，可在「设置 → 语音播放」试用「稳定优先」。</string>
+    <string name="guide_playback_body">用连接页语音栏的设备入口选输出，喇叭图标只静音收听，不关麦。蓝牙断开后先确认输出设备再恢复收听。「设置 → 语音播放」默认使用「稳定优先」。</string>
     <string name="guide_overlay_title">让浮窗 PTT 随 Home 出现</string>
-    <string name="guide_overlay_body">在「设置 → 浮窗 PTT」授权在其他应用上层显示。加入频道后可手动打开，或开启自动显示，麦克风空闲时按 Home。也可用连接通知召回。显示浮窗不会自动开麦。</string>
+    <string name="guide_overlay_body">在「设置 → 浮窗 PTT」授权在其他应用上层显示。加入频道后开启自动显示，麦克风空闲时回桌面或从主界面按返回（Android 12 及以上）。也可手动打开或用连接通知召回。显示浮窗不会自动开麦。</string>
     <string name="guide_overlay_use_title">用浮窗发话和查看发言人</string>
     <string name="guide_overlay_use_body">拖动频道区域可移动；轻点展开查看谁在说话、切换麦克风模式。只有「按住」模式需要按住右侧的宽按钮发话。其他模式下那里只显示麦克风状态，不是额外的开关。</string>
     <string name="guide_chat_title">私聊与戳一下</string>

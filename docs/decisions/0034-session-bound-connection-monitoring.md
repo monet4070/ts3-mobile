@@ -38,3 +38,16 @@ The original coordinator behavior suites remain the migration gate, especially
 A→B→C, noncooperative late probes, offline waiting, transport closure/terminal
 callback competition and task removal during observation. Rollback restores the
 original inline observer code; no data migration is required.
+
+## Break-before-make handoff
+
+A default-network loss without a policy block can be a short gap between
+bearers. The coordinator keeps the existing listener, snapshot and audio for
+up to two seconds while waiting for a confirmed usable default. If a default
+returns first, it cancels the grace and probes the existing TS3 session, even
+if Android reports the same network generation. A verified round trip retains
+the session; a failed probe or expired grace takes the existing recovery path.
+Actual transport closure and policy blocking still act immediately. Exit and
+session replacement cancel the grace, and stale jobs cannot end a new session.
+No protocol, dependency, configuration or audio changes are needed. This only
+avoids app-initiated teardown, not packet loss or server-side IP migration.

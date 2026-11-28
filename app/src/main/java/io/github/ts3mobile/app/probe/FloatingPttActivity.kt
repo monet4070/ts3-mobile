@@ -33,6 +33,7 @@ internal class FloatingPttActivity : ComponentActivity() {
     private var session by mutableStateOf<TeamSpeakService.SessionBinder?>(null)
     private var overlayAllowed by mutableStateOf(false)
     private var autoShow by mutableStateOf(false)
+    private var style by mutableStateOf(FloatingPttStyle.STANDARD)
     private var recallPending = false
     private var bound = false
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
@@ -67,6 +68,8 @@ internal class FloatingPttActivity : ComponentActivity() {
                         onShow = ::requestShow,
                         autoShow = autoShow,
                         onAutoShowChanged = ::changeAutoShow,
+                        style = style,
+                        onStyleChanged = ::changeStyle,
                     )
                 }
             }
@@ -82,6 +85,7 @@ internal class FloatingPttActivity : ComponentActivity() {
         super.onPostResume()
         overlayAllowed = Settings.canDrawOverlays(this)
         autoShow = autoShowFloatingPtt
+        style = floatingPttStyle
         recallIfReady()
     }
 
@@ -98,7 +102,7 @@ internal class FloatingPttActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (autoShow && missingPermissions().isEmpty()) armOverlay()
+        prepareFloatingPttDeparture(session)
     }
 
     override fun onStop() {
@@ -112,6 +116,11 @@ internal class FloatingPttActivity : ComponentActivity() {
     private fun changeAutoShow(enabled: Boolean) {
         autoShowFloatingPtt = enabled
         autoShow = enabled
+    }
+
+    private fun changeStyle(selected: FloatingPttStyle) {
+        floatingPttStyle = selected
+        style = selected
     }
 
     private fun openOverlaySettings() {

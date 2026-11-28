@@ -25,8 +25,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ts3mobile.app.chat.ChatState
 import io.github.ts3mobile.app.documents.DocumentSavesViewModel
 import io.github.ts3mobile.app.invite.ServerInvite
-import io.github.ts3mobile.app.probe.ConnectedPttProbeHost
+import io.github.ts3mobile.app.probe.FloatingPttAutoShow
 import io.github.ts3mobile.app.probe.autoShowFloatingPtt
+import io.github.ts3mobile.app.probe.prepareFloatingPttDeparture
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.PrivateMessageNotificationIntent
 import io.github.ts3mobile.app.service.PrivateMessageNotifications
@@ -54,6 +55,7 @@ class MainActivity : ComponentActivity() {
     private var isBound = false
     private var pushToTalkPressed = false
     private var activityVisible = false
+    private val floatingPttAutoShow = FloatingPttAutoShow(this) { serviceBinder }
 
     private val notificationPermission =
         registerForActivityResult(
@@ -153,6 +155,7 @@ class MainActivity : ComponentActivity() {
                     onAudioRouteSelected = { routeId ->
                         serviceBinder?.selectAudioRoute(routeId)
                     },
+                    onAudioInputSelected = { routeId -> serviceBinder?.selectAudioInput(routeId) },
                     onMicrophoneModeChanged = ::setMicrophoneMode,
                     onPushToTalkChanged = ::setPushToTalkPressed,
                     onJoinChannel = { channelId, password ->
@@ -296,10 +299,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!activityVisible || !autoShowFloatingPtt) return
-        val binder = serviceBinder ?: return
-        val preparation = binder.connectedPttPreparation ?: return
-        ConnectedPttProbeHost(this, preparation, binder.state).arm(leavingMainActivity = true)
+        prepareFloatingPttDeparture(serviceBinder, leavingMainActivity = true)
     }
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
@@ -324,6 +324,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         activityVisible = true
         serviceBinder?.setAppVisible(true)
+        floatingPttAutoShow.refreshRootBack()
         launchPendingConnectionIfVisible()
     }
 

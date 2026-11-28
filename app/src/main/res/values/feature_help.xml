@@ -13,14 +13,14 @@
     <string name="guide_bookmarks_title">Keep servers and channels handy</string>
     <string name="guide_bookmarks_body">Open Server bookmarks to add a server or save the current connection. Choose a default channel under More settings; save its channel list while connected if you want to pick from it offline. Saving passwords is optional. Disconnect before connecting to another bookmark.</string>
     <string name="guide_identity_title">Back up or restore your identity</string>
-    <string name="guide_identity_body">Go to Settings → Identity and backups to export an encrypted identity. Keep the file and passphrase safe. To move to a new phone, verify and confirm the backup on the Restore tab. Bookmarks and connection settings are not part of the backup.</string>
+    <string name="guide_identity_body">In Settings → Identity and backups, choose Create encrypted backup. Keep the file and password. On your new phone, choose Restore from backup. Bookmarks and connection settings are not included.</string>
     <string name="guide_identity_desktop">This build also supports desktop TS3 INI import. An INI can contain a private key; do not share it.</string>
     <string name="guide_trial_title">Test your mic without going live</string>
     <string name="guide_trial_body">Open Settings → Microphone settings → Test microphone to check input without sending audio to the server. If Gate misses your voice, try lowering the threshold. The normal talk button can send your voice to the current channel.</string>
     <string name="guide_playback_title">Pick where incoming audio plays</string>
-    <string name="guide_playback_body">While connected, use the audio route picker and the speaker icon to choose an output or mute listening. Neither control turns off the mic. If Bluetooth drops, confirm the route before unmuting. For choppy audio, try Stability first under Settings → Voice playback.</string>
+    <string name="guide_playback_body">While connected, use the audio route picker and the speaker icon to choose an output or mute listening. Neither control turns off the mic. If Bluetooth drops, confirm the route before unmuting. Stability first is the default under Settings → Voice playback.</string>
     <string name="guide_overlay_title">Show floating PTT on Home</string>
-    <string name="guide_overlay_body">Open Settings → Floating PTT and allow display over other apps. Join a channel, then show the overlay manually or enable automatic display and press Home while the mic is idle. The connection notification can recall the overlay. Showing it never opens the mic.</string>
+    <string name="guide_overlay_body">Open Settings → Floating PTT and allow display over other apps. Join a channel and enable automatic display, then go Home or use Back on the main screen (Android 12+) while the mic is idle. You can also show it manually or from the connection notification. Showing it never opens the mic.</string>
     <string name="guide_overlay_use_title">Talk and check speakers in the overlay</string>
     <string name="guide_overlay_use_body">Drag the channel area to move the overlay; tap it to see who is speaking and switch mic modes. Press and hold the wide talk area only in Hold mode. In other modes that area shows mic status, not a separate mic switch.</string>
     <string name="guide_chat_title">Send a private message or poke</string>

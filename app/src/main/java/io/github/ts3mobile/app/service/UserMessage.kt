@@ -2,7 +2,7 @@ package io.github.ts3mobile.app.service
 
 import io.github.ts3mobile.audio.opus.AudioRoutingError
 
-/** Conservative user guidance, not a server unban deadline or an automatic timer. */
+/** Conservative wait for manual guidance and the one-shot handoff retry, not a server deadline. */
 internal const val RECOMMENDED_RETRY_WAIT_SECONDS = 60L
 
 /**
@@ -33,6 +33,8 @@ sealed interface UserMessage {
     data class ReconnectScheduled(val seconds: Long, val attempt: Int) : UserMessage
 
     data class Reconnecting(val attempt: Int) : UserMessage
+
+    data class HandoffIdentityWait(val seconds: Long) : UserMessage
 
     /** Server refused this identity: no automatic attempts; wait and retry manually. */
     data object ConnectionLimitWait : UserMessage

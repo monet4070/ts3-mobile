@@ -37,6 +37,7 @@ internal class ProbeOverlayCard(
     private val lost: (ProbeOverlayCard) -> Unit,
     private val displayChanged: (ProbeOverlayCard) -> Unit,
     selectMode: ((MicrophoneMode) -> Unit)? = null,
+    private val minimalStyle: Boolean = false,
 ) : LinearLayout(context) {
     private val colors =
         tailSyncColors(
@@ -48,9 +49,10 @@ internal class ProbeOverlayCard(
     private val memberCount = text(11f, colors.onSurfaceVariant.toArgb())
     private val speakerPreview = text(11f, colors.onPrimaryContainer.toArgb(), bold = true)
     private val speakerPreviewIcon = icon(R.drawable.ic_lucide_audio_lines, colors.onPrimaryContainer.toArgb())
+    private val minimalHandleIcon = icon(R.drawable.ic_ptt_grip, colors.onSurfaceVariant.toArgb())
     private val chevron = icon(R.drawable.ic_lucide_chevron_down, colors.onSurfaceVariant.toArgb())
-    private val speakerHeading = text(11f, colors.onSurfaceVariant.toArgb(), bold = true)
-    private val speakerLines =
+    private val speakerStrip = ProbeSpeakerStrip(context, colors)
+    private val localLines =
         listOf(text(16f, colors.onSurface.toArgb(), bold = true), text(13f, colors.onSurface.toArgb()))
     private val modeControls = selectMode?.let { ProbeModeControls(context, colors, it) }
     private var details: ProbeOverlayDetails? = null
@@ -59,7 +61,7 @@ internal class ProbeOverlayCard(
     val mode: MicrophoneMode? get() = details?.mode
 
     val microphone = ProbeMicButton(context, colors, holdLabel)
-    val handle =
+    private val detailedHandle =
         LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
             setPaddingRelative(dp(4), 0, dp(4), 0)
@@ -82,15 +84,21 @@ internal class ProbeOverlayCard(
                 LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f),
             )
             addView(chevron, LayoutParams(dp(12), dp(12)))
+        }
+    val handle =
+        LinearLayout(context).apply {
+            gravity = Gravity.CENTER
+            addView(detailedHandle, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            addView(minimalHandleIcon, LayoutParams(dp(20), dp(20)))
             background = RippleDrawable(ColorStateList.valueOf(colors.primary.copy(alpha = .10f).toArgb()), null, rounded(-1, 14))
         }
-    private val speakerPanel =
+    private val localPanel =
         LinearLayout(context).apply {
             orientation = VERTICAL
             setPadding(dp(12), dp(9), dp(12), dp(9))
             background = rounded(colors.secondaryContainer.toArgb(), 13)
-            addView(speakerHeading)
-            speakerLines.forEach { row ->
+            addView(text(11f, colors.onSurfaceVariant.toArgb(), bold = true).apply { setText(R.string.ptt_overlay_local_details) })
+            localLines.forEach { row ->
                 addView(row, LayoutParams(LayoutParams.MATCH_PARENT, dp(22)))
                 row.gravity = Gravity.CENTER_VERTICAL
             }
@@ -102,7 +110,8 @@ internal class ProbeOverlayCard(
                 LinearLayout(context).apply {
                     orientation = VERTICAL
                     setPadding(dp(10), 0, dp(10), dp(5))
-                    addView(speakerPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+                    addView(speakerStrip, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+                    addView(localPanel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
                     addView(makeFooter(stop), LayoutParams(LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(6) })
                 },
             )
@@ -129,7 +138,14 @@ internal class ProbeOverlayCard(
         render(R.string.ptt_overlay_idle, false)
     }
 
-    fun preferredWidth(): Int = dp(if (expanded) 286 else 216)
+    private val iconOnly: Boolean get() = minimalStyle && !expanded
+
+    fun preferredWidth(): Int =
+        when {
+            expanded -> dp(286)
+            iconOnly -> 2 * (dp(48) + dp(4))
+            else -> dp(216)
+        }
 
     fun headerHeight(): Int = dp(48) + 2 * dp(4)
 
@@ -137,6 +153,10 @@ internal class ProbeOverlayCard(
         expanded = value
         background = rounded(colors.surface.toArgb(), if (value) 20 else 22, colors.outlineVariant.toArgb())
         body.visibility = if (value) VISIBLE else GONE
+        detailedHandle.visibility = if (iconOnly) GONE else VISIBLE
+        minimalHandleIcon.visibility = if (iconOnly) VISIBLE else GONE
+        microphone.setIconOnly(iconOnly)
+        microphone.layoutParams = microphone.layoutParams.apply { width = dp(if (iconOnly) 48 else 96) }
         chevron.rotation = if (value) 180f else 0f
         updateHeader()
     }
@@ -156,26 +176,18 @@ internal class ProbeOverlayCard(
         val count = current.membersLabel.orEmpty()
         if (memberCount.text != count) memberCount.text = count
         memberCount.visibility = if (current.membersLabel == null) GONE else VISIBLE
-        val heading = if (current.membersLabel == null) R.string.ptt_overlay_local_details else R.string.ptt_overlay_speakers_heading
-        if (speakerHeading.text != context.getText(heading)) speakerHeading.setText(heading)
-        val lines =
-            when {
-                current.membersLabel == null -> listOfNotNull(current.localSummary, current.localActivity.takeIf(String::isNotEmpty))
-                current.speakers.isEmpty() -> listOf(context.getString(R.string.ptt_overlay_no_speakers))
-                else -> listOf(current.speakers.first(), speakerTail(current))
+        val connected = current.membersLabel != null
+        speakerStrip.visibility = if (connected) VISIBLE else GONE
+        localPanel.visibility = if (connected) GONE else VISIBLE
+        if (connected) {
+            if (current.speakers != previous?.speakers || current.moreSpeakers != previous.moreSpeakers) {
+                speakerStrip.render(current.speakers, current.moreSpeakers)
             }
-        speakerLines.forEachIndexed { index, view ->
-            val line = lines.getOrNull(index).orEmpty()
-            if (view.text != line) view.text = line
-            view.alpha = if (line.isEmpty()) 0f else 1f
+        } else {
+            localLines[0].text = current.localSummary
+            localLines[1].text = current.localActivity
         }
         updateHeader()
-    }
-
-    private fun speakerTail(current: ProbeOverlayDetails): String {
-        val remaining = current.speakers.drop(1)
-        val additional = current.moreSpeakers.takeIf { it > 0 }?.let { context.getString(R.string.ptt_overlay_more_speakers, it) }
-        return (remaining + listOfNotNull(additional)).joinToString(context.getString(R.string.ptt_overlay_name_separator))
     }
 
     private fun updateHeader() {
@@ -185,6 +197,10 @@ internal class ProbeOverlayCard(
         val visible = !expanded && preview.isNotEmpty()
         speakerPreview.visibility = if (visible) VISIBLE else GONE
         speakerPreviewIcon.visibility = speakerPreview.visibility
+        if (iconOnly) {
+            minimalHandleIcon.setImageResource(if (visible) R.drawable.ic_lucide_audio_lines else R.drawable.ic_ptt_grip)
+            minimalHandleIcon.setColorFilter(if (visible) colors.primary.toArgb() else colors.onSurfaceVariant.toArgb())
+        }
         val hint = context.getText(if (expanded) R.string.ptt_overlay_collapse else R.string.ptt_overlay_expand)
         val description = listOfNotNull(current?.title, current?.membersLabel, preview.takeIf { visible }, hint)
         handle.contentDescription = description.joinToString("\n")

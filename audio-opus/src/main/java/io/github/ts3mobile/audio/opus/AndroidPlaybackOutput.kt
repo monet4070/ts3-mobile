@@ -42,7 +42,7 @@ internal class AndroidPlaybackOutput(
         val performanceMode = playbackPerformanceMode(routeGuard.expectsBluetooth(), standardBluetoothExperiment)
         track =
             AudioTrack.Builder()
-                .setAudioAttributes(voicePlaybackAudioAttributes())
+                .setAudioAttributes(voicePlaybackAudioAttributes(routeGuard.expectsBluetoothCall()))
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -291,7 +291,7 @@ internal class PlaybackRouteController(
         stats?.observeRoute(kind)
         val waitStarted = bluetoothWaitStartedAt
         val timedOut = waitStarted != null && nowMs - waitStarted >= BLUETOOTH_ROUTE_TIMEOUT_MS
-        return routeGuard.evaluate(kind, routeRevision, timedOut).also { decision ->
+        return routeGuard.evaluate(kind, routeRevision, timedOut, deviceType == AudioDeviceInfo.TYPE_BLUETOOTH_SCO).also { decision ->
             val allowed = decision == PlaybackRouteDecision.ALLOW
             if (decision == PlaybackRouteDecision.MUTE) silenced = true
             if (routeGuard.requiresLiveRouteCheck()) {
@@ -350,9 +350,9 @@ internal class PlaybackRouteCheckThrottle(
     }
 }
 
-internal fun voicePlaybackAudioAttributes(): AudioAttributes =
+internal fun voicePlaybackAudioAttributes(bluetoothCall: Boolean = false): AudioAttributes =
     AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setUsage(if (bluetoothCall) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_NONE)

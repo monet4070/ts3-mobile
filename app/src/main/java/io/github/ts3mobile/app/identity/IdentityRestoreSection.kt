@@ -44,63 +44,45 @@ internal fun IdentityRestoreSection(
     onEndConnection: () -> Unit,
     onImportDesktop: (() -> Unit)? = null,
 ) {
-    var passphrase by remember { mutableStateOf("") }
+    var restoringBackup by remember { mutableStateOf(false) }
     val enabled = !otherBusy && !state.active
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        SettingsSection(stringResource(R.string.identity_encrypted_backup), UiIcon.Lock) {
-            IdentityHint(R.string.identity_import_guidance)
-            BackupPasswordField(passphrase, R.string.identity_existing_password, enabled) { passphrase = it }
-            Button(
-                onClick = {
-                    val secret = passphrase.toCharArray()
-                    passphrase = ""
-                    onImport(secret)
-                },
-                enabled = enabled,
-                modifier = Modifier.fillMaxWidth(),
-            ) { IdentityActionLabel(UiIcon.Folder, R.string.identity_import) }
-            if (useState == IdentityUseState.CONNECTION && state.preview == null) {
-                OutlinedButton(onClick = onEndConnection) { Text(stringResource(R.string.identity_end_connection)) }
-            }
+    OutlinedButton(onClick = { restoringBackup = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+        IdentityActionLabel(UiIcon.Folder, R.string.identity_restore_backup)
+    }
+    if (onImportDesktop != null) {
+        OutlinedButton(onClick = onImportDesktop, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            IdentityActionLabel(UiIcon.FileText, R.string.identity_desktop_import)
         }
-        if (state.status != IdentityRestoreStatus.READY && state.preview == null) {
-            val complete = state.status in setOf(IdentityRestoreStatus.DONE, IdentityRestoreStatus.ALREADY_CURRENT)
-            val colors = MaterialTheme.colorScheme
-            SettingsSection(stringResource(R.string.identity_operation_status), if (complete) UiIcon.Check else UiIcon.Info) {
-                Text(
-                    stringResource(state.message()),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (state.status == IdentityRestoreStatus.FAILED) colors.error else colors.onSurface,
-                )
-                if (state.active && state.status !in setOf(IdentityRestoreStatus.COMMITTING, IdentityRestoreStatus.CANCELLING)) {
-                    OutlinedButton(onClick = {
-                        passphrase = ""
-                        onCancel()
-                    }) { Text(stringResource(R.string.action_cancel)) }
-                }
-            }
+    }
+    if (hasRollback) {
+        OutlinedButton(onClick = onRollback, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            IdentityActionLabel(UiIcon.History, R.string.identity_rollback)
         }
-        if (onImportDesktop != null) {
-            SettingsSection(stringResource(R.string.identity_desktop_section), UiIcon.FileText) {
-                IdentityHint(R.string.identity_desktop_guidance)
-                OutlinedButton(onClick = {
-                    passphrase = ""
-                    onImportDesktop()
-                }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-                    IdentityActionLabel(UiIcon.Folder, R.string.identity_desktop_import)
-                }
-            }
+    }
+    if (useState == IdentityUseState.CONNECTION && state.preview == null) {
+        OutlinedButton(onClick = onEndConnection, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.identity_end_connection))
         }
-        SettingsSection(stringResource(R.string.identity_previous_section), UiIcon.History) {
-            IdentityHint(if (hasRollback) R.string.identity_local_rollback else R.string.identity_no_rollback)
-            OutlinedButton(onClick = onRollback, enabled = enabled && hasRollback, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.identity_rollback))
-            }
+    }
+    if (state.status != IdentityRestoreStatus.READY && state.preview == null) {
+        val complete = state.status in setOf(IdentityRestoreStatus.DONE, IdentityRestoreStatus.ALREADY_CURRENT)
+        IdentityStatusLine(
+            state.message(),
+            if (complete) UiIcon.Check else UiIcon.Info,
+            error = state.status == IdentityRestoreStatus.FAILED,
+        )
+        if (state.active && state.status !in setOf(IdentityRestoreStatus.COMMITTING, IdentityRestoreStatus.CANCELLING)) {
+            OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
         }
+    }
+    if (restoringBackup) {
+        RestoreBackupDialog(enabled, onDismiss = { restoringBackup = false }, onImport = { secret ->
+            restoringBackup = false
+            onImport(secret)
+        })
     }
     state.preview?.let { preview ->
         val committing = state.status == IdentityRestoreStatus.COMMITTING
-        val desktop = preview.source == IdentityImportSource.DESKTOP
         var allowLowerSecurity by remember(preview, state.status) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { if (!committing) onCancel() },
@@ -115,13 +97,16 @@ internal fun IdentityRestoreSection(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     SettingsSection(stringResource(R.string.identity_current), UiIcon.Shield) {
-                        preview.previous.active?.let { IdentitySummaryView(it) } ?: IdentityHint(R.string.identity_no_usable_current)
+                        preview.previous.active?.let { IdentitySummaryView(it) }
+                            ?: Text(stringResource(R.string.identity_no_usable_current))
                         if (preview.previous.unreadable) IdentityStatusLine(R.string.identity_unreadable, UiIcon.Info, error = true)
                     }
                     SettingsSection(stringResource(R.string.identity_proposed), UiIcon.Archive) {
                         IdentitySummaryView(preview.proposed)
                     }
-                    IdentityHint(R.string.identity_permission_impact)
+                    if (preview.previous.active?.uid != preview.proposed.uid) {
+                        Text(stringResource(R.string.identity_permission_impact), style = MaterialTheme.typography.titleSmall)
+                    }
                     if (preview.isDesktopDowngrade) {
                         Row(
                             Modifier.toggleable(
@@ -137,7 +122,9 @@ internal fun IdentityRestoreSection(
                             Text(stringResource(R.string.identity_desktop_allow_lower))
                         }
                     }
-                    Text(stringResource(state.message()))
+                    if (state.status != IdentityRestoreStatus.PREVIEW && state.status != IdentityRestoreStatus.READY) {
+                        IdentityStatusLine(state.message(), UiIcon.Info, error = state.status == IdentityRestoreStatus.FAILED)
+                    }
                     if (state.storeFailure in setOf(IdentityFailure.BUSY, IdentityFailure.STALE_CONFIRMATION)) {
                         OutlinedButton(onClick = onRefreshConfirmation, enabled = !state.working) {
                             Text(stringResource(R.string.identity_refresh_confirmation))
@@ -155,7 +142,7 @@ internal fun IdentityRestoreSection(
                         state.status == IdentityRestoreStatus.PREVIEW && useState == IdentityUseState.IDLE &&
                             (!preview.isDesktopDowngrade || allowLowerSecurity),
                 ) {
-                    Text(stringResource(if (desktop) R.string.identity_desktop_use else R.string.identity_confirm_action))
+                    Text(stringResource(R.string.identity_confirm_action))
                 }
             },
             dismissButton = {
@@ -163,6 +150,35 @@ internal fun IdentityRestoreSection(
             },
         )
     }
+}
+
+@Composable
+private fun RestoreBackupDialog(
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onImport: (CharArray) -> Unit,
+) {
+    var passphrase by remember { mutableStateOf("") }
+    val title = stringResource(R.string.identity_restore_backup)
+    val passwordLabel = stringResource(R.string.identity_existing_password)
+    val chooseLabel = stringResource(R.string.identity_import)
+    val cancelLabel = stringResource(R.string.action_cancel)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { BackupPasswordField(passphrase, passwordLabel, enabled) { passphrase = it } },
+        confirmButton = {
+            Button(
+                enabled = enabled && passphrase.isNotEmpty(),
+                onClick = {
+                    val secret = passphrase.toCharArray()
+                    passphrase = ""
+                    onImport(secret)
+                },
+            ) { Text(chooseLabel) }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(cancelLabel) } },
+    )
 }
 
 private fun IdentityRestoreState.message(): Int {

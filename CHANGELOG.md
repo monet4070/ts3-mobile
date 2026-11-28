@@ -5,78 +5,42 @@ used milestone naming. After 1.0.0, patch versions are intended for compatible f
 and minor versions for compatible features; Android versionCode increases for
 each distributed update.
 
-## Unreleased — 1.3.0 Candidate (versionCode 17)
+## 1.3.0 (versionCode 17)
 
-- Changing a bookmark's host or port clears both saved passwords and the old default
-  channel from the draft. Changing only the default channel clears its password, not
-  the server password. Unchanged bookmarks and the independent connection form are not migrated.
-- If you previously edited a bookmark's address and connected to an untrusted server,
-  check the saved settings and ask the relevant administrator to rotate passwords if needed.
-  This fix does not undo previous authentication attempts.
-- 收藏凭据隔离：修改地址或端口会清空草稿中的两种旧密码和默认频道；只改频道则只清频道密码。
-  若曾改址并连到不受信任的服务器，请核对收藏，必要时联系管理员更换相关口令。
-  此修复不会撤回历史认证，也不会批量更改既有收藏或独立连接表单。
+[English Release Notes](docs/release/1.3.0/RELEASE_NOTES.md) · [中文更新说明](docs/release/1.3.0/RELEASE_NOTES_ZH.md) ·
+[Verification Status & Release Gates / 验收状态](docs/release/CANDIDATE_STATUS_2026-11-25.md)
 
-- Channel files and chat attachments support explicit, read-only downloads. The Users list shows avatars in the existing leading tile and opens a preview on tap.
-  Channel member rows keep their voice status icons without an avatar action.
-- 频道文件及聊天附件支持主动下载；用户列表左侧显示头像，点击放大，频道成员行不单列头像入口。
-- Chat displays basic TeamSpeak BBCode and confirms the destination before opening external links;
-  copying preserves the original text. Bookmark **Connect now** will not replace an active session.
-- 聊天显示基础 BBCode，打开外链前先核对地址，复制保留原文；收藏“立即连接”不会替换活动会话。
-- Optional local chat history saves eligible new text to a bounded encrypted archive;
-  it is off by default and can be browsed and deleted offline.
-- 新增默认关闭的本地聊天历史，可将符合条件的新文本限量加密保存，离线浏览或删除。
-- Keep saved chat history across clock rollbacks, verify writes before retrying,
-  and free queue capacity when clearing the archive. Capture release failures now
-  end the connection attempt without skipping other session cleanup.
-- 时钟回拨不会清除聊天记录；重试先确认可写，清空后立即释放队列容量。
-  录音释放失败会结束本次连接尝试，播放和路由仍会清理。
-- Preserve a second disconnect during reconnect handoff, and keep obsolete callbacks
-  from stopping a newer session's audio or reopening a completed disconnect.
-- 重连交接不会漏掉二次断线；过期回调不会停止替代会话的音频或改写已完成的断开状态。
-- Bound channel subscription and move waits; unconfirmed moves are not repeated.
-  Keep the old bookmark archive if a save exceeds its size limit, and block
-  floating microphone capture while the local trial still owns the input.
-- 频道订阅与切换设有等待上限，不会自动重复未确认的切换。收藏保存超限时保留原档；试麦未释放输入时，浮窗不会开始采集。
-- Keep verified downloads across screen recreation; if a document may be incomplete,
-  warn and offer retry to a separate destination. Diagnostic exports isolate each operation.
-- 界面重建后可继续保存已校验的下载；目标可能有残件时会提示，并允许改存到另一处。诊断导出按操作隔离。
-- Distinguish expired voice from a stalled output, reconcile the final notification
-  action after rapid updates, and prevent a retired service from restarting playback.
-- 分开处理过期语音和设备停滞，快速变化后核对通知的最终操作，已销毁服务不会重新启动播放。
-- Recover complete diagnostic checkpoints only, report missed playback generations,
-  and persist the service journal without waiting on disk during teardown.
-- 仅恢复已提交的诊断批次，明确记录漏采的播放代际；服务销毁不再等待诊断落盘。
+### Added
 
-- Debug builds can preview and explicitly import a single desktop TS3 INI separately
-  from encrypted backups. Normal release builds keep the entry off pending official
-  desktop export and compatibility checks.
-- 开发包可单独预览并确认导入桌面 TS3 单身份 INI；正式构建默认关闭，等待官方桌面样本互通验收。
-- Connected floating PTT is included in standard builds, with a centered channel summary,
-  speaker list, mode-specific microphone status, and silent notification recall. The local lab remains Debug-only.
-- 正式构建包含浮窗 PTT：频道名对称居中，展开优先显示发言者；只有按住模式可按压发话，其他模式仅显示状态。
-  通知可召回浮窗，不自动开麦。试麦实验室仅留在 Debug。
-- Floating PTT can be set to show on Home without recording. The settings overview keeps its compact header; Identity & Backups now uses grouped cards and a clear export/restore selector.
-- 浮窗可选按 Home 自动显示，不会自动开麦。设置首页保留紧凑标题，身份与备份采用分组卡片和明确的导出／恢复切换。
-- Settings standardizes switches, status readouts and actions across voice, appearance, history, diagnostics and updates; narrow screens and large fonts can reflow labels and values.
-- 语音、外观、历史、诊断和更新设置统一开关、状态和操作样式；窄屏和大字号下长标题与读数可换行。
-- Feature help is available on demand under Settings → Help and about. No tutorial opens on launch.
-- 帮助说明仅保留在「设置 → 帮助与关于 → 功能帮助」，启动时不再弹出指引。
-- Voice playback adds a read-only actual-device panel and redacted timing diagnostics.
-  Exact UDP timing requires the separate local TS3j QA build.
-- 语音播放添加实际设备面板和脱敏计时诊断；精确 UDP 计时仅在单独的本地 TS3j 验证构建中可用。
-- Harden session exit/connect concurrency, preserve user microphone settings and diagnostics
-  across user disconnects, bound degraded exit reclamation, and safely recover from stale
-  or failed cleanup without leaving the connection stuck.
-- 加固会话退出与连接并发竞争：断开保留用户麦克风参数与诊断状态，退出预算耗尽时安全回收资源并从失败中恢复，避免新连接卡死在连接中或被过期失败误关。
-- Detect unnotified Bluetooth auto-route fallbacks continuously at output boundaries,
-  retire idle delayed Bluetooth tracks cleanly, and bound stale-packet eviction to 360 ms
-  without blocking the main thread on local microphone test cleanup or diagnostics I/O.
-- 持续检测无回调的蓝牙自动回退输出并安全静音，及时回收延迟就绪后已结束发言的音轨，将过期媒体淘汰收紧至 360 ms，并将本地试麦清理与诊断读取移出主线程。
-- Accept empty, wildcard, and dual-stack multi-address download offers via offline numeric
-  validation against the active peer address; add bounded handshake width retries (within
-  the pinned `ts3mobile-1` dependency) and include playback and update DataStores in backup exclusions.
-- 通过离线纯数值校验兼容服务端下发的空值、通配与双栈多地址文件传输字段；为已识别的握手定宽异常补充有界重试缓解，并在备份排除规则中补齐播放与更新配置存储。
+- **Connected floating PTT:** Included in standard builds with **Standard** and **Minimal** overlay styles, a compact fixed-height expanded speaker strip (up to three active speakers plus `+N`), silent notification recall, and optional **Auto-show when leaving the app** (Home or Back on the main screen on Android 12+, off by default, never starts recording). Hold mode transmits while pressed; other modes display live microphone state. The local-only recorder lab remains Debug-only.
+- **Read-only channel files, chat attachments, and server images:** Browse channel files and explicitly download files or supported same-server chat attachments (20 MiB per-file limit, length-verified before saving via Android's file picker). Tap an available avatar in the Users list or a displayed custom channel icon to preview it; channel member rows keep their voice indicators. No uploads, automatic downloads, or cross-server retrieval.
+- **Opt-in local chat history and BBCode formatting:** Off-by-default bounded encrypted archive (newest 7 days, max 500 messages / 512 KiB encoded total) for eligible new text messages, browsable and deletable offline per identity. Chat renders basic TeamSpeak BBCode, confirms external link destinations before opening, and preserves raw text on copy.
+- **Bookmark credential isolation and offline channel lists:** Editing a bookmark's host or port clears saved passwords and the old default channel from the draft; editing only the default channel clears only its password. Unchanged bookmarks and the independent connection form are not modified. Added optional offline channel list saving (up to 100 channels per endpoint, max 6 endpoints) under bookmark More settings.
+- **On-demand feature help:** Added **Settings → Help and about → Feature help** with offline guides and in-app control highlights; no tutorial opens automatically on launch.
+- **Separate input/output audio devices and Bluetooth headset microphone options:** Added **Settings → Input and output devices** to choose physical microphones (with built-in position labels and duplicate numbering, without raw addresses) separately from playback devices, including independent **Bluetooth LE Audio** input/output when supported and an explicit, non-persisted **Bluetooth call (use headset microphone)** output option for classic SCO headsets (never auto-selected; releases call mode on switch-back, disconnect, or output failure). Losing an explicit microphone returns to automatic input; Bluetooth output loss retains safety muting.
+- **Actual audio devices panel and timing diagnostics:** Added a read-only **Audio devices in use** panel (under both Input and output devices and Voice playback, reporting Bluetooth media A2DP, Bluetooth call SCO, and Bluetooth LE Audio) and redacted timing buckets/device categories in offline audio diagnostics (exact UDP timing remains in the separate local TS3j QA build).
+- **Debug/QA desktop INI preview boundary:** Debug and opt-in QA builds can preview and confirm single desktop TS3 `.ini` imports separately from encrypted `.ts3mbak` backups; standard release builds keep desktop INI import disabled by default.
+
+### Changed
+
+- **Voice playback default:** Unset installations now default to **Stability first** without overwriting previously saved profiles.
+- **Settings and Identity UI:** Direct **Create encrypted backup** and **Restore from backup** actions on **Identity and backups**; unified switches, choice cards, status readouts, and action layouts across Settings with narrow-screen and large-font reflow.
+- **Safe bookmark connect:** Bookmark **Connect now** will not tear down or replace an active session.
+- **Backup exclusions:** Included playback and update DataStores in Android backup/device-transfer exclusion rules.
+
+### Fixed
+
+- **Wi-Fi ↔ mobile data handoff and clone-limit (`521`) recovery:** Hold the original server session briefly (up to 2 seconds) during unblocked default-network drops and probe it on the new network to continue without reconnecting when possible. Fixed a ts3j initialization race that masked server rejections (including error `521`) as generic interrupts; a confirmed network-switch reconnect hitting `521` now waits 60 seconds and retries once cleanly instead of failing in a fast loop.
+- **Bluetooth and playback safeguards:** Continuously detect unnotified Bluetooth auto-route fallbacks at output boundaries, cleanly retire idle delayed Bluetooth tracks, bound stale-packet eviction to 360 ms, distinguish expired voice from stalled outputs, and move local microphone trial cleanup and diagnostics I/O off the main thread.
+- **Session exit, reconnect, and concurrency hardening:** Preserve user microphone settings and diagnostics across user disconnects; bound exit reclamation and safely recover from stale or failed cleanup without leaving connections stuck; preserve a second disconnect during reconnect handoff; stop obsolete callbacks from interrupting replacement sessions or reopening completed disconnects; ensure capture-release failures still run playback and route cleanup.
+- **Channel, bookmark, download, and notification reliability:** Bound channel subscription and channel move waits without repeating unconfirmed moves; preserve the existing bookmark archive if a save exceeds its size limit; block floating capture while a local microphone trial owns input; keep verified downloads across screen recreation and warn with retry-to-new-destination on potentially incomplete writes; isolate per-operation diagnostic exports; recover only complete committed diagnostic checkpoints, report missed playback generations, and avoid blocking service teardown on disk writes; reconcile final notification actions after rapid updates and prevent retired services from restarting playback.
+- **Chat history clock rollback safety:** Preserve saved chat history across device clock rollbacks, verify writability before retrying, and immediately free queue capacity when clearing the archive.
+- **File transfer and handshake compatibility:** Accept empty, wildcard, and dual-stack multi-address server download offers via offline numeric validation against the active peer address; add bounded retries for recognized handshake unsigned-width errors while keeping pinned `ts3mobile-1`.
+
+### 中文摘要（1.3.0 对比 1.2.0）
+
+- **新增功能**：标准构建内置连接浮窗 PTT（标准／极简样式、紧凑发言栏、通知召回、可选 Android 12+ 退后台自动显示）；新增 **输入与输出设备** 页面支持分别选择麦克风（标注内置位置并编号）与播放设备，支持独立选择 **蓝牙 LE Audio** 输入／输出与手动开启 **蓝牙通话（使用耳机麦克风）**（绝不自动启用或跨会话保存）；支持只读频道文件与同服聊天附件校验后下载（限 20 MiB）及用户头像／频道图标预览；新增默认关闭的本地加密聊天历史（7 天 / 500 条 / 512 KiB 配额）、基础 BBCode 展示与外链核对；收藏支持改址／改频道凭据隔离与离线保存频道列表；新增「设置 → 帮助与关于 → 功能帮助」按需引导；语音播放默认采用稳定优先（不覆盖旧设置），并新增只读「实际使用的音频设备」面板（含蓝牙 A2DP / SCO / LE Audio）与脱敏计时诊断；身份与备份及各项设置完成交互统一与大字号／窄屏适配；桌面 INI 导入在标准正式包中默认关闭。
+- **重点修复与加固**：短暂切网（Wi-Fi ↔ 移动数据）优先探测并保留原服务器会话，修复握手拒绝（含 `521` 同身份限制）被中断掩盖的问题并优化切网重连恢复；加强无回调蓝牙回退防护、空闲延迟音轨回收、360 ms 过期包淘汰及主线程 I/O 解耦；加固会话退出／重连并发与频道切换超时保护，确保主动断开保留麦克风参数与诊断记录，修复聊天历史时钟回拨、验证文件重建保存、收藏超限保旧档、通知最终状态同步与备份排除规则。
 
 ## 1.2.0 — 2026-11-20
 

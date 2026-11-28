@@ -26,6 +26,11 @@ interface MicrophoneCapture : EncodedVoiceSource, AutoCloseable {
 
     fun setPreferredDevice(device: AudioDeviceInfo?)
 
+    fun setInputRoute(
+        device: AudioDeviceInfo?,
+        bluetoothCall: Boolean,
+    ) = setPreferredDevice(device)
+
     /** Output-only acoustic changes also invalidate capture history. Older adapters may ignore this hook. */
     fun invalidateRouting() {}
 

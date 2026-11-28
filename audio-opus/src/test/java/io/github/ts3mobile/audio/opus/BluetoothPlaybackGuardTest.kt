@@ -7,6 +7,15 @@ import org.junit.Test
 class BluetoothPlaybackGuardTest {
     private val guard = BluetoothPlaybackGuard()
 
+    @Test fun bluetoothCallRequiresScoRatherThanAnyBluetoothOutput() {
+        guard.select(5, requireBluetooth = true, bluetoothCall = true)
+        assertEquals(PlaybackRouteDecision.WAIT_FOR_BLUETOOTH, guard.evaluate(AudioRouteKind.BLUETOOTH))
+        assertEquals(PlaybackRouteDecision.ALLOW, guard.evaluate(AudioRouteKind.BLUETOOTH, actualBluetoothCall = true))
+        assertEquals(PlaybackRouteDecision.MUTE, guard.evaluate(AudioRouteKind.BLUETOOTH))
+        guard.select(2, requireBluetooth = true)
+        assertEquals(PlaybackRouteDecision.ALLOW, guard.evaluate(AudioRouteKind.BLUETOOTH))
+    }
+
     @Test fun standardOutputExperimentChangesOnlyExpectedBluetooth() {
         guard.select(7, true)
         assertEquals(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY, playbackPerformanceMode(guard.expectsBluetooth(), false))

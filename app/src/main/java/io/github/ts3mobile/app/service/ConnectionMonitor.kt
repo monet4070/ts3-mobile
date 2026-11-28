@@ -29,23 +29,28 @@ internal class ConnectionMonitor(private val clockMs: () -> Long) {
     @Volatile var networkState = DefaultNetworkState.Unknown
         private set
     private var lastAvailableGeneration: Long? = null
+    private var awaitingReplacement = false
 
     @Synchronized fun networkChanged(state: DefaultNetworkState): NetworkTransition {
         networkState = state
         if (state.isPending && !state.isBlocked) return NetworkTransition.PENDING
         if (!state.isAvailable) {
-            lastAvailableGeneration = null
+            awaitingReplacement = true
             return NetworkTransition.UNAVAILABLE
         }
         val previous = lastAvailableGeneration
         lastAvailableGeneration = state.generation
-        return if (previous != null && previous != state.generation) NetworkTransition.SWITCHED else NetworkTransition.UNCHANGED
+        val needsProbe = awaitingReplacement || (previous != null && previous != state.generation)
+        awaitingReplacement = false
+        return if (needsProbe) NetworkTransition.SWITCHED else NetworkTransition.UNCHANGED
     }
 
     fun isCurrentNetwork(generation: Long): Boolean {
         val current = networkState
         return current.generation == generation && !current.isPending && current.isAvailable
     }
+
+    fun confirmedNetworkGeneration(): Long? = networkState.takeIf { it.isAvailable && it.generation > 0L }?.generation
 
     suspend fun probe(
         binding: MonitoredSession,

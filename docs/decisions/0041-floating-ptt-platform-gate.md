@@ -34,8 +34,14 @@ existing ownership. The status tile is noninteractive except in Hold mode. No au
 subsystem split or public configuration migration is needed.
 
 The overlay card owns layout and presents microphone action and state through
-a separate view. Its speaker preview and expanded speaker area do not change
-capture tokens, permissions, session lifetime, or public preferences.
+a separate view. Its speaker preview uses recent incoming channel voice rather
+than snapshot talking flags. The optional device-local minimal style collapses
+to two icon targets and shares the same expanded speaker and mode controls.
+Expansion shows channel activity and individual nicknames in a single strip;
+an independent overflow badge stays visible when long nicknames truncate.
+The strip keeps the same height when speakers change, including the idle state,
+so live voice updates do not move the microphone controls.
+Neither change grants permissions, starts capture, or extends the session lease.
 
 The connected notification offers a direct activity action when the channel
 is ready and no microphone capture or floating lease is active. The destination
@@ -45,12 +51,13 @@ task; when permission is missing it remains on the setup page. The action never
 requests access, starts a capture, or enables sending by itself.
 
 The device-local auto-show option defaults off. On an explicit user departure,
-the main screen or floating PTT settings prepares the same silent lease while focused; the host
-shows it only once the owner stops. App-initiated activity launches do not count as
-user departure. While MainActivity is visible, a prepared lease cannot accept presses
+the main screen or floating PTT settings prepares the same silent lease while resumed,
+even if window focus has already shifted during the transition. The host shows it
+only once the owner stops. On Android 12 and later, root Back from MainActivity has
+an explicit fallback callback because it can background the task without the user-leave hint.
+In-app navigation gets Back first; if the lease cannot be prepared, the default Back behavior applies.
+App-initiated activity launches do not count as user departure. While MainActivity is visible, a prepared lease cannot accept presses
 or mode changes. Any app activity resuming closes the overlay; an already busy input
-is left alone. Neither the option nor dock position is included in backup or transfer.
-The existing large MainActivity and MicrophoneController only gain lifecycle wiring
-and an arm eligibility check, respectively. Keep capture policy in the controller and
-leases in `FloatingPttPresses`; extract a lifecycle coordinator if additional entry
-paths or session policies are needed rather than growing either file further.
+is left alone. Auto-show, minimal style and dock position are excluded from backup and transfer.
+`FloatingPttAutoShow` owns root Back wiring and shares the departure eligibility check
+with the settings Activity. Keep capture policy in the controller and leases in `FloatingPttPresses`.

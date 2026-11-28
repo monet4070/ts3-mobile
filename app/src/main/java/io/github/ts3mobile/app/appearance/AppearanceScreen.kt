@@ -8,26 +8,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.ui.FeatureAction
 import io.github.ts3mobile.app.ui.FeatureNotice
+import io.github.ts3mobile.app.ui.SettingsChoiceCard
 import io.github.ts3mobile.app.ui.SettingsPage
 import io.github.ts3mobile.app.ui.SettingsSection
 import io.github.ts3mobile.app.ui.UiIcon
@@ -49,9 +44,12 @@ internal fun AppearanceScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 ThemeMode.entries.forEach { mode ->
-                    ThemeModeCard(mode, mode == state.mode, !state.busy && state.status != ThemePreferenceStatus.READ_FAILED) {
-                        onSelect(mode)
-                    }
+                    SettingsChoiceCard(
+                        stringResource(mode.label()),
+                        selected = mode == state.mode,
+                        enabled = !state.busy && state.status != ThemePreferenceStatus.READ_FAILED,
+                        preview = { ThemeSwatch(mode) },
+                    ) { onSelect(mode) }
                 }
             }
         }
@@ -61,35 +59,6 @@ internal fun AppearanceScreen(
             FeatureAction(UiIcon.Sliders, stringResource(R.string.appearance_reset), onReset, Modifier.fillMaxWidth())
         } else if (state.busy) {
             FeatureNotice(UiIcon.Refresh, stringResource(state.status.label()))
-        }
-    }
-}
-
-@Composable
-private fun ThemeModeCard(
-    mode: ThemeMode,
-    selected: Boolean,
-    enabled: Boolean,
-    onSelect: () -> Unit,
-) {
-    val palette = MaterialTheme.colorScheme
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = if (selected) palette.primaryContainer else palette.surface,
-        contentColor = if (selected) palette.onPrimaryContainer else palette.onSurface,
-        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) palette.primary else palette.outlineVariant),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().heightIn(
-                min = 76.dp,
-            ).selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            ThemeSwatch(mode)
-            Text(stringResource(mode.label()), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            RadioButton(selected = selected, onClick = null, enabled = enabled)
         }
     }
 }

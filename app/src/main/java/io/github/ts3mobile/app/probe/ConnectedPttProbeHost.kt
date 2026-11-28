@@ -21,6 +21,7 @@ import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.ConnectedPttPreparation
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
+import io.github.ts3mobile.protocol.SessionSnapshot
 import kotlinx.coroutines.flow.StateFlow
 
 internal class ConnectedPttProbeHost(
@@ -39,9 +40,6 @@ internal class ConnectedPttProbeHost(
     private var active: Press? = null
     private var registered = false
     private var watchingScreen = false
-    private var lastDetailsSnapshot: io.github.ts3mobile.protocol.SessionSnapshot? = null
-    private var lastDetailsMode: MicrophoneMode? = null
-    private var cachedDetails: ProbeOverlayDetails? = null
     private var lastRenderKey: RenderKey? = null
     private val overlay =
         ProbeOverlay(
@@ -53,10 +51,12 @@ internal class ConnectedPttProbeHost(
             windowLost = { main.post { if (registered) preparation.disarm() } },
             holdLabel = R.string.ptt_connected_hold,
             selectMode = ::selectMode,
+            minimalStyle = context.floatingPttStyle == FloatingPttStyle.MINIMAL,
         )
 
     private data class RenderKey(
-        val snapshot: io.github.ts3mobile.protocol.SessionSnapshot,
+        val snapshot: SessionSnapshot,
+        val recentSpeakers: Set<Int>,
         val mode: MicrophoneMode?,
         val label: Int,
         val activeTone: Boolean,
@@ -82,8 +82,11 @@ internal class ConnectedPttProbeHost(
             }
         }
 
-    fun arm(leavingMainActivity: Boolean = false): Boolean {
-        if (!owner.hasWindowFocus() || !canUseOverlay() || !preparation.arm(leavingMainActivity, ::close)) return false
+    fun arm(
+        leavingMainActivity: Boolean = false,
+        userDeparture: Boolean = false,
+    ): Boolean {
+        if ((!userDeparture && !owner.hasWindowFocus()) || !canUseOverlay() || !preparation.arm(leavingMainActivity, ::close)) return false
         owner.application.registerActivityLifecycleCallbacks(this)
         registered = true
         return try {
@@ -103,7 +106,12 @@ internal class ConnectedPttProbeHost(
 
     override fun onActivityStopped(activity: Activity) {
         if (activity !== owner) return
-        if (owner.isChangingConfigurations || !canUseOverlay() || !preparation.isValid || !overlay.show()) preparation.disarm()
+        if (owner.isChangingConfigurations || !canUseOverlay() || !preparation.isValid) {
+            preparation.disarm()
+            return
+        }
+        renderMicrophone()
+        if (!overlay.show()) preparation.disarm()
     }
 
     override fun onActivityDestroyed(activity: Activity) {
@@ -129,22 +137,17 @@ internal class ConnectedPttProbeHost(
             notifications.areNotificationsEnabled() && audio.mode != AudioManager.MODE_IN_CALL && audio.mode != AudioManager.MODE_RINGTONE
 
     private fun overlayDetails(): ProbeOverlayDetails {
-        val currentState = state.value
-        val mode = preparation.mode
-        val existing = cachedDetails
-        if (existing != null && lastDetailsSnapshot === currentState.snapshot && lastDetailsMode == mode) {
-            return existing
-        }
-        return context.connectedPttOverlayDetails(currentState, mode).also { built ->
-            lastDetailsSnapshot = currentState.snapshot
-            lastDetailsMode = mode
-            cachedDetails = built
+        val sample = lastRenderKey
+        return if (sample == null) {
+            context.connectedPttOverlayDetails(state.value.snapshot, preparation.mode, preparation.recentSpeakerIds)
+        } else {
+            context.connectedPttOverlayDetails(sample.snapshot, sample.mode, sample.recentSpeakers)
         }
     }
 
     private fun renderMicrophone() {
         val session = state.value
-        val recording = session.actualAudioDevices.recording
+        val recording = session.isCapturing || session.actualAudioDevices.recording
         val requested = preparation.captureRequested
         val transmitting = requested && session.isTransmitting
         val mode = preparation.mode
@@ -158,7 +161,7 @@ internal class ConnectedPttProbeHost(
                 else -> R.string.ptt_overlay_idle
             }
         val activeTone = recording || transmitting
-        val key = RenderKey(session.snapshot, mode, label, activeTone, transmitting)
+        val key = RenderKey(session.snapshot, preparation.recentSpeakerIds, mode, label, activeTone, transmitting)
         if (key == lastRenderKey) return
         lastRenderKey = key
         overlay.renderLabel(label, activeTone = activeTone, transmitting = transmitting)
@@ -197,9 +200,6 @@ internal class ConnectedPttProbeHost(
     private fun close() {
         main.removeCallbacksAndMessages(null)
         overlay.hide()
-        cachedDetails = null
-        lastDetailsSnapshot = null
-        lastDetailsMode = null
         lastRenderKey = null
         if (watchingScreen) context.unregisterReceiver(screenOff)
         if (registered) owner.application.unregisterActivityLifecycleCallbacks(this)
@@ -213,15 +213,15 @@ internal class ConnectedPttProbeHost(
 }
 
 internal fun Context.connectedPttOverlayDetails(
-    session: TeamSpeakServiceState,
+    snapshot: SessionSnapshot,
     mode: MicrophoneMode?,
+    recentSpeakers: Set<Int>,
 ): ProbeOverlayDetails {
-    val snapshot = session.snapshot
     val channelId = snapshot.currentChannelId
     val channel = snapshot.channels.firstOrNull { it.id == channelId }
     val members = snapshot.participants.filter { it.channelId == channelId }
-    val speakers = members.filter { it.isTalking && it.id != snapshot.ownClientId }
-    val visibleSpeakers = speakers.take(3).map { it.nickname.take(30) }
+    val speakers = members.filter { it.id in recentSpeakers && it.id != snapshot.ownClientId }
+    val visibleSpeakers = speakers.take(ProbeSpeakerStrip.MAX_VISIBLE_SPEAKERS).map { it.nickname.take(30) }
     return ProbeOverlayDetails(
         title = channel?.name?.take(96) ?: getString(R.string.ptt_overlay_channel),
         membersLabel = resources.getQuantityString(R.plurals.ptt_overlay_members, members.size, members.size),

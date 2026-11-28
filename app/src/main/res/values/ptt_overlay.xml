@@ -13,7 +13,10 @@
     <string name="settings_floating_ptt_summary">Talk and see who’s speaking over other apps</string>
     <string name="ptt_settings_display">Display</string>
     <string name="ptt_auto_show">Auto-show when leaving the app</string>
-    <string name="ptt_auto_show_summary">Shows PTT when you go Home from a connected channel with the mic idle. It does not turn the mic on.</string>
+    <string name="ptt_auto_show_summary">From a joined channel, go Home or use Back on the main screen (Android 12+). The mic must be idle and stays off.</string>
+    <string name="ptt_minimal_style">Minimal overlay</string>
+    <string name="ptt_style_title">Overlay style</string>
+    <string name="ptt_standard_style">Standard overlay</string>
     <string name="ptt_current_session">Current session</string>
     <string name="ptt_session_ready">Connected to a channel</string>
     <string name="ptt_session_disconnected">Join a channel to use the overlay</string>
@@ -32,8 +35,11 @@
     <string name="ptt_overlay_channel">Current channel</string>
     <string name="ptt_overlay_speakers_heading">Speaking</string>
     <string name="ptt_overlay_no_speakers">No one speaking</string>
-    <string name="ptt_overlay_name_separator">" · "</string>
     <string name="ptt_overlay_more_speakers">+%d</string>
+    <plurals name="ptt_overlay_more_speakers_accessible">
+        <item quantity="one">and %d more speaker</item>
+        <item quantity="other">and %d more speakers</item>
+    </plurals>
     <plurals name="ptt_overlay_members">
         <item quantity="one">%d person</item>
         <item quantity="other">%d people</item>

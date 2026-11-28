@@ -12,6 +12,7 @@ enum class ActualAudioDevice {
     BLUETOOTH_SCO,
     BLUETOOTH_OTHER,
     OTHER,
+    BLUETOOTH_LE,
 }
 
 internal fun actualAudioDevice(type: Int?): ActualAudioDevice? =
@@ -22,6 +23,7 @@ internal fun actualAudioDevice(type: Int?): ActualAudioDevice? =
         AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> ActualAudioDevice.SPEAKER
         AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> ActualAudioDevice.BLUETOOTH_A2DP
         AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> ActualAudioDevice.BLUETOOTH_SCO
+        AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLE_SPEAKER -> ActualAudioDevice.BLUETOOTH_LE
         else ->
             when (AudioRouteDevices.routeKindForDeviceType(type)) {
                 AudioRouteKind.WIRED -> ActualAudioDevice.WIRED

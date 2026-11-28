@@ -41,6 +41,7 @@ fun UserMessage.resolve(context: Context): String =
             context.getString(R.string.status_reconnect_scheduled, seconds, attempt)
 
         is UserMessage.Reconnecting -> context.getString(R.string.status_reconnecting_attempt, attempt)
+        is UserMessage.HandoffIdentityWait -> context.getString(R.string.status_handoff_identity_wait, seconds)
         UserMessage.ConnectionLimitWait -> context.connectionLimitGuidance()
         is UserMessage.ChannelJoinFailed -> context.getString(R.string.channel_join_failed, cause)
         UserMessage.ChannelTargetChanged -> context.getString(R.string.channel_target_changed)
@@ -78,12 +79,19 @@ private fun Context.connectionLimitGuidance(): String =
 
 /** Names an audio route, appending the platform device name when one is known. */
 fun AudioRouteOption.resolveLabel(context: Context): String {
-    val kindLabel = context.getString(kind.labelId())
+    val kindLabel =
+        context.getString(
+            when {
+                bluetoothCall -> R.string.audio_device_bluetooth_call_option
+                leAudio -> R.string.audio_device_bluetooth_le
+                else -> kind.labelId()
+            },
+        )
     val name = deviceName?.takeIf { it.isNotBlank() && !it.equals(kindLabel, ignoreCase = true) }
     return name?.let { context.getString(R.string.audio_route_with_device, kindLabel, it) } ?: kindLabel
 }
 
-private fun AudioRoutingError.resolve(context: Context): String =
+internal fun AudioRoutingError.resolve(context: Context): String =
     when (kind) {
         AudioRoutingErrorKind.DEVICE_UNAVAILABLE -> context.getString(R.string.audio_route_unavailable)
         AudioRoutingErrorKind.SWITCH_FAILED ->

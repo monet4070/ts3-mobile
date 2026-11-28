@@ -76,9 +76,10 @@ internal class MicrophoneController(
         session.setVoiceSource(voiceSource)
     }
 
-    fun setPreferredDevice(device: AudioDeviceInfo?) {
-        microphone.setPreferredDevice(device)
-    }
+    fun setInputRoute(
+        device: AudioDeviceInfo?,
+        bluetoothCall: Boolean,
+    ) = microphone.setInputRoute(device, bluetoothCall)
 
     fun invalidateRouting() = microphone.invalidateRouting()
 

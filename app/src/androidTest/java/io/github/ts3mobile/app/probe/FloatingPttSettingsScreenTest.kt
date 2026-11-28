@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -26,7 +27,9 @@ class FloatingPttSettingsScreenTest {
         var shows = 0
         rule.setContent {
             Ts3MobileTheme {
-                FloatingPttSettingsScreen(permission.value, connected.value, {}, { permissionVisits++ }, { shows++ }, false, {})
+                FloatingPttSettingsScreen(
+                    permission.value, connected.value, {}, { permissionVisits++ }, { shows++ }, false, {}, FloatingPttStyle.STANDARD, {},
+                )
             }
         }
         val show = rule.onNodeWithText(rule.activity.getString(R.string.notification_show_floating_ptt))
@@ -54,6 +57,8 @@ class FloatingPttSettingsScreenTest {
                     onShow = { error("must not show while editing the preference") },
                     autoShow = autoShow.value,
                     onAutoShowChanged = { autoShow.value = it },
+                    style = FloatingPttStyle.STANDARD,
+                    onStyleChanged = {},
                 )
             }
         }
@@ -62,5 +67,29 @@ class FloatingPttSettingsScreenTest {
         toggle.assertIsOn()
         toggle.performClick()
         toggle.assertIsOff()
+    }
+
+    @Test fun bothStylesCanBeSelectedWithoutArmingTheOverlay() {
+        val style = mutableStateOf(FloatingPttStyle.STANDARD)
+        rule.setContent {
+            Ts3MobileTheme {
+                FloatingPttSettingsScreen(
+                    overlayAllowed = false,
+                    channelReady = false,
+                    onBack = {},
+                    onPermissionSettings = { error("must not request permissions") },
+                    onShow = { error("must not show while editing the style") },
+                    autoShow = false,
+                    onAutoShowChanged = { error("must not change auto-show") },
+                    style = style.value,
+                    onStyleChanged = { style.value = it },
+                )
+            }
+        }
+        val standard = rule.onNodeWithText(rule.activity.getString(R.string.ptt_standard_style))
+        val minimal = rule.onNodeWithText(rule.activity.getString(R.string.ptt_minimal_style))
+        standard.assertIsSelected()
+        minimal.performClick().assertIsSelected()
+        standard.performClick().assertIsSelected()
     }
 }

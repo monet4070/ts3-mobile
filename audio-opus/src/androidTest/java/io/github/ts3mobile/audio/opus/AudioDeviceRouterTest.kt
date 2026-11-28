@@ -26,16 +26,17 @@ class AudioDeviceRouterTest {
             assertEquals(initialMode, audioManager.mode)
             assertEquals(initialCommunicationDevice, communicationDeviceId(audioManager))
             val initialState = router.state
-            val expectedRoute = initialState.routes.firstOrNull { it.kind == AudioRouteKind.BLUETOOTH }?.id ?: SYSTEM_AUDIO_ROUTE_ID
+            val mediaRoutes = initialState.routes.filterNot { it.bluetoothCall }
+            val expectedRoute = mediaRoutes.firstOrNull { it.kind == AudioRouteKind.BLUETOOTH }?.id ?: SYSTEM_AUDIO_ROUTE_ID
             assertEquals(expectedRoute, initialState.selectedRouteId)
             assertTrue(initialState.routes.any { it.id == SYSTEM_AUDIO_ROUTE_ID })
 
             val firstRoute =
-                initialState.routes.firstOrNull {
+                mediaRoutes.firstOrNull {
                     it.kind == AudioRouteKind.SPEAKER
-                } ?: initialState.routes.first { it.id != SYSTEM_AUDIO_ROUTE_ID }
+                } ?: mediaRoutes.first { it.id != SYSTEM_AUDIO_ROUTE_ID }
             val secondRoute =
-                initialState.routes.firstOrNull {
+                mediaRoutes.firstOrNull {
                     it.id != SYSTEM_AUDIO_ROUTE_ID && it.id != firstRoute.id
                 } ?: AudioRoutingState.SystemRoute
 
@@ -62,6 +63,13 @@ class AudioDeviceRouterTest {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             assertEquals(AudioAttributes.ALLOW_CAPTURE_BY_NONE, attributes.allowedCapturePolicy)
         }
+    }
+
+    @Test
+    fun selectedBluetoothCallUsesCommunicationVolume() {
+        val attributes = voicePlaybackAudioAttributes(bluetoothCall = true)
+        assertEquals(AudioAttributes.USAGE_VOICE_COMMUNICATION, attributes.usage)
+        assertEquals(AudioAttributes.CONTENT_TYPE_SPEECH, attributes.contentType)
     }
 
     private fun assertRouteSelected(

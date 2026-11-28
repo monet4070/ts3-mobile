@@ -39,7 +39,13 @@ private fun Throwable.classifyConnectionFailure(): ClassifiedFailure {
     var networkFailure = false
     while (current != null && visited.add(current)) {
         if (current is CommandProcessException) {
-            val clones = current.message?.contains(CLONES_LIMIT_TEXT, ignoreCase = true) == true
+            val rejectionCode = (current as? Ts3jHandshakeRejectedException)?.serverErrorId
+            val clones =
+                if (rejectionCode != null) {
+                    rejectionCode == CLONES_LIMIT_CODE
+                } else {
+                    current.message?.contains(CLONES_LIMIT_TEXT, ignoreCase = true) == true
+                }
             return ClassifiedFailure(
                 if (clones) ConnectionFailureCategory.CLONES_LIMIT else ConnectionFailureCategory.UNCLASSIFIED,
                 false,
@@ -67,7 +73,7 @@ private fun Throwable.isDirectTs3jHandshakeWidthFailure(): Boolean =
 
 private data class ClassifiedFailure(val category: ConnectionFailureCategory, val retryable: Boolean)
 
-/** Only this observed CommandProcessException text qualifies; no error code is guessed. */
+private const val CLONES_LIMIT_CODE = 521
 private const val CLONES_LIMIT_TEXT = "too many clones already connected"
 
 private const val TS3J_CONNECTING_HANDLER_CLASS =

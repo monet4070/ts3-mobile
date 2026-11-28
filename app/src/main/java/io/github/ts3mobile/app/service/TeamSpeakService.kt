@@ -25,6 +25,7 @@ import io.github.ts3mobile.app.settings.MicrophonePreferenceController
 import io.github.ts3mobile.app.settings.MicrophonePreferenceField
 import io.github.ts3mobile.app.settings.MicrophonePreferenceState
 import io.github.ts3mobile.app.settings.MicrophonePreferenceStatus
+import io.github.ts3mobile.app.settings.PlaybackPreferences
 import io.github.ts3mobile.app.settings.microphonePreferenceStore
 import io.github.ts3mobile.audio.opus.AudioDeviceRouter
 import io.github.ts3mobile.audio.opus.AudioRoutingState
@@ -32,7 +33,6 @@ import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.audio.opus.OpusAudioPlayer
 import io.github.ts3mobile.audio.opus.OpusMicrophoneCapture
 import io.github.ts3mobile.audio.opus.PlaybackStatus
-import io.github.ts3mobile.audio.opus.ReceiveDelayProfile
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.ServerConfig
 import io.github.ts3mobile.protocol.SessionSnapshot
@@ -40,6 +40,7 @@ import io.github.ts3mobile.protocol.Ts3SessionClient
 import io.github.ts3mobile.protocol.Ts3jSessionClient
 import io.github.ts3mobile.protocol.VoiceFrame
 import io.github.ts3mobile.protocol.VoiceTimingCollector
+import io.github.ts3mobile.protocol.sanitizedFailureTypes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +74,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     private lateinit var audioPlayer: OpusAudioPlayer
     private val captureRoutes = CaptureRouteTracker()
     private val voiceTiming = VoiceTimingCollector()
+    private val floatingPttSpeakers = FloatingPttSpeakerActivity(SystemClock::elapsedRealtime)
 
     @Volatile private var destroyed = false
     private lateinit var microphoneController: MicrophoneController
@@ -83,7 +85,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         val trial =
             MicrophoneTrial(scope, Dispatchers.IO) {
                 val capture = OpusMicrophoneCapture.localMeter(applicationContext)
-                capture.setPreferredDevice(audioRouter.preferredInputDevice())
+                capture.setInputRoute(audioRouter.preferredInputDevice(), audioRouter.isBluetoothCallActive())
                 LocalMicrophoneTrialSource(capture)
             }
         LocalMicrophoneTrial(scope, state, trial, microphoneController::isInputReleasedForTrial) {
@@ -167,7 +169,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 trialInputReleased = { microphoneTrial.isInputReleased },
             )
         connectedPtt =
-            ConnectedPttPreparation(microphoneController, { !sessionGeneration.isDisconnectRequested }) { ready ->
+            ConnectedPttPreparation(microphoneController, { !sessionGeneration.isDisconnectRequested }, floatingPttSpeakers) { ready ->
                 notifications.setPttPrepared(state.value, ready) { microphoneController.floatingPttInputReleased }
             }
         audioDeviceReadout = AudioDeviceReadout(applicationContext, serviceScope, mutableState, audioPlayer)
@@ -230,6 +232,9 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
                 serviceScope, chatController.state, chatNotificationRegistry,
                 privateMessageNotifications::show, privateMessageNotifications::clear,
             )
+        runCatching { audioRouter.watchDevices() }.onFailure { error ->
+            System.err.println("TS3_AUDIO: unable to list devices: ${error.sanitizedFailureTypes()}")
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -422,8 +427,8 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
             try {
                 (application as Ts3MobileApplication).playbackPreferences.read()
             } catch (_: java.io.IOException) {
-                System.err.println("TS3_AUDIO: receive delay preference unavailable; using Balanced")
-                ReceiveDelayProfile.BALANCED
+                System.err.println("TS3_AUDIO: receive delay preference unavailable; using default profile")
+                PlaybackPreferences.DEFAULT_PROFILE
             }
         if (destroyed) return
         audioPlayer.start(profile)
@@ -468,6 +473,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
     override fun submitVoiceFrame(frame: VoiceFrame) {
         audioPlayer.submit(frame)
+        floatingPttSpeakers.record(frame)
     }
 
     override fun removeForegroundNotification() {
@@ -560,6 +566,7 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
     }
 
     private fun onAudioRoutingChanged(routing: AudioRoutingState) {
+        if (destroyed) return
         if (routing.safetyMuted) {
             audioPlayer.setMuted(true)
             mutableState.update { it.copy(playbackMuted = true) }
@@ -567,7 +574,12 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
         audioPlayer.updateRouting(routing, audioRouter.preferredOutputDevice())
         val input = audioRouter.preferredInputDevice()
         captureRoutes.update(routing.selectedRouteId, input?.id)?.let { change ->
-            if (change.inputChanged) microphoneController.setPreferredDevice(input) else microphoneController.invalidateRouting()
+            val call = routing.selectedRoute.bluetoothCall
+            if (change.inputChanged || call != mutableState.value.audioRouting.selectedRoute.bluetoothCall) {
+                microphoneController.setInputRoute(input, call)
+            } else {
+                microphoneController.invalidateRouting()
+            }
             mainHandler.post { if (!destroyed) microphoneTrial.inputChanged() }
         }
         mutableState.update { it.copy(audioRouting = routing) }
@@ -697,6 +709,10 @@ internal class TeamSpeakService : Service(), ConnectionCoordinatorHost {
 
         fun selectAudioRoute(routeId: Int) {
             audioRouter.selectRoute(routeId)
+        }
+
+        fun selectAudioInput(routeId: Int) {
+            audioRouter.selectInput(routeId)
         }
 
         fun resolveUserChannel(

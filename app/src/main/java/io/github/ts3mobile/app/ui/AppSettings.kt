@@ -19,7 +19,16 @@ import io.github.ts3mobile.audio.opus.MicrophoneLevel
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import kotlinx.coroutines.flow.Flow
 
-internal enum class SettingsDestination { OVERVIEW, MICROPHONE, PLAYBACK, BACKGROUND, DIAGNOSTICS, CHAT_HISTORY, FEATURE_HELP }
+internal enum class SettingsDestination {
+    OVERVIEW,
+    AUDIO_DEVICES,
+    MICROPHONE,
+    PLAYBACK,
+    BACKGROUND,
+    DIAGNOSTICS,
+    CHAT_HISTORY,
+    FEATURE_HELP,
+}
 
 @Composable
 internal fun AppSettings(
@@ -49,6 +58,8 @@ internal fun AppSettings(
     onOpenRepository: () -> Unit,
     onHelpTopicRequested: (Int) -> Unit,
     guideRoute: GuideRoute? = null,
+    onAudioInputSelected: (Int) -> Unit = {},
+    onAudioOutputSelected: (Int) -> Unit = {},
 ) {
     var destination by rememberSaveable { mutableStateOf(SettingsDestination.OVERVIEW) }
     var guideDismissed by rememberSaveable(guideRoute) { mutableStateOf(false) }
@@ -62,6 +73,8 @@ internal fun AppSettings(
     }
     GuideDestinationTip(activeGuide.takeIf { it?.settings == destination }) {
         when (destination) {
+            SettingsDestination.AUDIO_DEVICES ->
+                AudioDeviceSettingsScreen(state, onAudioInputSelected, onAudioOutputSelected, backToOverview)
             SettingsDestination.MICROPHONE ->
                 MicrophoneSettingsScreen(
                     state = state,
@@ -94,6 +107,9 @@ internal fun AppSettings(
                         SettingsPage(R.string.settings_title, onBack, snackbar) {
                             SettingsActionGroup(
                                 listOf(
+                                    SettingsAction(R.string.audio_device_settings_title, UiIcon.Audio) {
+                                        destination = SettingsDestination.AUDIO_DEVICES
+                                    },
                                     SettingsAction(
                                         R.string.microphone_settings,
                                         UiIcon.Mic,

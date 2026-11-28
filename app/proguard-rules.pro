@@ -2,6 +2,9 @@
 # command/event/identity classes and is not annotation-driven, so a broad
 # keep is the safest minimum.
 -keep class com.github.manevolent.ts3j.** { *; }
+-keep class io.github.ts3mobile.protocol.Ts3jHandshakeReplyHandler {
+    public <init>(io.github.ts3mobile.protocol.StateAwareTeamspeakClientSocket);
+}
 
 # ts3j's vendored NaCl/Ed25519 implementation (Punisher package) is reached
 # only through the identity classes above; keep it explicitly so R8 does not

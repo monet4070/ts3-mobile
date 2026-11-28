@@ -13,7 +13,11 @@ import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -44,8 +48,10 @@ class FloatingPttRecallNotificationTest {
     private val automation = instrumentation.uiAutomation
     private val label = context.getString(R.string.notification_show_floating_ptt)
     private var originalAccessibilityFlags: Int? = null
+    private var originalAutoShowPreference: Boolean? = null
 
     @After fun restoreNotificationShadeFixture() {
+        originalAutoShowPreference?.let { context.autoShowFloatingPtt = it }
         val flags = originalAccessibilityFlags ?: return
         try {
             runShell("cmd statusbar collapse")
@@ -90,6 +96,8 @@ class FloatingPttRecallNotificationTest {
         assumeTrue(Build.VERSION.SDK_INT >= 34)
         assumeTrue(InstrumentationRegistry.getArguments().getString("exercisePttRecall") == "true")
         assumeTrue(Settings.canDrawOverlays(context))
+        originalAutoShowPreference = context.autoShowFloatingPtt
+        context.autoShowFloatingPtt = false
         originalAccessibilityFlags = automation.serviceInfo.flags
         runShell("cmd statusbar collapse")
         automation.serviceInfo =
@@ -127,7 +135,7 @@ class FloatingPttRecallNotificationTest {
     }
 
     @ManualInstrumentation
-    @Test fun homeShowsTheOptedInOverlaySilentlyAndReturningHidesIt() {
+    @Test fun leavingForHomeOrByRootBackShowsTheOptedInOverlaySilently() {
         assumeTrue(Build.VERSION.SDK_INT >= 34)
         assumeTrue(InstrumentationRegistry.getArguments().getString("exercisePttRecall") == "true")
         assumeTrue(Settings.canDrawOverlays(context))
@@ -136,7 +144,9 @@ class FloatingPttRecallNotificationTest {
         val savedPreference = context.autoShowFloatingPtt
         try {
             context.autoShowFloatingPtt = false
-            val launch = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val launch =
+                Intent(Intent.ACTION_MAIN).setClass(context, MainActivity::class.java)
+                    .addCategory(Intent.CATEGORY_LAUNCHER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             val mainActivity = instrumentation.startActivitySync(launch) as MainActivity
             try {
                 rule.waitUntil(5_000) { mainActivity.matchesLifecycle(Lifecycle.State.RESUMED) }
@@ -157,15 +167,29 @@ class FloatingPttRecallNotificationTest {
                     assertFalse(overlayIsVisible())
                     runShell("input keyevent KEYCODE_BACK")
                     rule.waitUntil(5_000) { mainActivity.matchesLifecycle(Lifecycle.State.RESUMED) }
+                    rule.onNodeWithContentDescription(context.getString(R.string.action_more)).performClick()
+                    rule.onNodeWithText(context.getString(R.string.settings_title)).performClick()
+                    val microphoneSettings = rule.onNodeWithText(context.getString(R.string.microphone_settings))
+                    microphoneSettings.assertIsDisplayed()
+                    assertTrue(automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
+                    rule.waitUntil(5_000) {
+                        mainActivity.matchesLifecycle(Lifecycle.State.RESUMED) &&
+                            rule.onAllNodes(androidx.compose.ui.test.hasText(context.getString(R.string.microphone_settings)))
+                                .fetchSemanticsNodes().isEmpty()
+                    }
+                    instrumentation.runOnMainSync { assertFalse(preparation.isValid) }
+                    assertFalse(overlayIsVisible())
                     repeat(2) {
-                        assertTrue(automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
-                        rule.waitUntil(8_000) { overlayIsVisible() }
-                        instrumentation.runOnMainSync { assertTrue(preparation.isValid) }
-                        assertFalse(binder.state.value.isCapturing)
-                        assertFalse(binder.state.value.actualAudioDevices.recording)
-                        assertEquals(0L, preparation.framesProvided)
-                        reopenMainActivity()
-                        rule.waitUntil(5_000) { mainActivity.matchesLifecycle(Lifecycle.State.RESUMED) && !overlayIsVisible() }
+                        for (departure in listOf(AccessibilityService.GLOBAL_ACTION_HOME, AccessibilityService.GLOBAL_ACTION_BACK)) {
+                            assertTrue(automation.performGlobalAction(departure))
+                            rule.waitUntil(8_000) { mainActivity.matchesLifecycle(Lifecycle.State.CREATED) && overlayIsVisible() }
+                            instrumentation.runOnMainSync { assertTrue(preparation.isValid) }
+                            assertFalse(binder.state.value.isCapturing)
+                            assertFalse(binder.state.value.actualAudioDevices.recording)
+                            assertEquals(0L, preparation.framesProvided)
+                            reopenMainActivity()
+                            rule.waitUntil(5_000) { mainActivity.matchesLifecycle(Lifecycle.State.RESUMED) && !overlayIsVisible() }
+                        }
                     }
                     val setup = context.floatingPttSettingsIntent().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     val settingsActivity = instrumentation.startActivitySync(setup) as FloatingPttActivity

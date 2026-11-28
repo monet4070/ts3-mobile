@@ -7,6 +7,8 @@ package io.github.ts3mobile.app.service
  * them to a closed category without ever storing protocol or network payloads.
  */
 internal object ConnectionLivenessPolicy {
+    const val DEFAULT_NETWORK_LOSS_GRACE_MS = 2_000L
+
     /**
      * Upper bound for the single control round trip that decides whether a
      * session survived a default-network switch. The probe never runs longer

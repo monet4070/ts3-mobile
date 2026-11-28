@@ -1,6 +1,7 @@
 package io.github.ts3mobile.app.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
@@ -27,7 +28,7 @@ internal fun ActualAudioDevicesPanel(state: TeamSpeakServiceState) {
     SettingsSection(stringResource(R.string.audio_device_actual_title), UiIcon.Audio) {
         SettingsReadout(
             stringResource(R.string.audio_device_selected_output),
-            stringResource(state.audioRouting.selectedRoute.kind.labelId()),
+            state.audioRouting.selectedRoute.resolveLabel(LocalContext.current),
         )
         SettingsReadout(stringResource(R.string.audio_device_actual_output), stringResource(output))
         SettingsReadout(stringResource(R.string.audio_device_actual_input), stringResource(input))
@@ -45,6 +46,7 @@ private fun ActualAudioDevice?.labelId(): Int =
         ActualAudioDevice.USB -> R.string.audio_route_usb
         ActualAudioDevice.BLUETOOTH_A2DP -> R.string.audio_device_bluetooth_media
         ActualAudioDevice.BLUETOOTH_SCO -> R.string.audio_device_bluetooth_call
+        ActualAudioDevice.BLUETOOTH_LE -> R.string.audio_device_bluetooth_le
         ActualAudioDevice.BLUETOOTH_OTHER -> R.string.audio_device_bluetooth_other
         ActualAudioDevice.OTHER -> R.string.audio_route_other
     }

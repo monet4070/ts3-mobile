@@ -19,12 +19,17 @@ The user also explicitly included the voice queue gap bug in this scope.
 
 ## Decision
 
-- Supersede ADR-0009's automatic clone-limit recovery with a terminal refusal.
+- Supersede ADR-0009's repeated clone-limit recovery with a terminal refusal.
   Close the refused attempt, stop automatic recovery and preserve its message.
   Recommend waiting at least 60 seconds and then manually retrying. This is not
-  a timer, an enforced cooldown or a promise about server cleanup/ban duration.
+  an enforced cooldown or a promise about server cleanup/ban duration.
   Other command refusals remain terminal; ordinary network recovery retains
   its existing policy. Do not invent undocumented ban error codes.
+  The 2026-11-28 handoff amendment permits one delayed attempt only if an
+  already-established session lost its transport and its reconnect received a
+  clone refusal on a different confirmed default network. Wait 60 seconds and
+  for availability, then stop if that attempt fails. This does not apply to a
+  manual connect or a drop on the same network.
 - Put diagnostics/background checks in More options. Put a labeled, accented
   Disconnect action beside the server information. Keep the full localized
   connection-limit instructions scrollable, including explicit disconnect

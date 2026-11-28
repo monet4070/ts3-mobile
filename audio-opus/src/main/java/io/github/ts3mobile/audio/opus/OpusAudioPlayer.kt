@@ -163,7 +163,7 @@ class OpusAudioPlayer internal constructor(
             val requireBluetooth =
                 routing.selectedRoute.kind == AudioRouteKind.BLUETOOTH ||
                     device?.let { AudioRouteDevices.routeKindForDeviceType(it.type) } == AudioRouteKind.BLUETOOTH
-            val guardChanged = routeGuard.select(routing.selectedRouteId, requireBluetooth)
+            val guardChanged = routeGuard.select(routing.selectedRouteId, requireBluetooth, routing.selectedRoute.bluetoothCall)
             if (requireBluetooth && routing.switching && !routeSwitching) routeGuard.beginBluetoothAttempt()
             if (preferredDevice?.id == device?.id && selectedRouteId == routing.selectedRouteId &&
                 !guardChanged && routeSwitching == routing.switching

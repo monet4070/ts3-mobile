@@ -13,7 +13,10 @@
     <string name="settings_floating_ptt_summary">在其他应用上方发言、查看谁在说话</string>
     <string name="ptt_settings_display">显示方式</string>
     <string name="ptt_auto_show">退到后台时自动显示浮窗</string>
-    <string name="ptt_auto_show_summary">已加入频道且麦克风空闲时，按 Home 即显示浮窗，不会自动开麦。</string>
+    <string name="ptt_auto_show_summary">加入频道且麦克风空闲时，回桌面或从主界面按返回（Android 12 及以上）会显示浮窗，不会自动开麦。</string>
+    <string name="ptt_minimal_style">极简浮窗</string>
+    <string name="ptt_style_title">浮窗样式</string>
+    <string name="ptt_standard_style">标准浮窗</string>
     <string name="ptt_current_session">当前会话</string>
     <string name="ptt_session_ready">已进入频道</string>
     <string name="ptt_session_disconnected">加入频道后可使用浮窗</string>
@@ -32,8 +35,8 @@
     <string name="ptt_overlay_channel">当前频道</string>
     <string name="ptt_overlay_speakers_heading">正在发言</string>
     <string name="ptt_overlay_no_speakers">暂无发言</string>
-    <string name="ptt_overlay_name_separator">" · "</string>
     <string name="ptt_overlay_more_speakers">+%d</string>
+    <plurals name="ptt_overlay_more_speakers_accessible"><item quantity="other">另有 %d 人正在发言</item></plurals>
     <plurals name="ptt_overlay_members"><item quantity="other">%d 人</item></plurals>
     <string name="ptt_overlay_local_details">本机测试</string>
 </resources>

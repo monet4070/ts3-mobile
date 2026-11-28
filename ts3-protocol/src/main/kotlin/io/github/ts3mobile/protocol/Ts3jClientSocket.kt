@@ -21,6 +21,7 @@ internal interface Ts3jClientSocket {
     val channelFiles: Ts3jChannelFiles? get() = null
     val serverIcon: ServerImage.Icon? get() = null
     val serverUid: VirtualServerUid? get() = null
+    val handshakeRejection: Ts3jHandshakeRejectedException? get() = null
 
     fun setIdentity(identity: LocalIdentity)
 
@@ -152,6 +153,8 @@ internal class LocalTeamspeakClientSocketAdapter(
         Ts3jChannelCommands(BoundedSessionCommands(delegate, commandOperation, submissionLock), { clientId }, channelCommandTimeoutMs)
     private val controlCommands = Ts3jControlCommands(textCommands)
     override val serverIcon: ServerImage.Icon? get() = (delegate as? StateAwareTeamspeakClientSocket)?.serverIcon
+    override val handshakeRejection: Ts3jHandshakeRejectedException?
+        get() = (delegate as? StateAwareTeamspeakClientSocket)?.handshakeRejection
 
     @Volatile private var queriedServerUid: VirtualServerUid? = null
     override val serverUid: VirtualServerUid? get() = (delegate as? StateAwareTeamspeakClientSocket)?.serverUid ?: queriedServerUid

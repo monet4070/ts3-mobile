@@ -32,6 +32,7 @@ internal class ProbeMicButton(
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         }
     private var lastRender: State? = null
+    private var iconOnly = false
 
     init {
         orientation = HORIZONTAL
@@ -42,6 +43,15 @@ internal class ProbeMicButton(
         label.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         addView(icon, LayoutParams(context.probeDp(18), context.probeDp(18)))
         addView(label, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = context.probeDp(4) })
+    }
+
+    fun setIconOnly(iconOnly: Boolean) {
+        if (this.iconOnly == iconOnly) return
+        this.iconOnly = iconOnly
+        label.visibility = if (iconOnly) GONE else VISIBLE
+        val state = lastRender ?: return
+        lastRender = null
+        render(state.mode, state.status, state.recording, state.transmitting)
     }
 
     fun render(
@@ -62,14 +72,9 @@ internal class ProbeMicButton(
                 recording && status == R.string.ptt_connected_listening -> R.string.ptt_overlay_gate_waiting
                 else -> status
             }
-        val draw =
-            when {
-                transmitting -> R.drawable.ic_lucide_audio_lines
-                recording -> R.drawable.ic_lucide_mic
-                else -> R.drawable.ic_lucide_mic_off
-            }
         val fill =
             when {
+                !hold && iconOnly && transmitting -> colors.errorContainer
                 !hold -> colors.surfaceContainerLow
                 transmitting -> colors.error
                 recording -> colors.primary
@@ -77,6 +82,7 @@ internal class ProbeMicButton(
             }
         val tint =
             when {
+                !hold && iconOnly && transmitting -> colors.onErrorContainer
                 !hold && transmitting -> colors.error
                 !hold && recording -> colors.primary
                 !hold -> colors.onSurfaceVariant
@@ -85,7 +91,7 @@ internal class ProbeMicButton(
                 else -> colors.onPrimaryContainer
             }
         isEnabled = mode != MicrophoneMode.OFF
-        icon.setImageResource(draw)
+        updateIcon(state)
         icon.setColorFilter(tint.toArgb())
         label.setText(action)
         label.setTextColor(tint.toArgb())
@@ -96,6 +102,16 @@ internal class ProbeMicButton(
             }
         contentDescription = context.getText(if (hold) holdLabel else R.string.microphone_label)
         ViewCompat.setStateDescription(this, context.getText(status))
+    }
+
+    private fun updateIcon(state: State) {
+        val drawable =
+            when {
+                state.transmitting && !iconOnly -> R.drawable.ic_lucide_audio_lines
+                state.recording || state.transmitting -> R.drawable.ic_lucide_mic
+                else -> R.drawable.ic_lucide_mic_off
+            }
+        icon.setImageResource(drawable)
     }
 
     override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {

@@ -49,6 +49,7 @@ internal enum class DiagnosticEventKind {
     MICROPHONE_STOP_TIMEOUT,
     PLAYBACK_FAILED,
     HISTORY_WRITE_FAILED,
+    NETWORK_HANDOFF_RETRY_DEFERRED,
 }
 
 internal data class DiagnosticEvent(

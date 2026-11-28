@@ -7,6 +7,7 @@ import io.github.ts3mobile.protocol.sanitizedFailureTypes
 internal class ConnectedPttPreparation(
     private val microphone: MicrophoneController,
     private val sessionActive: () -> Boolean,
+    private val speakers: FloatingPttSpeakerActivity,
     private val setForegroundReady: (Boolean) -> Unit,
 ) {
     private var onDisarmed: (() -> Unit)? = null
@@ -15,6 +16,7 @@ internal class ConnectedPttPreparation(
     val framesProvided: Long get() = microphone.floatingPttFrameCount
     val mode: MicrophoneMode? get() = microphone.floatingPttMode
     val captureRequested: Boolean get() = isValid && microphone.floatingPttCaptureRequested
+    val recentSpeakerIds: Set<Int> get() = speakers.recentClientIds()
 
     fun arm(
         leavingMainActivity: Boolean = false,
@@ -23,6 +25,7 @@ internal class ConnectedPttPreparation(
         if (onDisarmed != null || !sessionActive() || !microphone.armFloatingPtt(leavingMainActivity)) return false
         return try {
             setForegroundReady(true)
+            speakers.setObserving(true)
             onDisarmed = onDisarm
             true
         } catch (error: RuntimeException) {
@@ -41,6 +44,7 @@ internal class ConnectedPttPreparation(
     fun disarm() {
         val cleanup = onDisarmed ?: return
         onDisarmed = null
+        speakers.setObserving(false)
         microphone.disarmFloatingPtt()
         try {
             setForegroundReady(false)

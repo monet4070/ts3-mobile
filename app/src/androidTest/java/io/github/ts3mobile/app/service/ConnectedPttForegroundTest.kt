@@ -13,6 +13,8 @@ import io.github.ts3mobile.app.floatingPttSettingsIntent
 import io.github.ts3mobile.app.probe.FloatingPttActivity
 import io.github.ts3mobile.protocol.SessionSnapshot
 import io.github.ts3mobile.protocol.Ts3Participant
+import io.github.ts3mobile.protocol.VoiceCodec
+import io.github.ts3mobile.protocol.VoiceFrame
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -38,10 +40,14 @@ class ConnectedPttForegroundTest {
                 val notificationManager = context.getSystemService(NotificationManager::class.java)
                 instrumentation.runOnMainSync {
                     val local = Ts3Participant(1, 2, "Fixture", false, false, false)
+                    val remote = Ts3Participant(2, 2, "Talker", false, false, false)
+                    val frame = VoiceFrame(remote.id, 1, VoiceCodec.OPUS_VOICE, byteArrayOf(1), isWhisper = false)
                     service.mutableState.value =
                         service.mutableState.value.copy(
-                            snapshot = SessionSnapshot(participants = listOf(local), ownClientId = local.id),
+                            snapshot = SessionSnapshot(participants = listOf(local, remote), ownClientId = local.id),
                         )
+                    service.submitVoiceFrame(frame)
+                    assertTrue(preparation.recentSpeakerIds.isEmpty())
                     assertTrue(preparation.arm { })
                     assertEquals(
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
@@ -49,6 +55,8 @@ class ConnectedPttForegroundTest {
                     )
                     assertFalse(binder.state.value.isCapturing)
                     assertEquals(0L, preparation.framesProvided)
+                    service.submitVoiceFrame(frame)
+                    assertEquals(setOf(remote.id), preparation.recentSpeakerIds)
                 }
                 try {
                     val expected = context.getString(R.string.notification_floating_ptt_ready)
@@ -62,6 +70,7 @@ class ConnectedPttForegroundTest {
                 }
                 assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, service.foregroundServiceType)
                 assertFalse(binder.state.value.playbackMuted)
+                assertTrue(preparation.recentSpeakerIds.isEmpty())
             }
         }
     }

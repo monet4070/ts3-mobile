@@ -9,13 +9,14 @@ Describe the user-visible change and the technical approach.
 - [ ] App/audio unit tests pass, if affected
 - [ ] Android lint passes
 - [ ] Debug APK builds
-- [ ] Physical-device behavior was tested, if applicable
+- [ ] Physical-device behavior was tested, if applicable; emulator-only results are labeled separately
 
 ## Safety and licensing
 
 - [ ] No credentials, server addresses, identities, participant data, APKs, or signing material are included
 - [ ] New third-party material is identified and its license is compatible
 - [ ] Documentation and tests were updated where needed
+- [ ] English and Chinese docs agree on published versus candidate features, if affected
 
 ## Known limitations
 
