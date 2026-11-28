@@ -21,7 +21,7 @@
 | 领域 | 已完成的验证证据 | 保留边界（尚未代签） |
 | --- | --- | --- |
 | 自动化与软件回归 | 候选源提交 `e348a0c` 通过 GitHub Linux/x86_64 Android CI（含固定 TS3j 源码回退构建）；独立本地运行 JVM 979+（含后续工作树预检 993）、Python 34、API 35 arm64 应用 331 项与音频 39 项（含 DTX、FEC 与 360 ms 过期淘汰）以及单模拟器回环文件下载与静音语音并行探针；自动浮窗定向用例 11 项通过 | 模拟器与早期提交 CI 不能代替最终发布提交的 CI 与实体设备签收 |
-| 签名与保留数据升级 | 开发签名合成 `16 → 17` 升级、API 36 原公开签名 `16 → 17` 合成升级以及早期原公开签名真机 `17 → 17` 覆盖均有通过记录 | 仍需在最终 1.3.0 正式签名 APK 上复验公开 `1.2.0 → 1.3.0` 覆盖升级并产出匹配的 `BUILDINFO.json` 与 `SHA256SUMS.txt` |
+| 签名与保留数据升级 | API 36 隔离模拟器从公开 `1.2.0` 覆盖升级到最终签名 `1.3.0` 成功，原应用 UID、合成文件均保留，升级后可冷启动 | 最终包尚未完成真实身份、收藏和设置的全量升级复验；证书与 APK 摘要以发布资产中的 `BUILDINFO.json` 和 `SHA256SUMS.txt` 为准 |
 | 蓝牙、切网与浮窗真机 | 早期原签名基线在小米 14 上验证了播放中蓝牙断开触发安全静音、重连保持静音以及浮窗按住发话；独立手机 QA 包反馈后台音频与切网短停后恢复 | 最终签名包仍需复验双向 Wi-Fi ↔ 蜂窝原会话保留（核对服务端客户端 ID）、播放中蓝牙防外放、冷启动、锁屏 ≥30 分钟、文件真机保存、浮窗 Home/返回手势与系统备份／换机 |
 | 功能与构建边界 | 标准构建包含连接浮窗 PTT、只读频道文件／附件、可选本地聊天历史与按需功能帮助 | 桌面 `.ini` 导入与本机录音实验室不包含在标准正式包中；精确 UDP 计时字段仅在独立本地 TS3j QA 构建可用 |
 
@@ -62,7 +62,7 @@ This page records platform requirements, protocol scope, verified coverage, and 
 | Area | Verified evidence | Remaining limits |
 | --- | --- | --- |
 | Automated regressions | Candidate commit `e348a0c` passed GitHub Linux/x86_64 Android CI (including pinned TS3j source fallback); local runs passed 979+ JVM tests (993 in later worktree preflight), 34 Python checks, 331 app and 39 audio API 35 arm64 Android tests (including DTX, FEC, and 360 ms stale eviction), single-emulator loopback file-download + silent-voice overlap, and 11 focused floating-PTT/auto-show regressions | Emulator runs and earlier commit CI do not sign off the final release commit or replace signed-device checks |
-| Signing & upgrades | Dev-signed synthetic `16 → 17`, API 36 public-cert synthetic `16 → 17`, and earlier public-cert device `17 → 17` upgrades passed | Final signed 1.3.0 APK must still be verified for public `1.2.0 → 1.3.0` upgrade with matching `BUILDINFO.json` and `SHA256SUMS.txt` |
+| Signing & upgrades | An isolated API 36 emulator upgraded in place from public `1.2.0` to the final signed `1.3.0` APK, retained the app UID and a synthetic file, and cold-launched | Full real-data migration of identities, bookmarks, and settings is not yet verified for the final APK; see `BUILDINFO.json` and `SHA256SUMS.txt` for the public artifact |
 | Physical Bluetooth, handoff & floating PTT | Earlier public-cert baseline verified in-playback Bluetooth safety mute, mute retention on reconnect, and floating PTT hold-to-talk on Xiaomi 14; isolated phone QA reported passing background audio and brief pause/resume on network switch | Final signed APK still requires bidirectional Wi-Fi ↔ cellular session-ID verification, in-playback Bluetooth & cold-start recheck, ≥30 min screen-off soak, on-device file save, both Home/Back auto-show gestures, and backup/transfer checks |
 | Feature scope | Standard builds ship connected floating PTT, read-only channel files/attachments, opt-in local chat history, and on-demand feature help | Desktop `.ini` import and the local recorder lab are excluded from standard releases; exact UDP timestamps exist only in the separate local TS3j QA build |
 
