@@ -1,179 +1,86 @@
-# 兼容性与验证范围 / Compatibility and validation
+# 兼容性与验证范围 / Compatibility and Validation
 
-**1.2.0 / versionCode 16** 保持 Android 8.0+ 和四种 ABI。音频改动与小米 14 测试边界见
-[1.2.0 更新说明](release/1.2.0/RELEASE_NOTES_ZH.md)；历史覆盖不能替代在其他耳机、系统与网络上的实测。
+[English](#english) · [1.3.0 更新说明](release/1.3.0/RELEASE_NOTES_ZH.md) · [安装与升级](INSTALLATION.md) · [验收状态与发版门禁](release/CANDIDATE_STATUS_2026-11-25.md)
 
-## 1.1.0 / code 15 历史范围
+本页说明 **TS3 Mobile 1.3.0（versionCode 17）** 的平台要求、协议范围、当前已验证范围与已知使用边界。未执行的真机测试不记为通过；各版本最终签名工件的精确门禁以[验收状态](release/CANDIDATE_STATUS_2026-11-25.md)与[发布资料索引](release/README.md)为准。
 
-记录日期：2026-11-09。**1.1.0 / versionCode 15** 的确切最终包门禁、签名、
-Xiaomi 14 升级与云端 CI 以 [1.1.0 发布验收](release/1.1.0/CHECKLIST.md) 为准。
+## 平台与协议范围（1.3.0）
 
-[中英文界面截图](images/README.md)仅说明 1.1.0 的界面，不扩大下文的真机、通话或升级验收范围。
-The localized screenshots illustrate the UI and do not extend the tested release scope.
-
-1.1.0 集成先前离线/模拟器候选及后续 UI、蓝牙、更新检查和离线诊断。
-此前 UI/更新检查通过 421 项应用 JVM 与 23 项定向 Android 回归；离线诊断在 Xiaomi 14 /
-Android 16、移动网络、蓝牙下完成正常断开、重启恢复和文件导出，用户曾反馈暂时流畅。
-这些是带日期的功能证据，不代替最终 1.1.0 APK 的重新验收，也不证明真实弱网已解决。
-
-Android 8.0+、四 ABI 和单一活动服务器范围保持不变。其他 OEM/API、长时锁屏、蓝牙热插拔、
-电量开销及独立安全审计仍有限。身份备份是自有加密格式；收藏/表单没有应用内备份迁移。
-
-最终 1.1.0 本地重跑 787 JVM；API 35 / 4 KiB 应用 Android 246 通过、2 外部夹具跳过，
-音频 20 通过；fresh API 35 / 16 KiB 上 8 个身份进程终止点、原公开 code 14 → 15 合成数据升级，
-以及最终签名 APK 在 API 35/36 的身份/INI/Opus 探针通过。Xiaomi 14 从此前同签名候选 code 14
-覆盖至 15，核对 UID/4 项表单及更新界面；它不代替从原公开包直接升级的真机验收。
-云端门禁见上方发布记录。没有把不同版本的历史测试数相加作为本版结果。
-
-下面保留 1.0.0 与开发候选的历史数据；原“未发布”或“尚未验收”描述仅对应各节当时工件，
-最终 1.1.0 的状态请以上方发布验收为准。
-
-## 1.0.0 / code 14 历史范围
-
-更新日期：2026-11-05。对应修复重发 **1.0.0 / versionCode 14**，替代撤回的 code 13。
-
-本次音频修复新增 11 项独立回归，全量 JVM 测试为 562 项。Android 16 调试包的
-两段约 30 秒播放录音启动后未见不少于 20 ms 全零段，维护者反馈“现在好多了”；
-仍有少量过期包与设备欠载计数，不承诺完全无断音。正式包的新门禁、探针和升级证据
-以[重发记录](release/1.0.0/REISSUE_2026-11-05.md)为准，下面的首次发布统计保留历史范围。
-构建及签名包证据、维护者实测确认与保留缺口按
-[发布决定 ADR-0021](decisions/0021-stable-release-acceptance.md)公开；未执行项目不记为通过。
-
-## 平台与协议
-
-| 项目 | 范围与边界 |
+| 项目 | 支持范围与边界 |
 | --- | --- |
-| 安装下限 | Android 8.0 / API 26；Android 8/9 尚无本轮真机验收 |
-| 主要设备验收目标 | Android 10+；不表示这些系统已经全部实测 |
-| 模拟器 | ARM64 / Android 15 / API 35，16 KiB；完整 App Android 129 项、默认音频 Android 32 项通过 |
-| 已有真机 | 小米 14 / Android 16；维护者确认完成 11 月 3 日隔离 QA 包的剩余功能实测 |
-| 其他厂商/第二 Android 代际 | 尚待覆盖，不从单台手机推导 |
-| 架构 | 通用 APK 含 arm64-v8a、armeabi-v7a、x86、x86_64；四 ABI 构建不等于全部真机验收 |
-| 16 KiB | ZIP 与 64 位 ELF LOAD 对齐通过；32 位 NDK libc++ LOAD 仍为 4 KiB |
-| 服务端 | TeamSpeak 3 完整客户端协议，经固定 ts3j 适配；不是 ServerQuery，也不声明 TS5/TS6 全功能兼容 |
-| 语音 | Opus 语音/音乐接收与 Opus 语音发送；不承诺全部旧编码或服务器插件兼容 |
-| 并发服务器 | 一个活动会话，切换前先断开 |
-| 语言 | 英文、简体中文，按系统/应用语言环境选择；无应用内语言切换按钮 |
+| 最低系统要求 | Android 8.0（API 26）及以上；Android 8/9 暂无本轮真机实测验收 |
+| 主要验收环境 | Android 15（API 35）模拟器与小米 14（Android 16 / API 36）；单台真机不代表全部厂商 ROM |
+| CPU 架构与对齐 | 通用 APK 包含 `arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64`；ZIP 与 64 位 ELF LOAD 满足 16 KiB 对齐（32 位 NDK `libc++` 仍为 4 KiB） |
+| 服务端协议 | TeamSpeak 3 完整客户端协议（基于固定 `ts3mobile-1` 版本的 `ts3j` 适配）；非 ServerQuery，不承诺 TS5/TS6 全功能兼容 |
+| 语音编解码 | 官方 Opus 1.6.1（语音／音乐接收与 Opus 语音发送）与 RNNoise 降噪；不承诺旧编码或服务器插件兼容 |
+| 活动会话数 | 同时保持一个活动服务器会话；切换服务器前需先断开 |
+| 界面语言 | 简体中文、English（随 Android 系统／应用语言环境自动切换，无应用内切换按钮） |
 
-## 首次发布历史证据（code 13，不代替修复包验收）
+## 1.3.0 验证范围与剩余门禁
 
-| 领域 | 已有证据 | 保留边界 |
+| 领域 | 已完成的验证证据 | 保留边界（尚未代签） |
 | --- | --- | --- |
-| 格式、编译与构建 | 238 个主门禁任务实际重跑；Debug/Release Lint 和混淆 APK 构建通过 | 既有依赖/工具链/资源警告保留，非零警告不等于错误 |
-| 单元及原生回归 | 551 JVM、129 App Android、32 默认音频 Android、48 组 Opus 兼容及 7 Python 测试通过 | 默认音频套件不含可选 APM/麦克风采样探测，不证明全部声学场景 |
-| 确切签名 APK | 身份/INI、Opus ART 1.6.1、冷启动、签名与对齐通过 | 探针不连接真实服务器 |
-| 签名与升级 | 公开 0.11.1-m10 与 1.0.0 证书相同；模拟器 code 12 → 13 保留 UID、合成私有文件/偏好和 Keystore 密文 | 没有访问真实用户数据；最终包真机原有身份/收藏/表单复核待补 |
-| 连接、频道、聊天/戳一下、状态、收藏及语音后台 | 维护者确认小米 14 上昨日 QA 包剩余实测完成；保留历史界面/通知/真实服务记录 | QA 为隔离应用 ID，早于今日蓝牙保护；未提供第二设备与细分通话时长，不补造结果 |
-| 蓝牙路由 | 自动选择、断开/回退静音、重连保持静音的 JVM/Android 回归通过 | 最终 APK 的实体 HFP/SCO/BLE 建立、双向通话和热插拔待复核 |
+| 自动化与软件回归 | 候选源提交 `e348a0c` 通过 GitHub Linux/x86_64 Android CI（含固定 TS3j 源码回退构建）；独立本地运行 JVM 979+（含后续工作树预检 993）、Python 34、API 35 arm64 应用 331 项与音频 39 项（含 DTX、FEC 与 360 ms 过期淘汰）以及单模拟器回环文件下载与静音语音并行探针；自动浮窗定向用例 11 项通过 | 模拟器与早期提交 CI 不能代替最终发布提交的 CI 与实体设备签收 |
+| 签名与保留数据升级 | API 36 隔离模拟器从公开 `1.2.0` 覆盖升级到最终签名 `1.3.0` 成功，原应用 UID、合成文件均保留，升级后可冷启动 | 最终包尚未完成真实身份、收藏和设置的全量升级复验；证书与 APK 摘要以发布资产中的 `BUILDINFO.json` 和 `SHA256SUMS.txt` 为准 |
+| 蓝牙、切网与浮窗真机 | 早期原签名基线在小米 14 上验证了播放中蓝牙断开触发安全静音、重连保持静音以及浮窗按住发话；独立手机 QA 包反馈后台音频与切网短停后恢复 | 最终签名包仍需复验双向 Wi-Fi ↔ 蜂窝原会话保留（核对服务端客户端 ID）、播放中蓝牙防外放、冷启动、锁屏 ≥30 分钟、文件真机保存、浮窗 Home/返回手势与系统备份／换机 |
+| 功能与构建边界 | 标准构建包含连接浮窗 PTT、只读频道文件／附件、可选本地聊天历史与按需功能帮助 | 桌面 `.ini` 导入与本机录音实验室不包含在标准正式包中；精确 UDP 计时字段仅在独立本地 TS3j QA 构建可用 |
 
-首次 code 13 正式签名 APK 的构建源码为 `eb7e87d82c5b9aadaa46ddd2258b7de7f475b109`。
-[该提交 CI](https://github.com/monet4070/ts3-mobile/actions/runs/41761559408)通过。
-发布 tag 可能包含后续文档和合并提交；`BUILDINFO.json` 分别记录实际构建与发布提交，
-并核对 434 个源码/配置输入未变，不将已有 APK 描述为一次新构建。
+详细数据、提交哈希与逐条放行条件见[1.3.0 验收状态与发版门禁](release/CANDIDATE_STATUS_2026-11-25.md)与[11-26 验收交接](release/HANDOFF_1.3.0_2026-11-26_ZH.md)。
 
-来源：[准备记录](release/1.0.0/PREPARATION_2026-11-04.md)、
-[昨日完整回归](testing/STABLE_FULL_2026-11-03.md)、
-[蓝牙修复回归](testing/BLUETOOTH_ROUTING_2026-11-04.md)、
-[发布清单](release/1.0.0/CHECKLIST.md)。旧记录保持其日期与工件边界，不把多次测试数简单相加。
+## 已知使用限制（1.3.0）
 
-## 已知使用限制
+- **蓝牙安全静音与系统缓冲**：设备断开或蓝牙自动回退（含无回调回退）会立即触发收听安全静音，重连后需手动确认路由再恢复。Android / HAL 在回调到达前可能将已缓冲 PCM 送往扬声器，软件无法保证所有机型零瞬时外放。
+- **厂商后台与划卡杀进程**：部分厂商 ROM 清理最近任务会跳过退出回调，请在应用或通知栏使用 **断开连接**；Android 通知权限、频道设置、勿扰与省电策略可能抑制提醒或限制长时后台。
+- **语音与音频设备**：音量门控在安静时持续采集；设备回声消除（AEC）效果因机型与路由而异；默认蓝牙媒体模式下自动麦克风优先使用手机麦克风，也可在 **设置 → 输入与输出设备** 手动选择 LE Audio 耳机麦或传统 **蓝牙通话（使用耳机麦克风）**（传统通话模式音质可能下降，且 LE Audio 双工与传统 SCO 实机听感仍待不同机型与耳机验证，见 [ADR-0039](decisions/0039-media-friendly-voice.md)）。
+- **切网保活边界**：短暂默认网络丢失时先保留原会话最多 2 秒并探测，但能否跨网络无缝续用取决于服务端与网络路径（如源 IP 变更）；无法维持时会走正常断线恢复。
+- **文件、聊天与历史边界**：频道文件与同服聊天附件均为**只读下载**（单文件上限 20 MiB），不支持上传、自动下载或跨服取件；实时聊天仅存服务内存，可选本地聊天历史默认关闭（最近 7 天 / 500 条 / 512 KiB 限额，无云同步），且无已读回执。
+- **身份与暂未提供能力**：`.ts3mbak` 身份备份不包含收藏与连接表单；标准正式包不含桌面 `.ini` 导入、Whisper、服务器管理、多服务器标签页或可选 APM 实验库。
+- **协议依赖**：1.3.0 保持固定 `ts3mobile-1` 依赖（见 [ADR-0004](decisions/0004-take-ownership-of-ts3j-dependency.md)）；构建时如 JitPack 不可用，可按[贡献指南](../CONTRIBUTING.md)执行离线源码回退构建。
 
-- 蓝牙断开或意外回退触发收听静音，重连后确认设备并手动恢复。Android/HAL 可能在回调前
-  将已缓冲 PCM 切至外放，软件无法保证所有设备上零瞬时外放。
-- 厂商清理任务可能跳过正常退出回调；用应用/通知的断开操作结束会话。
-- Android 通知权限、频道、勿扰和电池策略可能抑制提醒或中断后台连接。
-- 音量门控在安静时持续采集；设备 AEC 支持与实际声学效果因设备不同。
-- 聊天/戳一下记录与草稿只在服务内存；不提供永久历史、云同步或已读回执。
-- 公开code14没有身份导入导出；本分支C2草稿候选支持自有加密格式，验证边界见下方。收藏跨包迁移、Whisper、文件传输、管理和多服务器标签页仍未实现。
-- 默认 APK 不包含 APM 实验库，不将开发实验结果宣传为默认能力。
-- ts3j 使用维护者 fork 的不可移动标签 `ts3mobile-1`，源码与原固定提交相同；
-  JitPack 可用性仍是构建边界，见 [ADR-0004](decisions/0004-take-ownership-of-ts3j-dependency.md)。
+---
 
 ## English
 
-Stable **1.0.0 / code 14**, reissued November 5 after withdrawal of code 13,
-supports installation from API 26. Its audio fix adds 11 independent regressions
-for a total of 562 passing JVM tests. Android 16 debug recordings and maintainer
-feedback confirm improvement, not a universal glitch-free guarantee. Replacement
-build acceptance is recorded separately in the [reissue record](release/1.0.0/REISSUE_2026-11-05.md).
-The automated and signed-APK results below are historical code 13 evidence.
-Android 8/9 and a
-second manufacturer/Android generation have not been physically accepted in this
-round. Xiaomi 14 / Android 16 hands-on confirmation applies to the November 3
-isolated QA APK, which predates the new Bluetooth protection. Detailed duration
-records and final-APK real-device Bluetooth/data-upgrade checks remain open under
-[ADR-0021](decisions/0021-stable-release-acceptance.md).
+[简体中文](#兼容性与验证范围--compatibility-and-validation) · [1.3.0 Release Notes](release/1.3.0/RELEASE_NOTES.md) · [Installation & Upgrades](INSTALLATION.md#english) · [Verification Status](release/CANDIDATE_STATUS_2026-11-25.md)
 
-Fresh automated evidence: 238 gate tasks executed; 551 JVM, 129 app Android,
-32 default audio Android, 48 Opus compatibility combinations and 7 Python tests
-passed. The ARM64 API 35 emulator uses 16 KiB pages. The exact signed APK passed
-identity/INI, runtime Opus 1.6.1, launch, signature and alignment checks. An update
-from the public code 12 APK retained the UID, synthetic private files/preferences
-and Keystore ciphertext; no real user data was accessed. The certificates match.
-Existing toolchain/dependency/resource warnings remain; there were no gate errors.
+This page records platform requirements, protocol scope, verified coverage, and known limits for **TS3 Mobile 1.3.0 (versionCode 17)**. Unperformed physical-device checks are never reported as passes; exact release-gate status for the final signed artifact is tracked in [1.3.0 Verification Status](release/CANDIDATE_STATUS_2026-11-25.md) and the [Releases Index](release/README.md).
 
-Four packaged ABIs do not establish physical coverage of every architecture.
-ZIP and 64-bit ELF LOAD alignment are 16 KiB; the 32-bit NDK libc++ LOAD remains
-4 KiB. Optional APM/microphone probes are excluded from the default audio suite.
-Build source and final release commits are recorded separately in `BUILDINFO.json`;
-all 434 source/configuration inputs must match across later documentation changes.
+### Platform and protocol scope (1.3.0)
 
-The app targets TeamSpeak 3 via a pinned ts3j client protocol, one active server
-and Opus audio. It is not ServerQuery and makes no full TS5/TS6, legacy-codec or
-plugin compatibility promise. Locale follows Android, with English and Simplified
-Chinese supported. Dependency ownership is completed under ADR-0004; JitPack
-availability remains a build dependency.
+| Area | Scope and limits |
+| --- | --- |
+| Minimum Android version | Android 8.0 (API 26)+; Android 8/9 have not been physically accepted in this cycle |
+| Primary test environments | Android 15 (API 35) emulators and Xiaomi 14 (Android 16 / API 36); single-device tests do not generalize to all OEM ROMs |
+| Packaged ABIs & alignment | Universal APK with `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`; ZIP and 64-bit ELF LOAD segments are 16 KiB aligned (32-bit NDK `libc++` remains 4 KiB) |
+| Server protocol | Full TeamSpeak 3 client protocol via pinned `ts3mobile-1` (`ts3j`); not ServerQuery, and no full TS5/TS6 compatibility claim |
+| Voice codecs | Official Opus 1.6.1 (voice/music receive and voice send) and RNNoise; no legacy-codec or server-plugin guarantee |
+| Active sessions | One active server session at a time; disconnect before switching servers |
+| Languages | English and Simplified Chinese, selected from Android system/app locale (no in-app switcher) |
 
-Bluetooth loss/fallback mutes listening; reconnecting does not unmute it. Android/
-HAL may reroute buffered PCM before callbacks, so zero transient speaker output
-cannot be guaranteed. OEM task removal, notification/DND/battery restrictions and
-device AEC quality remain system-dependent. Volume gate captures during silence.
-Chat/poke history is memory-only with no read receipts or cloud history. Identity
-export/transfer, Whisper, file transfer, administration, multi-server tabs and the
-optional APM experiment are outside the default release.
+### 1.3.0 verification coverage and open gates
 
-
-## 身份改进候选范围 / Identity candidate scope
-
-C2候选在API35／arm64／4KiB独立模拟器验证自有备份的实际SAF导出、跨安装导入、明确确认、
-force-stop后精确身份材料和本地回退，含测试签名minified实际页面。具体SHA及source约束见
-[C2.2](testing/IMPROVEMENT_C22_2026-11-07_ZH.md)、[C2.3](testing/IMPROVEMENT_C23_2026-11-07_ZH.md)及
-[R3候选](testing/IMPROVEMENT_R3_2026-11-07_ZH.md)。公开1.0.0/code14尚未包含这些功能。
-测试没有使用生产签名私钥、真实个人身份、线上服务器或录音。API26运行时、低端物理设备、
-OEM／云文件提供方持久性、公开签名覆盖升级和独立安全审计仍未验收；构建minSdk26不是运行时证明。
-
-The unshipped identity candidate is verified on independent API35 arm64 4-KiB
-emulators, including actual SAF export/import, explicit confirmation, exact private
-material after force-stop, and local rollback in test-signed minified builds.
-Published code 14 does not include it. Source/APK fingerprints and limits are in
-the linked C2.2/C2.3/R3 records. No production key, personal identity, live server
-or recording was used. API26 runtime, low-end/OEM hardware, cloud-provider durability,
-published-signature upgrades and an independent security audit remain unverified.
-
-## 最终提升候选范围 / Final improvement candidate — 2026-11-08
-
-本节仅对应尚未发布的P0–R4组合候选，生产源码沿用D2 `417ebf1`，版本字段仍是1.0.0/code14。
-与上面的公开code14及code13历史证据分别记录，不表示公开包已具备候选功能。
-精确APK／源码摘要、原日志位置及回退边界见[R4](testing/IMPROVEMENT_R4_2026-11-07_ZH.md)。
-
-| 验证条件 | 本轮已通过 | 保留边界 |
+| Area | Verified evidence | Remaining limits |
 | --- | --- | --- |
-| JVM／工具 | app384、protocol133、audio219，共736；Python18 | 合成fixture，不连接线上服务 |
-| API35 ARM64，4 KiB | 完整app Android210通过／2外部fixture跳过；选定离线音频18通过；实际minified身份与Opus探针 | 不含录音／可选APM实验；不是所有API或机型证明 |
-| fresh API35 ARM64，4 KiB | B1→最终Debug和测试签名minified覆盖升级保全原三Vault／keys／UID／调音；D1主题→Debug→minified保全并从真实UI读回 | Debug通过真实Vault读值；minified升级严格核对原文件／原密钥／UID，不称真实Vault方法读回 |
-| fresh API35 ARM64，16 KiB | 八个身份事务边界真实进程终止恢复／保全；最终minified Opus往返 | 未运行完整16 KiB UI／音频套件 |
-| 单人静音 | 同一合成进料下其他人的有效未混音队列与decoder保留，最终六条native player轨迹复核 | 输出仍安全退役；无flush的50%声音缺口目标和实体听感未验 |
+| Automated regressions | Candidate commit `e348a0c` passed GitHub Linux/x86_64 Android CI (including pinned TS3j source fallback); local runs passed 979+ JVM tests (993 in later worktree preflight), 34 Python checks, 331 app and 39 audio API 35 arm64 Android tests (including DTX, FEC, and 360 ms stale eviction), single-emulator loopback file-download + silent-voice overlap, and 11 focused floating-PTT/auto-show regressions | Emulator runs and earlier commit CI do not sign off the final release commit or replace signed-device checks |
+| Signing & upgrades | An isolated API 36 emulator upgraded in place from public `1.2.0` to the final signed `1.3.0` APK, retained the app UID and a synthetic file, and cold-launched | Full real-data migration of identities, bookmarks, and settings is not yet verified for the final APK; see `BUILDINFO.json` and `SHA256SUMS.txt` for the public artifact |
+| Physical Bluetooth, handoff & floating PTT | Earlier public-cert baseline verified in-playback Bluetooth safety mute, mute retention on reconnect, and floating PTT hold-to-talk on Xiaomi 14; isolated phone QA reported passing background audio and brief pause/resume on network switch | Final signed APK still requires bidirectional Wi-Fi ↔ cellular session-ID verification, in-playback Bluetooth & cold-start recheck, ≥30 min screen-off soak, on-device file save, both Home/Back auto-show gestures, and backup/transfer checks |
+| Feature scope | Standard builds ship connected floating PTT, read-only channel files/attachments, opt-in local chat history, and on-demand feature help | Desktop `.ini` import and the local recorder lab are excluded from standard releases; exact UDP timestamps exist only in the separate local TS3j QA build |
 
-未执行：实体OEM／锁屏通知／麦克风与物理音频路由、真实服务器组合、未测API、生产签名覆盖升级、
-云文件提供方持久性及独立安全审计。没有合并、公开发布或版本提升。
+### Known limits (1.3.0)
 
-This unshipped candidate retains production source `417ebf1` and version fields
-1.0.0/code14. It passed 736 JVM, 18 Python, 210 full-app Android and 18 selected
-offline-audio Android tests; two external-fixture app tests were skipped. The full
-Android suite ran on API35 ARM64 with 4-KiB pages. Fresh in-place Debug/minified
-upgrades preserved original storage, keys, UID, tuning and selected appearance.
-Debug read values through real vaults; minified upgrade checks preserve raw files
-and original keys and do not claim reflective vault readback. A separate fresh
-16-KiB emulator passed eight process-crash boundaries and the minified Opus probe,
-not the complete UI suite. Physical/OEM behavior, listening gaps, live servers,
-other APIs, production-signed upgrades and an independent audit remain unverified.
+- **Bluetooth safety mute & HAL buffering:** Headset removal or unexpected Bluetooth route fallback (including unnotified auto-route fallbacks) triggers a listening safety mute; confirm the route and unmute manually after reconnecting. Android/HAL may play already-buffered PCM on speaker before callbacks arrive, so zero transient speaker output cannot be guaranteed on every phone.
+- **OEM task killers & background policies:** Swiping the app from Recents can kill the process before exit callbacks run—disconnect via the app or connection notification. Android notification permissions, channel settings, Do Not Disturb, and OEM battery policies can limit background sessions or alerts.
+- **Voice & audio hardware:** Volume gate captures continuously during silence; real device AEC effectiveness varies by phone and route; in default Bluetooth media mode, automatic microphone prefers the phone mic, while **Settings → Input and output devices** allows manually choosing an LE Audio headset mic or explicit **Bluetooth call (use headset microphone)** (classic call mode may lower audio quality, and physical-device LE Audio duplex / SCO acoustics still require hardware verification; see [ADR-0039](decisions/0039-media-friendly-voice.md)).
+- **Network handoff boundaries:** Brief default-network drops (up to 2 seconds) hold and probe the original session, but whether the server accepts continuation across path/IP changes depends on server and network behavior; normal reconnect runs if continuation fails.
+- **Files, chat & history boundaries:** Channel files and same-server chat attachments are **read-only downloads** (20 MiB per file; no uploads, automatic downloads, or cross-server retrieval). Live chat is memory-only with no read receipts; opt-in local chat history is off by default (7 days / 500 messages / 512 KiB limit, no cloud sync).
+- **Identity & out-of-scope features:** `.ts3mbak` identity backups exclude bookmarks and connection forms. Desktop `.ini` import, Whisper, server administration, multi-server tabs, and the optional APM experiment are outside standard release builds.
+- **Protocol dependency:** 1.3.0 keeps pinned `ts3mobile-1` ([ADR-0004](decisions/0004-take-ownership-of-ts3j-dependency.md)); if JitPack is unavailable when building from source, see [Contributing](../CONTRIBUTING.md) for the offline TS3j source fallback.
+
+---
+
+## 历史版本验收归档 / Historical Release Validation
+
+- **1.2.0（code 16，2026-11-20）**：[中文发布说明](release/1.2.0/RELEASE_NOTES_ZH.md) · [English Release Notes](release/1.2.0/RELEASE_NOTES.md)
+- **1.1.0（code 15，2026-11-09）**：[1.1.0 发布清单与验收](release/1.1.0/CHECKLIST.md) · [R4 候选验收](testing/IMPROVEMENT_R4_2026-11-07_ZH.md)
+- **1.0.0（code 14 重发，2026-11-05）**：[重发记录](release/1.0.0/REISSUE_2026-11-05.md) · [1.0.0 发布清单](release/1.0.0/CHECKLIST.md) · [ADR-0021 稳定版发布决定](decisions/0021-stable-release-acceptance.md)
+- **历史界面截图说明**：[文档截图索引](images/README.md)（仅展示界面，不扩大实机验收范围）

@@ -5,11 +5,19 @@ import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -109,6 +117,81 @@ class LocalMicrophoneTrialTest {
             trial.setVisible(false)
             assertEquals(2, capture.stops)
         }
+
+    @Test fun inlineDispatcherWithImmediateReleaseCheckStartsAndStopsWithoutCrashing() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val session = MutableStateFlow(connected())
+        val capture = TrialSource()
+        val trial = LocalMicrophoneTrial(scope, session, MicrophoneTrial(scope) { capture }, { true }) { true }
+        try {
+            trial.setVisible(true)
+            trial.start(MicrophoneSettings())
+            assertEquals(1, capture.starts)
+            assertEquals(MicrophoneTrialPhase.RUNNING, trial.state.value.phase)
+            assertTrue(trial.stop())
+            assertEquals(1, capture.stops)
+            assertEquals(MicrophoneTrialPhase.IDLE, trial.state.value.phase)
+            assertTrue(trial.isInputReleased)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test fun cancelDuringStartHandoffNeverLeavesCaptureRunning() {
+        runBlocking {
+            val inlineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val session = MutableStateFlow(connected())
+            val inlineCapture = TrialSource()
+            lateinit var inlineTrial: LocalMicrophoneTrial
+            inlineTrial =
+                LocalMicrophoneTrial(
+                    inlineScope,
+                    session,
+                    MicrophoneTrial(inlineScope) { inlineCapture },
+                    {
+                        inlineTrial.stop()
+                        true
+                    },
+                ) { true }
+            try {
+                inlineTrial.setVisible(true)
+                inlineTrial.start(MicrophoneSettings())
+                assertEquals(0, inlineCapture.starts)
+                assertEquals(MicrophoneTrialPhase.IDLE, inlineTrial.state.value.phase)
+                assertTrue(inlineTrial.isInputReleased)
+            } finally {
+                inlineScope.cancel()
+            }
+
+            repeat(20) {
+                val raceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+                val gate = CompletableDeferred<Unit>()
+                val raceCapture = TrialSource()
+                val raceTrial =
+                    LocalMicrophoneTrial(
+                        raceScope,
+                        session,
+                        MicrophoneTrial(raceScope, Dispatchers.IO) { raceCapture },
+                        {
+                            gate.await()
+                            true
+                        },
+                    ) { true }
+                try {
+                    raceTrial.setVisible(true)
+                    raceTrial.start(MicrophoneSettings())
+                    val stopDeferred = async(Dispatchers.Default) { raceTrial.stopAndAwait() }
+                    gate.complete(Unit)
+                    assertTrue(withTimeout(3_000) { stopDeferred.await() })
+                    assertTrue(raceTrial.isInputReleased)
+                    assertEquals(MicrophoneTrialPhase.IDLE, raceTrial.state.value.phase)
+                    assertEquals(raceCapture.starts, raceCapture.stops)
+                } finally {
+                    raceScope.cancel()
+                }
+            }
+        }
+    }
 
     private fun connected(token: String = "fixture") =
         TeamSpeakServiceState(

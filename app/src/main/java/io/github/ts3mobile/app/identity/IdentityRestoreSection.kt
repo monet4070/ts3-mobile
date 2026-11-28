@@ -2,11 +2,15 @@ package io.github.ts3mobile.app.identity
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -15,12 +19,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.identity.backup.IdentityBackupFailure
 import io.github.ts3mobile.app.identity.documents.IdentityImportFailure
+import io.github.ts3mobile.app.ui.SettingsSection
+import io.github.ts3mobile.app.ui.UiIcon
 
 @Composable
 internal fun IdentityRestoreSection(
@@ -30,47 +38,52 @@ internal fun IdentityRestoreSection(
     otherBusy: Boolean,
     onImport: (CharArray) -> Unit,
     onRollback: () -> Unit,
-    onConfirm: () -> Unit,
+    onConfirm: (Boolean) -> Unit,
     onRefreshConfirmation: () -> Unit,
     onCancel: () -> Unit,
     onEndConnection: () -> Unit,
+    onImportDesktop: (() -> Unit)? = null,
 ) {
-    var passphrase by remember { mutableStateOf("") }
+    var restoringBackup by remember { mutableStateOf(false) }
     val enabled = !otherBusy && !state.active
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(stringResource(R.string.identity_import_guidance))
-        BackupPasswordField(passphrase, R.string.identity_existing_password, enabled) { passphrase = it }
-        Button(onClick = {
-            val secret = passphrase.toCharArray()
-            passphrase = ""
-            onImport(secret)
-        }, enabled = enabled) {
-            Text(stringResource(R.string.identity_import))
+    OutlinedButton(onClick = { restoringBackup = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+        IdentityActionLabel(UiIcon.Folder, R.string.identity_restore_backup)
+    }
+    if (onImportDesktop != null) {
+        OutlinedButton(onClick = onImportDesktop, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            IdentityActionLabel(UiIcon.FileText, R.string.identity_desktop_import)
         }
-        OutlinedButton(onClick = onRollback, enabled = enabled && hasRollback) { Text(stringResource(R.string.identity_rollback)) }
-        if (useState == IdentityUseState.CONNECTION) {
-            OutlinedButton(onClick = onEndConnection) { Text(stringResource(R.string.identity_end_connection)) }
+    }
+    if (hasRollback) {
+        OutlinedButton(onClick = onRollback, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            IdentityActionLabel(UiIcon.History, R.string.identity_rollback)
         }
-        Text(
-            stringResource(state.message()),
-            color =
-                if (state.status == IdentityRestoreStatus.FAILED) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
+    }
+    if (useState == IdentityUseState.CONNECTION && state.preview == null) {
+        OutlinedButton(onClick = onEndConnection, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.identity_end_connection))
+        }
+    }
+    if (state.status != IdentityRestoreStatus.READY && state.preview == null) {
+        val complete = state.status in setOf(IdentityRestoreStatus.DONE, IdentityRestoreStatus.ALREADY_CURRENT)
+        IdentityStatusLine(
+            state.message(),
+            if (complete) UiIcon.Check else UiIcon.Info,
+            error = state.status == IdentityRestoreStatus.FAILED,
         )
-        if (state.active && state.preview == null &&
-            state.status !in setOf(IdentityRestoreStatus.COMMITTING, IdentityRestoreStatus.CANCELLING)
-        ) {
-            OutlinedButton(onClick = {
-                passphrase = ""
-                onCancel()
-            }) { Text(stringResource(R.string.action_cancel)) }
+        if (state.active && state.status !in setOf(IdentityRestoreStatus.COMMITTING, IdentityRestoreStatus.CANCELLING)) {
+            OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
         }
+    }
+    if (restoringBackup) {
+        RestoreBackupDialog(enabled, onDismiss = { restoringBackup = false }, onImport = { secret ->
+            restoringBackup = false
+            onImport(secret)
+        })
     }
     state.preview?.let { preview ->
         val committing = state.status == IdentityRestoreStatus.COMMITTING
+        var allowLowerSecurity by remember(preview, state.status) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { if (!committing) onCancel() },
             title = {
@@ -83,13 +96,35 @@ internal fun IdentityRestoreSection(
                     Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(stringResource(R.string.identity_current))
-                    preview.previous.active?.let { IdentitySummaryView(it) } ?: Text(stringResource(R.string.identity_no_usable_current))
-                    if (preview.previous.unreadable) Text(stringResource(R.string.identity_unreadable))
-                    Text(stringResource(R.string.identity_proposed))
-                    IdentitySummaryView(preview.proposed)
-                    Text(stringResource(R.string.identity_permission_impact))
-                    Text(stringResource(state.message()))
+                    SettingsSection(stringResource(R.string.identity_current), UiIcon.Shield) {
+                        preview.previous.active?.let { IdentitySummaryView(it) }
+                            ?: Text(stringResource(R.string.identity_no_usable_current))
+                        if (preview.previous.unreadable) IdentityStatusLine(R.string.identity_unreadable, UiIcon.Info, error = true)
+                    }
+                    SettingsSection(stringResource(R.string.identity_proposed), UiIcon.Archive) {
+                        IdentitySummaryView(preview.proposed)
+                    }
+                    if (preview.previous.active?.uid != preview.proposed.uid) {
+                        Text(stringResource(R.string.identity_permission_impact), style = MaterialTheme.typography.titleSmall)
+                    }
+                    if (preview.isDesktopDowngrade) {
+                        Row(
+                            Modifier.toggleable(
+                                value = allowLowerSecurity,
+                                enabled = state.status == IdentityRestoreStatus.PREVIEW,
+                                role = Role.Checkbox,
+                                onValueChange = { allowLowerSecurity = it },
+                            ),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Checkbox(allowLowerSecurity, onCheckedChange = null)
+                            Text(stringResource(R.string.identity_desktop_allow_lower))
+                        }
+                    }
+                    if (state.status != IdentityRestoreStatus.PREVIEW && state.status != IdentityRestoreStatus.READY) {
+                        IdentityStatusLine(state.message(), UiIcon.Info, error = state.status == IdentityRestoreStatus.FAILED)
+                    }
                     if (state.storeFailure in setOf(IdentityFailure.BUSY, IdentityFailure.STALE_CONFIRMATION)) {
                         OutlinedButton(onClick = onRefreshConfirmation, enabled = !state.working) {
                             Text(stringResource(R.string.identity_refresh_confirmation))
@@ -101,9 +136,11 @@ internal fun IdentityRestoreSection(
                 }
             },
             confirmButton = {
-                OutlinedButton(
-                    onClick = onConfirm,
-                    enabled = state.status == IdentityRestoreStatus.PREVIEW && useState == IdentityUseState.IDLE,
+                Button(
+                    onClick = { onConfirm(allowLowerSecurity) },
+                    enabled =
+                        state.status == IdentityRestoreStatus.PREVIEW && useState == IdentityUseState.IDLE &&
+                            (!preview.isDesktopDowngrade || allowLowerSecurity),
                 ) {
                     Text(stringResource(R.string.identity_confirm_action))
                 }
@@ -113,6 +150,35 @@ internal fun IdentityRestoreSection(
             },
         )
     }
+}
+
+@Composable
+private fun RestoreBackupDialog(
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onImport: (CharArray) -> Unit,
+) {
+    var passphrase by remember { mutableStateOf("") }
+    val title = stringResource(R.string.identity_restore_backup)
+    val passwordLabel = stringResource(R.string.identity_existing_password)
+    val chooseLabel = stringResource(R.string.identity_import)
+    val cancelLabel = stringResource(R.string.action_cancel)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { BackupPasswordField(passphrase, passwordLabel, enabled) { passphrase = it } },
+        confirmButton = {
+            Button(
+                enabled = enabled && passphrase.isNotEmpty(),
+                onClick = {
+                    val secret = passphrase.toCharArray()
+                    passphrase = ""
+                    onImport(secret)
+                },
+            ) { Text(chooseLabel) }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(cancelLabel) } },
+    )
 }
 
 private fun IdentityRestoreState.message(): Int {
@@ -127,10 +193,11 @@ private fun IdentityRestoreState.message(): Int {
         }
     }
     importFailure?.let {
-        return if (it == IdentityImportFailure.INVALID_IDENTITY) {
-            R.string.identity_invalid_material
-        } else {
-            R.string.identity_document_unreadable
+        return when (it) {
+            IdentityImportFailure.INVALID_IDENTITY ->
+                if (source == IdentityImportSource.DESKTOP) R.string.identity_desktop_invalid else R.string.identity_invalid_material
+            IdentityImportFailure.DOCUMENT_UNREADABLE -> R.string.identity_document_unreadable
+            IdentityImportFailure.RESOURCE_LIMIT -> R.string.identity_desktop_size
         }
     }
     storeFailure?.let {
@@ -143,13 +210,15 @@ private fun IdentityRestoreState.message(): Int {
             IdentityFailure.STORAGE_FAILED, IdentityFailure.VERIFICATION_FAILED -> R.string.identity_store_failed
         }
     }
+    val desktop = source == IdentityImportSource.DESKTOP
     return when (status) {
         IdentityRestoreStatus.READY -> R.string.identity_import_ready
-        IdentityRestoreStatus.SELECTING -> R.string.identity_import_selecting
-        IdentityRestoreStatus.READING -> R.string.identity_import_reading
+        IdentityRestoreStatus.SELECTING -> if (desktop) R.string.identity_desktop_selecting else R.string.identity_import_selecting
+        IdentityRestoreStatus.READING -> if (desktop) R.string.identity_desktop_reading else R.string.identity_import_reading
         IdentityRestoreStatus.PREVIEW -> R.string.identity_confirm_guidance
         IdentityRestoreStatus.COMMITTING -> R.string.identity_committing
-        IdentityRestoreStatus.DONE -> R.string.identity_replaced
+        IdentityRestoreStatus.DONE -> if (desktop) R.string.identity_desktop_done else R.string.identity_replaced
+        IdentityRestoreStatus.ALREADY_CURRENT -> R.string.identity_desktop_already_current
         IdentityRestoreStatus.CANCELLING -> R.string.identity_cancelling
         IdentityRestoreStatus.CANCELLED -> R.string.identity_import_cancelled
         IdentityRestoreStatus.PICKER_UNAVAILABLE -> R.string.identity_picker_unavailable

@@ -1,213 +1,82 @@
 # Privacy
 
-Last updated: 2026-11-20 · [简体中文](PRIVACY_ZH.md)
+Last updated: 2026-11-28 · [简体中文](PRIVACY_ZH.md) · [User Guide](docs/USER_GUIDE.md)
 
-TS3 Mobile is an unofficial client that connects directly from the Android
-device to TeamSpeak servers selected by the user. The maintainers do not
-operate an intermediary service for those connections.
+TS3 Mobile is an unofficial Android client that connects directly from your device to the TeamSpeak servers you choose. The maintainers do not operate any voice or messaging relay, and the app contains no ads, analytics, telemetry, or project-operated crash reporting backend.
+
+This policy covers **TS3 Mobile 1.3.0 (versionCode 17)**.
+
+---
 
 ## Data handled on the device
 
-In the development build, invite previews use transient memory, not form,
-bookmark or recent-server storage. The app reads the clipboard only when you
-choose to paste or use the clipboard. External passwords, tokens and unsupported
-link values are not used; manually supplied credentials go only to the server
-or channel you confirm. Sharing uses the Android chooser and only includes the
-server address, voice port and, if selected, the channel ID. The receiving app
-manages anything you share.
+| Category | Storage and purpose |
+| --- | --- |
+| TeamSpeak identity | Encrypted locally with AES-GCM backed by Android Keystore for server identification; excluded from cloud backup and device transfer |
+| Connection form | Address, port, nickname, and server password encrypted separately with AES-GCM (including unsent/failed edits); prefills on launch without auto-connecting; excluded from backup and transfer |
+| Recent endpoints | Up to 10 previously successful server addresses and ports in app-private storage; individually deletable without clearing the form or bookmarks |
+| Server bookmarks | Up to 50 entries in a separate versioned AES-GCM vault with its own Keystore key (name, endpoint, nickname, optional default channel, and opt-in passwords); excluded from backup and transfer |
+| Offline channel lists | Created only when you tap **Save channel list for offline use**; stores up to 100 channel IDs and paths per endpoint (max 6 endpoints) encrypted with a separate Keystore key, with no passwords, members, or messages; forgettable anytime |
+| Microphone tuning & appearance | Stored in separate versioned local preference files (gain, RNNoise, AEC, gate threshold; Light/Dark/System); contain no audio or session data; excluded from backup and transfer |
+| Playback, updates & floating PTT preferences | Playback profile, update prerelease preference, floating PTT position/style/auto-show flag, and CPU-awake preference are stored locally; playback and update DataStores are excluded from Android backup rules; capture mode, PTT state, temporary audio device IDs, and Bluetooth call selections are never persisted, and raw hardware addresses are never displayed |
+| Local chat history (off by default) | When explicitly enabled, saves eligible new text encrypted with a dedicated Keystore key (newest 7 days, max 500 messages / 512 KiB encoded total); excluded from backup and transfer |
+| Local & audio diagnostics | Up to 128 fixed-category service events plus up to 3 audio sessions (120 samples and 64 events each, capped at 1 MiB), excluded from backup; contains no audio, endpoints, passwords, identities, or participant names |
 
-The development build's local microphone trial is available offline and when
-connected with the voice microphone off. It only shows the input type and measurements in
-memory. It does not encode, transmit, store or add test audio, device names or
-measurements to diagnostic reports.
+Additional details:
 
-The app stores only the selected appearance mode (Light, Dark or System)
-and its schema version in a separate local preferences file, excluded from cloud
-backup and device transfer. It contains no session or audio data. Unset remains
-Light; selection does not start capture or contact a server. Reset affects only
-appearance.
+- **Form and bookmark isolation:** Switching endpoints in the form clears the previous password; bookmarks never auto-copy form passwords. Editing a bookmark's host or port clears the draft's old default channel and both passwords; editing only the channel clears only the channel password. Turning off **Save passwords** removes only that bookmark's passwords, never the independent form.
+- **Invites and clipboard:** Invite previews live in transient memory and never write to form, bookmark, or recent-server storage. Clipboard access happens only when you choose to paste or read from clipboard. External link passwords and tokens are ignored; sharing includes only address, voice port, and optional channel ID.
+- **Local microphone test:** Displays input type and live measurements in memory only—never encodes, transmits, stores audio, or writes device names/measurements into diagnostics.
+- **Missing local key protection:** When reading existing local ciphertext, a missing or unusable Keystore key reports an explicit failure and preserves the original ciphertext instead of silently generating a replacement key or overwriting data.
+- **Diagnostic export:** Diagnostics are never uploaded automatically. Tapping **Save file** stages one redacted report (up to 512,000 bytes) in backup-excluded private storage, writes it through Android's document picker without extra storage permissions or persisted URI grants, and deletes the staged copy afterward. Exported copies are managed by the chosen document provider and remain if the app is uninstalled.
 
-- The app stores input gain, noise-suppression preference,
-  device-AEC preference and gate threshold in a separate versioned local
-  preferences file, excluded from cloud backup/device transfer. It contains no
-  audio, identity, endpoint, PTT state or capture mode. Restore defaults affects
-  only this tuning file; loading/saving does not start recording.
+---
 
-- The ten most recent successfully connected server addresses and ports are
-  saved in app-private local storage for connection-page prefill and selection.
-  Only successful connections enter this history. Each history address can be
-  deleted from the connection page.
-- Separately, the last edited connection form (address, port, nickname and server
-  password, including unsubmitted/failed attempts) is saved locally with AES-GCM
-  using a separate Android Keystore key. It prefills the next launch without
-  connecting. It is excluded from cloud backup and device transfer. Clearing a
-  field replaces its remembered value after saving; switching endpoints clears
-  the previous password. Deleting a history entry does not clear the form snapshot.
-  Save failures are shown in the connection form; edits killed before the short
-  delayed save finishes may not survive.
-- Up to 50 explicit server bookmarks are stored in a separate versioned AES-GCM
-  snapshot with a separate Android Keystore key, excluded from backup and device
-  transfer. It includes names, endpoints, nicknames, optional default channel IDs
-  and opt-in server/channel passwords. No existing history or form passwords are
-  migrated. Disabling password retention removes both bookmark passwords from
-  that snapshot; deleting a bookmark does not erase independent form memory,
-  history or identity. Loading bookmarks never connects automatically.
-- Away status/message and input/output mute flags are sent to the selected server
-  through clientupdate. Away messages stay in service memory and are not logged or
-  saved. Local mute/stop still works if server synchronization is refused or uncertain.
-- Search queries stay in the current dialog, search loaded channel/user snapshot
-  data locally, and are not saved or logged. The app no longer exposes a channel
-  details screen or an on-demand details request from that screen.
-- The generated TeamSpeak identity is encrypted locally with AES-GCM using a key
-  protected by Android Keystore.
-- Server and channel passwords are used only for the requested connection or
-  channel operation. A channel password needed for reconnection is retained in
-  foreground-service memory and is discarded when that service process ends.
-- Microphone audio is captured for push-to-talk while pressed, continuously in
-  always-on mode, and throughout volume-gate listening, including silence. Gate
-  mode sends activated audio plus a bounded 120 ms onset buffer and 300 ms tail
-  directly to the connected server. Off stops capture and discards buffered audio.
-  The microphone foreground-service type remains active during gate listening.
-  Gain, suppression, echo and gate parameters are restored from saved tuning
-  preferences; microphone mode and PTT state are not persisted and cannot start capture by themselves.
-- Incoming voice traffic is decoded and played locally. The app does not record
-  or archive voice traffic.
-- A local journal retains at most 128 service, network, power, microphone and
-  reconnect events. It stores timestamps, fixed categories, numeric system
-  flags and Android process-exit reason codes, without addresses, identities,
-  exception text or audio. Diagnostics leave the app only when the user chooses
-  to copy, save or share them. The CPU-awake preference is also stored locally.
-- The app additionally retains bounded numeric audio diagnostics
-  in app-private, backup-excluded storage: the last three playback generations,
-  up to 120 samples and 64 fixed events each, in a capped 1 MiB log. It includes
-  timing, receive/playback counters, coarse route/network kinds and user time marks;
-  no audio, payloads, participant/device names or IDs, endpoints or exception text.
-  Records survive reopening until rotated or app data is removed. A sudden exit
-  may lose the latest unpersisted interval. No diagnostic upload is automatic.
-  An explicit Save file action writes JSON to the Android document provider chosen
-  by the user, without an extra storage permission. One already-redacted pending
-  report (at most 512,000 bytes) is prepared in backup-excluded private storage
-  before opening the picker, survives recreation, and is cleared after saving or
-  cancellation; an interrupted flow can leave it until the next export. No URI
-  grant is persisted. Such saved reports are managed
-  by that provider and are not deleted when this app is uninstalled.
-- Per-user mute and volume settings stay in foreground-service memory, keyed by
-  the participant's stable TeamSpeak identity when available; they are not saved
-  across service process recreation.
+## Service memory and local chat history
 
-Channel and private text are sent directly to the selected TeamSpeak server.
-Received text, sender names and drafts stay in foreground-service memory with a
-500-message / 2 MiB retained-text budget shared by at most 20 conversations and
-bounded incoming events/drafts. Participant UIDs are in-memory conversation keys;
-numeric conversation IDs and scroll metadata (position, last handled sequence and
-follow intent) are the only saved conversation UI state.
-Messages, names, UIDs and drafts are not stored in preferences, saved Activity
-state, diagnostics or logs.
-Ordinary reconnect keeps them in memory; a new manual connection, manual exit,
-terminal session failure or process death removes them. Explicit long-press Copy
-puts only the selected message body on Android's clipboard, subject to Android's
-clipboard behavior. Server operators and participants may retain received text.
-Closing a private conversation removes its in-memory messages and draft. A private
-conversation without a stable UID is also removed when its connection attempt ends.
-Poke sender names and optional reasons use the same in-memory private history and
-retention limits. Unsubmitted reasons stay only in the current dialog's memory;
-they are not saved across Activity recreation. The latest retained incoming poke
-can show an in-app dialog, referencing its existing message rather than storing a
-separate copy. Background pokes now use a dedicated Android notification channel
-with only a generic "Someone poked you" message. Sender, server and reason are
-excluded from notification content and intent extras, including on the lock
-screen. The existing notification permission and Android channel/Do Not Disturb
-settings control visibility and sound. Returning to the app, dismissing the
-notice or ending the session clears the notification. No extra permission or
-third-party delivery service is added.
+### Live session memory
 
-Background ordinary private text uses a separate generic notification. No sender,
-body, UID, nickname or endpoint enters its content or Intent. The explicit,
-immutable PendingIntent URI contains only a random one-shot capability. Its
-service-memory mapping holds at most 16 entries for five minutes, validates the
-manual session/disconnect generation and conversation IDs, and is never persisted.
-Disconnect, service destruction or closing the captured conversation makes old
-clicks unusable. Returning clears the summary without clearing unread messages;
-only actually visible messages advance read state. No third-party push is used.
+Channel and private text, sender names, drafts, poke history, participant identity mappings, and per-user mute/volume settings stay in foreground-service memory (up to 20 conversations sharing a 500-message / 2 MiB budget). Only numeric conversation IDs and scroll metadata enter saved UI state. Ordinary reconnect keeps live messages; manual disconnect, a new manual session, terminal failure, or process death clears them. Closing a private chat clears its messages and draft immediately. Search queries and unsent poke reasons stay in the current dialog's memory. Away messages and mute flags go only to the active server and are never logged or saved; channel passwords needed for reconnect stay in service memory until process exit.
 
-The tuning level indicator retains one scalar snapshot only while subscribed.
-It contains RMS, capture/processing/route revisions and gate/sending state; no
-PCM, waveform or level history is stored or sent elsewhere. Observation cannot
-start recording or ask for permission. The explicit Hold to talk inside tuning
-is normal channel transmission, with the same permission and lifecycle rules.
+### Opt-in local chat history (off by default)
 
-Development builds report missing/unusable local encryption keys without
-creating a replacement during a read or overwriting the original encrypted
-identity/form/bookmark blob. This preserves failure evidence; it cannot recover
-a lost key. Portable external-backup recovery is a separate workflow.
+When enabled under **Settings → Local chat history**, eligible new text messages (including while connected in the background) are saved locally using a separate Android Keystore key, excluded from backup and device transfer. Stored fields include server address/port, your own TeamSpeak UID, channel ID or stable peer UID, timestamp, direction, sender name (when present), and message body.
+
+- **Never archived:** Drafts, pokes, unconfirmed sends, private keys, passwords, ambiguous recipients, and attachment file contents.
+- **Retention and deletion:** Offline browsing displays only the current identity's records. On load or write, the archive prunes entries older than 7 days or beyond 500 messages / 512 KiB encoded total. Delete one conversation, clear all records, or turn the feature off and delete all records without affecting live chat or server copies. Nothing is uploaded or cloud-synced.
+
+---
+
+## Voice, floating PTT, files and notifications
+
+- **Voice capture and playback:** Hold captures while pressed, Always on captures continuously, and Volume gate captures continuously including silence (sending activated speech plus a 120 ms onset and 300 ms tail buffer). Off stops capture and discards buffered audio. The microphone foreground service type stays active while capturing. Voice goes directly to the selected server; incoming voice is decoded and played locally with no recording archive. Tuning level meters hold one scalar snapshot only while observed and never store PCM or history.
+- **Floating PTT:** Requires explicit Android **Display over other apps** permission to show the current channel, member count, and active speakers over other apps. Opening, recalling, or auto-showing the overlay never starts recording; only pressing Hold or explicitly choosing Always on/Gate transmits over the normal TeamSpeak voice path. Manage or revoke overlay permission anytime in Floating PTT settings. Standard release builds exclude the Debug local recorder lab.
+- **Channel files, chat attachments, and server images:** Downloading channel files or supported same-server chat attachments requires explicit user action and uses only the active server connection—never arbitrary external URLs. Bytes are staged briefly in app-private cache, length-verified, and saved through Android's document picker (exported copies are managed by the chosen provider). Server channel icons and visible avatars come from the connected server and are cached in memory for the current session only.
+- **Generic background notifications:** Background pokes and ordinary private messages use separate Android notification channels whose content and Intent extras **never include sender, server, message body, or poke reason** (including on the lock screen). Private-message taps use an in-memory random one-shot capability token (max 16 entries, 5-minute expiry, never persisted) invalidated on disconnect or conversation close. No third-party push service is used.
+- **On-demand feature help:** Stores no reading progress, sends no analytics, and never connects, requests permissions, or opens the microphone. Any legacy onboarding flag remains excluded from backup and transfer.
+
+---
+
+## Identity backup and restore
+
+- **Local maintenance and rollback:** The backup-excluded local identity store may keep one verified encrypted previous identity and one unreadable ciphertext as recovery evidence (pending checks store only a SHA-256 digest, never a plaintext key or passphrase). Physically unreadable Preferences files are preserved and reported rather than automatically wiped.
+- **Explicit export (`.ts3mbak`):** Writes only an authenticated passphrase-encrypted `.ts3mbak` file with a generic filename to the document provider you choose (never sending your passphrase or plaintext key). After closing, TS3 reopens, authenticates, and checks exact identity equality before confirming success; failed files are not automatically deleted. Passphrases and buffers stay in private memory and are cleared best-effort without entering SavedState, clipboard, or diagnostics, and the identity screen disables screenshots/recents capture. **Forgotten passphrases cannot be recovered.**
+- **Explicit restore and desktop INI boundary:** Restore reads only the OpenDocument file you pick, enforces byte/KDF limits, decrypts on-device, displays a current vs proposed comparison, and requires explicit confirmation without auto-connecting. Standard release builds keep desktop TS3 `.ini` import disabled; Debug and opt-in QA builds offer a separate preview entry accepting a single `.ini` up to 64 KiB without saving plaintext copies, retaining URIs, or importing display fields.
+
+---
+
+## Permissions and external links
+
+- **Android permissions:** Network access connects to servers; microphone permission enables voice transmission; Bluetooth/audio permissions support route selection; notification and foreground-service permissions support active sessions and alerts; overlay permission enables optional floating PTT; optional CPU wake lock is off by default and does not bypass Doze or all OEM power policies. Denying optional permissions disables only the related feature.
+- **External links:** **Give the project a Star** opens the public GitHub repository through Android's HTTPS handler with no session data and never stars automatically. Chat links show the target URL for confirmation before opening. Your TeamSpeak server operator, network provider, Android/OEM platform, browser, and document providers handle data under their own policies.
+
+---
 
 ## Data not collected by this project
 
-The app contains no analytics, advertising, telemetry, project-operated crash
-reporting, or project-operated backend. The maintainers therefore do not
-receive connection details, identities, audio, or usage events from the app.
+TS3 Mobile contains no analytics, advertising, telemetry, project-operated crash reporting, or project-operated backend. The maintainers never automatically receive connection details, identities, audio, or usage events.
 
-The “Give the project a Star” menu entry opens the public GitHub repository
-through Android's external HTTPS handler. The intent includes no session data
-and does not perform a Star automatically. The browser/GitHub service may process
-the visit under its own policies.
+## Deletion and contact
 
-The TeamSpeak server operator, network provider, Android platform, device
-vendor, and any services used to obtain a build may process data under their own
-terms. Review the policies of the server and distribution channel you use.
-
-## Permissions
-
-The app requests network access to connect to servers, microphone access for
-voice transmission, Bluetooth/audio-device permissions for route selection,
-notification access for the foreground connection service, and the Android
-permissions required to keep that service active. Denying optional permissions
-may disable the related feature.
-An optional CPU wake lock supports screen-off voice sessions and bounded
-recovery while a usable network exists. It is off by default and does not
-bypass Doze; the background runtime check links to Android battery settings.
-
-## Deletion
-
-Uninstalling the app removes its saved server history, local diagnostics,
-preferences, encrypted bookmarks, encrypted connection form and encrypted identity
-under normal Android behavior. Clearing the app's storage
-has the same effect. The app provides passphrase-encrypted identity export/import and local rollback;
-deleting this data can lose server permissions tied to the old identity.
-Data already received by a TeamSpeak server or other
-participants is outside the project's control.
-
-Privacy concerns that are not sensitive may be filed as repository issues.
-For sensitive reports, use the private process described in [SECURITY.md](SECURITY.md).
-
-Identity maintenance may retain one encrypted verified previous identity and one
-encrypted unreadable payload as recovery evidence in the same excluded local
-identity store. Pending verification stores a SHA-256 digest; no plaintext private
-key or passphrase is persisted. A local rollback shares the installation key and
-cannot recover a lost Keystore. Unreadable Preferences files are preserved and
-reported; they are never automatically cleared to create a replacement identity.
-
-
-Explicit identity export writes only an authenticated passphrase-encrypted
-`.ts3mbak` document to the user-selected SAF provider. The provider receives
-ciphertext and a generic filename, never the passphrase or plaintext key. Successful
-close is followed by bounded reread/authentication and exact identity verification;
-this does not certify provider/cloud synchronization. Failed files are not
-automatically deleted. Export buffers/passphrase remain in private memory and are
-cleared best effort; no plaintext temporary file or persisted URI grant is used.
-Passwords are not saved on rotation/process death or put in diagnostics/clipboard.
-The identity page disables screenshots/recents capture. JVM/IME memory erasure
-cannot be guaranteed. Forgetting the passphrase prevents recovery of the file.
-
-
-Explicit import reads only the document selected through OpenDocument, enforces
-byte/KDF limits, decrypts and validates on the device. Candidate plaintext stays in
-private memory until confirmation/cancellation; only identity summaries and fixed
-failure categories enter observable UI state. No plaintext file, password hint or
-persisted URI grant. A current/proposed identity comparison and explicit confirmation
-precede replacement/rollback. The same excluded local identity store retains a
-verified previous encrypted identity and bounded recovery evidence (one payload).
-Connection ownership blocks mutation until actual work settles; import/rollback
-never auto-connect. Forgetting the passphrase or losing all external backups is
-not recoverable by the project. Existing unusable aliases and physically corrupt
-Preferences are preserved rather than automatically deleted to make recovery pass.
+- **Deleting local data:** Uninstalling the app or clearing its storage normally deletes saved server history, local chat history, diagnostics, preferences, offline channel lists, encrypted bookmarks, encrypted connection form, and encrypted identity (without a verified `.ts3mbak` backup, identity-bound server permissions may be lost). Deleting local data cannot remove content already received by servers or other participants; files exported via Android's document picker stay with the chosen provider.
+- **Contact:** File non-sensitive privacy questions as [GitHub Issues](https://github.com/monet4070/ts3-mobile/issues). Report sensitive or security issues privately following [SECURITY.md](SECURITY.md).

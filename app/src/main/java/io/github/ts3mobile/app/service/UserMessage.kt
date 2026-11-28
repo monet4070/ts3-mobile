@@ -2,7 +2,7 @@ package io.github.ts3mobile.app.service
 
 import io.github.ts3mobile.audio.opus.AudioRoutingError
 
-/** Conservative user guidance, not a server unban deadline or an automatic timer. */
+/** Conservative wait for manual guidance and the one-shot handoff retry, not a server deadline. */
 internal const val RECOMMENDED_RETRY_WAIT_SECONDS = 60L
 
 /**
@@ -16,6 +16,9 @@ sealed interface UserMessage {
     data object NotConnected : UserMessage
 
     data object IdentityMaintenance : UserMessage
+
+    /** An earlier session or audio teardown still holds the session lock after bounded wait. */
+    data object PreviousSessionBusy : UserMessage
 
     /** The session was replaced or invalidated before the action completed. */
     data object SessionExpired : UserMessage
@@ -31,6 +34,8 @@ sealed interface UserMessage {
 
     data class Reconnecting(val attempt: Int) : UserMessage
 
+    data class HandoffIdentityWait(val seconds: Long) : UserMessage
+
     /** Server refused this identity: no automatic attempts; wait and retry manually. */
     data object ConnectionLimitWait : UserMessage
 
@@ -39,6 +44,10 @@ sealed interface UserMessage {
     data object ChannelTargetChanged : UserMessage
 
     data class ChannelRestoreFailed(val cause: String) : UserMessage
+
+    data object ChannelMoveNotSubmitted : UserMessage
+
+    data class ChannelMoveUnconfirmed(val channelId: Int) : UserMessage
 
     data object MicrophonePermissionForContinuous : UserMessage
 

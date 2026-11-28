@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.ts3mobile.app.ManualInstrumentation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -21,6 +22,7 @@ class SessionNotificationChannelTest {
         assertFalse(SessionNotificationChannel.hasOriginalDefaults(legacyChannel().apply { setShowBadge(false) }))
     }
 
+    @ManualInstrumentation
     @Test fun unmodifiedLegacyChannelIsReplacedWithDefaultImportanceWithoutAlerting() {
         assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
         assumeTrue(InstrumentationRegistry.getArguments().getString("isolatedNotificationChannels") == "true")

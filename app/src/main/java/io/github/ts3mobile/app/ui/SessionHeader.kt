@@ -70,6 +70,7 @@ internal fun SessionHeader(
                 Spacer(Modifier.size(8.dp))
                 FilledTonalButton(
                     onClick = onDisconnect,
+                    modifier = Modifier.guideAnchor(GuideAnchor.DISCONNECT),
                     colors =
                         ButtonDefaults.filledTonalButtonColors(
                             containerColor = MaterialTheme.colorScheme.primaryContainer,

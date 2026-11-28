@@ -26,11 +26,14 @@ internal class IdentityRestoreController(
         CharArray,
     ) -> ImportedIdentity = { document, passphrase -> ImportedIdentity.read(document, passphrase) },
 ) : AutoCloseable {
+    private class PendingPicker(val token: Long, val source: IdentityImportSource, val password: CharArray? = null) {
+        fun clear() = password?.fill('\u0000')
+    }
+
     private val mutableState = MutableStateFlow(IdentityRestoreState())
     val state = mutableState.asStateFlow()
     private var generation = 0L
-    private var picker: Long? = null
-    private var password: CharArray? = null
+    private var picker: PendingPicker? = null
     private var candidate: ImportedIdentity? = null
     private var job: Job? = null
     private var closed = false
@@ -47,47 +50,65 @@ internal class IdentityRestoreController(
             validateBackupPassphrase(secret)
         } catch (error: IdentityBackupException) {
             secret.fill('\u0000')
-            fail(token, error)
+            fail(token, error, IdentityImportSource.BACKUP)
             return
         }
-        password = secret
-        picker = token
-        mutableState.value = IdentityRestoreState(IdentityRestoreStatus.SELECTING, pickerRequest = token, pickerOutstanding = true)
+        requestPicker(PendingPicker(token, IdentityImportSource.BACKUP, secret))
+    }
+
+    fun beginDesktopImport() {
+        if (!canStart()) return
+        requestPicker(PendingPicker(++generation, IdentityImportSource.DESKTOP))
+    }
+
+    private fun requestPicker(request: PendingPicker) {
+        picker = request
+        mutableState.value =
+            IdentityRestoreState(
+                IdentityRestoreStatus.SELECTING,
+                pickerRequest = request.token,
+                pickerOutstanding = true,
+                source = request.source,
+            )
     }
 
     fun claimPickerRequest(token: Long): Boolean {
-        if (!current(token) || picker != token || mutableState.value.pickerRequest != token) return false
+        if (!current(token) || picker?.token != token || mutableState.value.pickerRequest != token) return false
         mutableState.value = mutableState.value.copy(pickerRequest = null)
         return true
     }
 
     fun picked(document: BackupDocument?) {
-        val token = picker ?: return
+        val request = picker ?: return
+        val token = request.token
         picker = null
         mutableState.value = mutableState.value.copy(pickerRequest = null, pickerOutstanding = false)
-        if (!current(token)) return
-        val secret = password ?: return
-        password = null
+        if (!current(token)) {
+            request.clear()
+            return
+        }
         if (document == null) {
-            secret.fill('\u0000')
+            request.clear()
             mutableState.value = IdentityRestoreState(IdentityRestoreStatus.CANCELLED)
             return
         }
-        mutableState.value = IdentityRestoreState(IdentityRestoreStatus.READING)
+        mutableState.value = IdentityRestoreState(IdentityRestoreStatus.READING, source = request.source)
         job =
             scope.launch {
                 var imported: ImportedIdentity? = null
                 try {
-                    withContext(io) { imported = read(document, secret) }
+                    withContext(io) {
+                        imported =
+                            when (request.source) {
+                                IdentityImportSource.BACKUP -> read(document, checkNotNull(request.password))
+                                IdentityImportSource.DESKTOP -> ImportedIdentity.readDesktop(document)
+                            }
+                    }
                     val previous = repository.snapshot()
                     if (current(token)) {
                         candidate = imported
                         imported = null
-                        mutableState.value =
-                            IdentityRestoreState(
-                                IdentityRestoreStatus.PREVIEW,
-                                IdentityReplacementPreview(previous, checkNotNull(candidate).summary, rollback = false),
-                            )
+                        publishPreview(IdentityReplacementPreview(previous, checkNotNull(candidate).summary, false, request.source))
                     }
                 } catch (error: CancellationException) {
                     throw error
@@ -95,14 +116,14 @@ internal class IdentityRestoreController(
                     fail(token, error)
                 } finally {
                     imported?.close()
-                    secret.fill('\u0000')
+                    request.clear()
                 }
             }
-        job?.invokeOnCompletion { secret.fill('\u0000') }
+        job?.invokeOnCompletion { request.clear() }
     }
 
     fun pickerUnavailable() {
-        val token = picker ?: return
+        val token = picker?.token ?: return
         picked(null)
         if (current(token)) mutableState.value = IdentityRestoreState(IdentityRestoreStatus.PICKER_UNAVAILABLE)
     }
@@ -116,12 +137,15 @@ internal class IdentityRestoreController(
     fun refreshConfirmation() {
         val preview = mutableState.value.preview ?: return
         if (closed || mutableState.value.working) return
-        preparePreview(preview.rollback)
+        preparePreview(preview.rollback, preview.source)
     }
 
-    private fun preparePreview(rollback: Boolean) {
+    private fun preparePreview(
+        rollback: Boolean,
+        source: IdentityImportSource? = null,
+    ) {
         val token = ++generation
-        mutableState.value = mutableState.value.copy(status = IdentityRestoreStatus.READING)
+        mutableState.value = mutableState.value.copy(status = IdentityRestoreStatus.READING, source = source)
         job =
             scope.launch {
                 try {
@@ -132,12 +156,7 @@ internal class IdentityRestoreController(
                         } else {
                             checkNotNull(candidate).summary
                         }
-                    if (current(token)) {
-                        mutableState.value =
-                            IdentityRestoreState(
-                                IdentityRestoreStatus.PREVIEW, IdentityReplacementPreview(previous, proposed, rollback),
-                            )
-                    }
+                    if (current(token)) publishPreview(IdentityReplacementPreview(previous, proposed, rollback, source))
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
@@ -146,9 +165,21 @@ internal class IdentityRestoreController(
             }
     }
 
-    fun confirm() {
+    private fun publishPreview(preview: IdentityReplacementPreview) {
+        mutableState.value =
+            if (preview.isAlreadyCurrent) {
+                candidate?.close()
+                candidate = null
+                IdentityRestoreState(IdentityRestoreStatus.ALREADY_CURRENT, source = preview.source)
+            } else {
+                IdentityRestoreState(IdentityRestoreStatus.PREVIEW, preview, source = preview.source)
+            }
+    }
+
+    fun confirm(allowLowerSecurity: Boolean = false) {
         val preview = mutableState.value.preview ?: return
         if (closed || mutableState.value.status != IdentityRestoreStatus.PREVIEW) return
+        if (preview.isDesktopDowngrade && !allowLowerSecurity) return
         val token = ++generation
         var committing = candidate
         candidate = null
@@ -161,7 +192,7 @@ internal class IdentityRestoreController(
                     } else {
                         repository.replace(checkNotNull(committing).materialForCommit(), preview.previous.revision)
                     }
-                    if (current(token)) mutableState.value = IdentityRestoreState(IdentityRestoreStatus.DONE)
+                    if (current(token)) mutableState.value = IdentityRestoreState(IdentityRestoreStatus.DONE, source = preview.source)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: IdentityOperationException) {
@@ -189,8 +220,8 @@ internal class IdentityRestoreController(
         if (closed || mutableState.value.status == IdentityRestoreStatus.CANCELLING) return
         val token = ++generation
         job?.cancel()
-        password?.fill('\u0000')
-        password = null
+        picker?.clear()
+        if (mutableState.value.pickerRequest != null) picker = null
         candidate?.close()
         candidate = null
         val settling = job?.isCompleted == false
@@ -226,6 +257,7 @@ internal class IdentityRestoreController(
     private fun fail(
         token: Long,
         error: Exception,
+        source: IdentityImportSource? = mutableState.value.source,
     ) {
         if (!current(token)) return
         candidate?.close()
@@ -236,6 +268,7 @@ internal class IdentityRestoreController(
                 backupFailure = (error as? IdentityBackupException)?.failure,
                 importFailure = (error as? IdentityImportException)?.failure,
                 storeFailure = (error as? IdentityOperationException)?.failure,
+                source = source,
             )
     }
 

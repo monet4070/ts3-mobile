@@ -3,6 +3,7 @@ package io.github.ts3mobile.app.service
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -28,43 +29,82 @@ internal class LocalMicrophoneTrial(
 ) {
     private data class InputTarget(val phase: ConnectionPhase, val sessionToken: String?, val routeId: Int)
 
+    private val lock = Any()
     private var visible = false
     private var target: InputTarget? = null
     private var startJob: Job? = null
+    private var startGeneration = 0L
     val state = trial.state
+    val isInputReleased: Boolean get() = trial.isInputReleased
 
     fun watchSession() {
         scope.launch {
-            session.collect { if (target != null && target != currentTarget()) stop() }
+            session.collect {
+                val mismatched = synchronized(lock) { target != null && target != currentTarget() }
+                if (mismatched) stop()
+            }
         }
     }
 
     fun setVisible(visible: Boolean) {
-        this.visible = visible
+        synchronized(lock) { this.visible = visible }
         if (!visible) stop()
     }
 
     fun start(settings: MicrophoneSettings) {
         val requested = currentTarget() ?: return
-        if (!visible || !hasPermission() || startJob?.isActive == true || state.value.phase == MicrophoneTrialPhase.RUNNING) return
-        target = requested
-        startJob =
-            scope.launch {
-                val released = voiceInputReleased()
-                if (!visible || target != requested || currentTarget() != requested || !hasPermission()) return@launch
-                if (released) trial.start(settings) else trial.stop(MicrophoneTrialPhase.UNAVAILABLE)
+        val launched =
+            synchronized(lock) {
+                if (!visible || !hasPermission() || startJob?.isActive == true || state.value.phase == MicrophoneTrialPhase.RUNNING) {
+                    return
+                }
+                val requestId = ++startGeneration
+                target = requested
+                scope.launch(start = CoroutineStart.LAZY) {
+                    try {
+                        val released = voiceInputReleased()
+                        synchronized(lock) {
+                            if (requestId == startGeneration) startJob = null
+                            if (requestId != startGeneration || !visible || target != requested ||
+                                currentTarget() != requested || !hasPermission()
+                            ) {
+                                return@synchronized
+                            }
+                            if (released) trial.start(settings) else trial.stop(MicrophoneTrialPhase.UNAVAILABLE)
+                        }
+                    } finally {
+                        synchronized(lock) {
+                            if (requestId == startGeneration) startJob = null
+                        }
+                    }
+                }.also { startJob = it }
             }
+        launched.start()
     }
 
     fun stop(): Boolean {
-        startJob?.cancel()
-        startJob = null
-        target = null
+        cancelPendingStart()
         return trial.stop()
     }
 
+    suspend fun stopAndAwait(): Boolean {
+        cancelPendingStart()
+        return trial.stopAndAwait()
+    }
+
     fun inputChanged() {
-        if (target != null) stop()
+        val hasTarget = synchronized(lock) { target != null }
+        if (hasTarget) stop()
+    }
+
+    private fun cancelPendingStart() {
+        val job =
+            synchronized(lock) {
+                startGeneration++
+                target = null
+                startJob.also { startJob = null }
+            }
+        job?.cancel()
     }
 
     private fun currentTarget(): InputTarget? {

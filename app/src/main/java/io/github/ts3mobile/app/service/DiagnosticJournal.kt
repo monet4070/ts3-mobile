@@ -49,6 +49,7 @@ internal enum class DiagnosticEventKind {
     MICROPHONE_STOP_TIMEOUT,
     PLAYBACK_FAILED,
     HISTORY_WRITE_FAILED,
+    NETWORK_HANDOFF_RETRY_DEFERRED,
 }
 
 internal data class DiagnosticEvent(
@@ -62,22 +63,52 @@ internal class DiagnosticJournal(
     private val file: File,
     private val clockMs: () -> Long = System::currentTimeMillis,
     private val capacity: Int = 128,
+    loadImmediately: Boolean = true,
 ) {
     private val events = ArrayDeque<DiagnosticEvent>()
     private val persistenceLock = Any()
+    private var loaded = false
     var failedWrites: Long = 0L
         private set
 
     init {
         require(capacity in 1..128)
-        // Reject oversized/corrupt input rather than importing unknown text into diagnostics.
-        if (file.isFile && file.length() <= MAX_FILE_BYTES) {
-            try {
-                file.useLines { lines ->
-                    lines.take(capacity).mapNotNull(::decode).forEach(events::addLast)
+        if (loadImmediately) loadFromDisk()
+    }
+
+    /** Reads previously persisted events off the calling thread without dropping in-memory appends. */
+    fun loadFromDisk() {
+        synchronized(this) {
+            if (loaded) return
+        }
+        synchronized(persistenceLock) {
+            if (synchronized(this) { loaded }) return
+            val diskEvents = mutableListOf<DiagnosticEvent>()
+            var readFailed = false
+            // Reject oversized/corrupt input rather than importing unknown text into diagnostics.
+            if (file.isFile && file.length() <= MAX_FILE_BYTES) {
+                try {
+                    file.useLines { lines ->
+                        lines.take(capacity).mapNotNull(::decode).forEach(diskEvents::add)
+                    }
+                } catch (_: IOException) {
+                    readFailed = true
+                } catch (_: SecurityException) {
+                    readFailed = true
                 }
-            } catch (_: IOException) {
-                failedWrites++
+            }
+            synchronized(this) {
+                if (loaded) return@synchronized
+                if (readFailed) failedWrites++
+                if (diskEvents.isNotEmpty()) {
+                    val combined = ArrayDeque<DiagnosticEvent>(diskEvents.size + events.size)
+                    diskEvents.forEach(combined::addLast)
+                    events.forEach(combined::addLast)
+                    while (combined.size > capacity) combined.removeFirst()
+                    events.clear()
+                    events.addAll(combined)
+                }
+                loaded = true
             }
         }
     }
@@ -103,6 +134,7 @@ internal class DiagnosticJournal(
     }
 
     fun persist() {
+        loadFromDisk()
         synchronized(persistenceLock) {
             val payload = synchronized(this) { events.joinToString("\n", transform = ::encode) }
             val temporary = File(file.parentFile, "${file.name}.tmp")
@@ -120,6 +152,8 @@ internal class DiagnosticJournal(
                     Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
                 }
             } catch (_: IOException) {
+                synchronized(this) { failedWrites++ }
+            } catch (_: SecurityException) {
                 synchronized(this) { failedWrites++ }
             }
         }

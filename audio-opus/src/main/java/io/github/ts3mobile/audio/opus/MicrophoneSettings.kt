@@ -19,6 +19,8 @@ data class MicrophoneCaptureState(
     val capturing: Boolean = false,
     val transmitting: Boolean = false,
     val echoCancellation: EchoCancellationState = EchoCancellationState.PENDING,
+    val recording: Boolean = capturing,
+    val actualInputDevice: ActualAudioDevice? = null,
 )
 
 internal data class MicrophoneProcessingOptions(

@@ -17,23 +17,19 @@ internal class AndroidPlaybackOutput(
     private val routeGuard: BluetoothPlaybackGuard,
     private val onUnsafeRoute: (AndroidPlaybackOutput) -> Unit,
     private val stats: ReceiveStats? = null,
+    standardBluetoothExperiment: Boolean = false,
 ) : PlaybackOutput {
     private val track: AudioTrack
     private val routingListener: AudioRouting.OnRoutingChangedListener
     private val outputLock = Any()
-    private val routeRevision = routeGuard.revision()
-    private var silenced = false
-    private var closed = false
+    private val routeController: PlaybackRouteController
     private var reportedUnderruns = 0
     private var performanceModeObserved = false
-    private var bluetoothWaitStartedAt: Long? = null
 
     @Volatile
     private var routedDeviceId: Int? = null
 
-    @Volatile
-    override var routedKind: AudioRouteKind? = null
-        private set
+    override val routedKind: AudioRouteKind? get() = routeController.routedKind
 
     init {
         val minimumBytes =
@@ -43,10 +39,10 @@ internal class AndroidPlaybackOutput(
                 AudioFormat.ENCODING_PCM_16BIT,
             )
         check(minimumBytes > 0) { "Unable to determine audio buffer size: $minimumBytes" }
-        val performanceMode = playbackPerformanceMode(routeGuard.expectsBluetooth(), BuildConfig.BLUETOOTH_STANDARD_OUTPUT_EXPERIMENT)
+        val performanceMode = playbackPerformanceMode(routeGuard.expectsBluetooth(), standardBluetoothExperiment)
         track =
             AudioTrack.Builder()
-                .setAudioAttributes(voicePlaybackAudioAttributes())
+                .setAudioAttributes(voicePlaybackAudioAttributes(routeGuard.expectsBluetoothCall()))
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -62,12 +58,23 @@ internal class AndroidPlaybackOutput(
             track.release()
             error("Unable to initialize audio output")
         }
+        routeController =
+            PlaybackRouteController(
+                routeGuard = routeGuard,
+                lock = outputLock,
+                clockMs = SystemClock::elapsedRealtime,
+                readRoutedDeviceType = { track.routedDevice?.type },
+                setTrackVolume = { volume -> track.setVolume(volume) },
+                onUnsafeRoute = { onUnsafeRoute(this) },
+                stats = stats,
+                onAllowedRouteObserved = { observePerformanceMode() },
+            )
         try {
             setPreferredDevice(preferredDevice)
-            track.setVolume(0f)
+            routeController.initializeVolume()
             routingListener =
                 AudioRouting.OnRoutingChangedListener { routing ->
-                    checkRoute()
+                    routeController.onRoutingChanged()
                     val deviceId = routing.routedDevice?.id
                     if (deviceId != null) {
                         val previous = routedDeviceId
@@ -88,57 +95,29 @@ internal class AndroidPlaybackOutput(
 
     override fun pollDiagnostics() =
         synchronized(outputLock) {
-            if (!closed && stats != null) {
-                reportedUnderruns = stats.measureUnderruns(reportedUnderruns) { track.underrunCount }
-            }
+            pollDiagnosticsLocked()
         }
+
+    private fun pollDiagnosticsLocked() {
+        if (!routeController.isClosed && stats != null) {
+            reportedUnderruns = stats.measureUnderruns(reportedUnderruns) { track.underrunCount }
+        }
+    }
 
     override fun start() = track.play()
 
-    override val routeReady: Boolean get() = checkRoute()
+    override val routeReady: Boolean get() = routeController.isRouteReady()
 
-    override fun muteImmediately() =
-        synchronized(outputLock) {
-            if (closed) return
-            silenced = true
-            track.setVolume(0f)
-            Unit
-        }
+    override fun muteImmediately() = routeController.muteImmediately()
 
     override fun write(
         samples: ShortArray,
         offset: Int,
         count: Int,
-    ): Int {
-        if (!checkRoute()) return 0
-        return synchronized(outputLock) {
-            if (silenced || closed || routeGuard.revision() != routeRevision) {
-                0
-            } else {
-                track.write(samples, offset, count, AudioTrack.WRITE_NON_BLOCKING)
-            }
+    ): Int =
+        routeController.writeGuarded {
+            track.write(samples, offset, count, AudioTrack.WRITE_NON_BLOCKING)
         }
-    }
-
-    private fun checkRoute(): Boolean {
-        val decision =
-            synchronized(outputLock) {
-                if (closed || silenced) return false
-                val kind = track.routedDevice?.let { AudioRouteDevices.routeKindForDeviceType(it.type) }
-                routedKind = kind
-                stats?.observeRoute(kind)
-                val now = SystemClock.elapsedRealtime()
-                val waitStarted = bluetoothWaitStartedAt
-                val timedOut = waitStarted != null && now - waitStarted >= BLUETOOTH_ROUTE_TIMEOUT_MS
-                routeGuard.evaluate(kind, routeRevision, timedOut).also {
-                    bluetoothWaitStartedAt = if (it == PlaybackRouteDecision.WAIT_FOR_BLUETOOTH) waitStarted ?: now else null
-                    track.setVolume(if (it == PlaybackRouteDecision.ALLOW) 1f else 0f)
-                    if (it == PlaybackRouteDecision.ALLOW && kind != null) observePerformanceMode()
-                }
-            }
-        if (decision == PlaybackRouteDecision.MUTE) onUnsafeRoute(this)
-        return decision == PlaybackRouteDecision.ALLOW
-    }
 
     private fun observePerformanceMode() {
         if (performanceModeObserved) return
@@ -155,46 +134,225 @@ internal class AndroidPlaybackOutput(
     }
 
     override fun discard() =
-        synchronized(outputLock) {
-            if (closed) return
-            silenced = true
-            track.setVolume(0f)
+        routeController.discard {
             track.pause()
             track.flush()
             routedDeviceId = null
         }
 
     fun setPreferredDevice(device: AudioDeviceInfo?) {
-        if (!track.setPreferredDevice(device)) {
-            System.err.println("TS3_AUDIO: playback device preference was rejected")
+        synchronized(outputLock) {
+            routeController.invalidateForPreferredDevice()
+            if (!track.setPreferredDevice(device)) {
+                System.err.println("TS3_AUDIO: playback device preference was rejected")
+            }
         }
     }
 
     override fun close() =
-        synchronized(outputLock) {
-            if (closed) return
-            silenced = true
-            pollDiagnostics()
-            try {
-                track.setVolume(0f)
-                track.removeOnRoutingChangedListener(routingListener)
-            } finally {
-                track.release()
-                closed = true
-                routedKind = null
-                stats?.observeRoute(null)
-            }
-        }
+        routeController.close(
+            beforeRelease = { pollDiagnosticsLocked() },
+            release = {
+                try {
+                    track.removeOnRoutingChangedListener(routingListener)
+                } finally {
+                    track.release()
+                }
+            },
+        )
 
     private companion object {
         const val SAMPLE_RATE = 48_000
+    }
+}
+
+/**
+ * Owns output route validation, bluetooth wait/safety mute enforcement, volume deduplication,
+ * and steady-state polling throttling shared cleanly across [PlaybackOutput.routeReady] and writes.
+ */
+internal class PlaybackRouteController(
+    private val routeGuard: BluetoothPlaybackGuard,
+    private val routeRevision: Long = routeGuard.revision(),
+    private val lock: Any = Any(),
+    private val clockMs: () -> Long,
+    private val readRoutedDeviceType: () -> Int?,
+    private val setTrackVolume: (Float) -> Unit,
+    private val onUnsafeRoute: () -> Unit,
+    private val stats: ReceiveStats? = null,
+    private val onAllowedRouteObserved: (AudioRouteKind) -> Unit = {},
+    private val routeThrottle: PlaybackRouteCheckThrottle = PlaybackRouteCheckThrottle(),
+) {
+    private var silenced = false
+
+    @Volatile
+    var isClosed = false
+        private set
+    private var appliedVolume = Float.NaN
+    private var bluetoothWaitStartedAt: Long? = null
+
+    @Volatile
+    var routedKind: AudioRouteKind? = null
+        private set
+
+    fun initializeVolume() {
+        synchronized(lock) { applyVolumeLocked(0f) }
+    }
+
+    fun isRouteReady(): Boolean = checkRoute(forceCheck = false)
+
+    fun onRoutingChanged(): Boolean {
+        synchronized(lock) { routeThrottle.invalidate() }
+        return checkRoute(forceCheck = true)
+    }
+
+    fun invalidateForPreferredDevice() {
+        synchronized(lock) { routeThrottle.invalidate() }
+    }
+
+    fun muteImmediately() {
+        synchronized(lock) {
+            if (isClosed) return
+            silenced = true
+            routeThrottle.invalidate()
+            applyVolumeLocked(0f)
+            stats?.confirmOutputDevice(null)
+        }
+    }
+
+    fun writeGuarded(writeSamples: () -> Int): Int {
+        var unsafeRoute = false
+        val written =
+            synchronized(lock) {
+                val decision = evaluateIfDueLocked(clockMs(), forceCheck = false)
+                if (decision == PlaybackRouteDecision.ALLOW) {
+                    writeSamples()
+                } else {
+                    unsafeRoute = decision == PlaybackRouteDecision.MUTE
+                    0
+                }
+            }
+        if (unsafeRoute) onUnsafeRoute()
+        return written
+    }
+
+    fun discard(afterMute: () -> Unit) {
+        synchronized(lock) {
+            if (isClosed) return
+            silenced = true
+            routeThrottle.invalidate()
+            applyVolumeLocked(0f)
+            afterMute()
+            stats?.confirmOutputDevice(null)
+        }
+    }
+
+    fun close(
+        beforeRelease: () -> Unit,
+        release: () -> Unit,
+    ) {
+        synchronized(lock) {
+            if (isClosed) return
+            silenced = true
+            routeThrottle.invalidate()
+            beforeRelease()
+            try {
+                applyVolumeLocked(0f)
+            } finally {
+                release()
+                isClosed = true
+                routedKind = null
+                stats?.observeRoute(null)
+                stats?.confirmOutputDevice(null)
+            }
+        }
+    }
+
+    private fun checkRoute(forceCheck: Boolean): Boolean {
+        val decision =
+            synchronized(lock) {
+                evaluateIfDueLocked(clockMs(), forceCheck = forceCheck)
+            }
+        if (decision == PlaybackRouteDecision.MUTE) onUnsafeRoute()
+        return decision == PlaybackRouteDecision.ALLOW
+    }
+
+    private fun evaluateIfDueLocked(
+        nowMs: Long,
+        forceCheck: Boolean,
+    ): PlaybackRouteDecision {
+        if (isClosed || silenced) return PlaybackRouteDecision.WAIT_FOR_BLUETOOTH
+        val requireLiveCheck = routeGuard.requiresLiveRouteCheck()
+        if (!forceCheck && !requireLiveCheck && routeGuard.revision() == routeRevision && !routeThrottle.shouldCheck(nowMs)) {
+            return PlaybackRouteDecision.ALLOW
+        }
+        val deviceType = readRoutedDeviceType()
+        val kind = deviceType?.let(AudioRouteDevices::routeKindForDeviceType)
+        routedKind = kind
+        stats?.observeRoute(kind)
+        val waitStarted = bluetoothWaitStartedAt
+        val timedOut = waitStarted != null && nowMs - waitStarted >= BLUETOOTH_ROUTE_TIMEOUT_MS
+        return routeGuard.evaluate(kind, routeRevision, timedOut, deviceType == AudioDeviceInfo.TYPE_BLUETOOTH_SCO).also { decision ->
+            val allowed = decision == PlaybackRouteDecision.ALLOW
+            if (decision == PlaybackRouteDecision.MUTE) silenced = true
+            if (routeGuard.requiresLiveRouteCheck()) {
+                routeThrottle.invalidate()
+            } else {
+                routeThrottle.record(allowed, nowMs)
+            }
+            bluetoothWaitStartedAt = if (decision == PlaybackRouteDecision.WAIT_FOR_BLUETOOTH) waitStarted ?: nowMs else null
+            applyVolumeLocked(if (allowed) 1f else 0f)
+            stats?.confirmOutputDevice(if (allowed) actualAudioDevice(deviceType) else null)
+            if (allowed && kind != null) onAllowedRouteObserved(kind)
+        }
+    }
+
+    private fun applyVolumeLocked(targetVolume: Float) {
+        if (appliedVolume == targetVolume) return
+        setTrackVolume(targetVolume)
+        appliedVolume = targetVolume
+    }
+
+    private companion object {
         const val BLUETOOTH_ROUTE_TIMEOUT_MS = 5_000L
     }
 }
 
-internal fun voicePlaybackAudioAttributes(): AudioAttributes =
+/**
+ * Limits steady-state synchronous `track.routedDevice` polling on hot playback writes
+ * while still verifying immediately on startup, invalidation, or unsafe/pending routes.
+ */
+internal class PlaybackRouteCheckThrottle(
+    private val intervalMs: Long = STEADY_ROUTE_CHECK_INTERVAL_MS,
+) {
+    private var dirty = true
+    private var lastAllowed = false
+    private var lastCheckedAtMs = Long.MIN_VALUE
+
+    fun shouldCheck(nowMs: Long): Boolean =
+        dirty || !lastAllowed || lastCheckedAtMs == Long.MIN_VALUE || nowMs - lastCheckedAtMs >= intervalMs
+
+    fun record(
+        allowed: Boolean,
+        nowMs: Long,
+    ) {
+        lastAllowed = allowed
+        lastCheckedAtMs = nowMs
+        dirty = !allowed
+    }
+
+    fun invalidate() {
+        dirty = true
+        lastAllowed = false
+    }
+
+    companion object {
+        const val STEADY_ROUTE_CHECK_INTERVAL_MS = 250L
+    }
+}
+
+internal fun voicePlaybackAudioAttributes(bluetoothCall: Boolean = false): AudioAttributes =
     AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setUsage(if (bluetoothCall) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_NONE)

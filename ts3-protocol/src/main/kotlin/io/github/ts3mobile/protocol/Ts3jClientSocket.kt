@@ -15,8 +15,14 @@ import com.github.manevolent.ts3j.protocol.socket.client.LocalTeamspeakClientSoc
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.locks.ReentrantLock
 
 internal interface Ts3jClientSocket {
+    val channelFiles: Ts3jChannelFiles? get() = null
+    val serverIcon: ServerImage.Icon? get() = null
+    val serverUid: VirtualServerUid? get() = null
+    val handshakeRejection: Ts3jHandshakeRejectedException? get() = null
+
     fun setIdentity(identity: LocalIdentity)
 
     fun setNickname(nickname: String)
@@ -39,7 +45,7 @@ internal interface Ts3jClientSocket {
         timeoutMs: Long,
     )
 
-    fun subscribeAll()
+    fun subscribeAll(canSubmit: () -> Boolean = { true })
 
     /**
      * Runs one bounded, read-only control round trip.
@@ -67,6 +73,7 @@ internal interface Ts3jClientSocket {
     fun joinChannel(
         channelId: Int,
         password: String,
+        canSubmit: () -> Boolean = { true },
     )
 
     fun sendTextMessage(
@@ -129,9 +136,34 @@ internal fun interface Ts3jClientSocketFactory {
 
 internal class LocalTeamspeakClientSocketAdapter(
     private val delegate: LocalTeamspeakClientSocket = StateAwareTeamspeakClientSocket(),
+    voiceTiming: VoiceTimingCollector? = null,
+    private val verifyAttachmentIdentity: Boolean = false,
+    channelCommandTimeoutMs: Long = CHANNEL_COMMAND_TIMEOUT_MS,
 ) : Ts3jClientSocket {
-    private val textCommands = Ts3jTextCommands(delegate) { block -> withOperation(block) }
+    private val timing =
+        voiceTiming?.let { collector ->
+            (delegate as? StateAwareTeamspeakClientSocket)?.let { socket ->
+                Ts3jVoiceTiming(collector).also { socket.voiceTiming = it }
+            }
+        }
+    private val submissionLock = ReentrantLock()
+    private val commandOperation: (() -> Unit) -> Unit = { block -> withOperation(block) }
+    private val textCommands = Ts3jTextCommands(delegate, commandOperation, submissionLock)
+    private val channelCommands =
+        Ts3jChannelCommands(BoundedSessionCommands(delegate, commandOperation, submissionLock), { clientId }, channelCommandTimeoutMs)
     private val controlCommands = Ts3jControlCommands(textCommands)
+    override val serverIcon: ServerImage.Icon? get() = (delegate as? StateAwareTeamspeakClientSocket)?.serverIcon
+    override val handshakeRejection: Ts3jHandshakeRejectedException?
+        get() = (delegate as? StateAwareTeamspeakClientSocket)?.handshakeRejection
+
+    @Volatile private var queriedServerUid: VirtualServerUid? = null
+    override val serverUid: VirtualServerUid? get() = (delegate as? StateAwareTeamspeakClientSocket)?.serverUid ?: queriedServerUid
+    override val channelFiles: Ts3jChannelFiles? =
+        (delegate as? StateAwareTeamspeakClientSocket)?.let { socket ->
+            Ts3jChannelFiles(socket.channelFileReplies, { socket.remoteSocketAddress?.address }, { command, timeout, canSubmit ->
+                textCommands.execute(command, timeout, canSubmit)
+            }).also { socket.closeChannelFiles = it::close }
+        }
 
     override fun updatePresence(
         presence: OwnPresence,
@@ -180,6 +212,7 @@ internal class LocalTeamspeakClientSocketAdapter(
     }
 
     override fun setMicrophone(microphone: Microphone?) {
+        (microphone as? TalkspurtMicrophone)?.voiceTiming = timing
         delegate.setMicrophone(microphone)
     }
 
@@ -188,11 +221,17 @@ internal class LocalTeamspeakClientSocketAdapter(
     }
 
     override fun setVoiceHandler(handler: (PacketBody0Voice) -> Unit) {
-        delegate.setVoiceHandler { packet -> handler(packet) }
+        delegate.setVoiceHandler { packet ->
+            if (packet.codecData?.isNotEmpty() == true) timing?.received(packet)
+            handler(packet)
+        }
     }
 
     override fun setWhisperHandler(handler: (PacketBody1VoiceWhisper) -> Unit) {
-        delegate.setWhisperHandler { packet -> handler(packet) }
+        delegate.setWhisperHandler { packet ->
+            if (packet.codecData?.isNotEmpty() == true) timing?.received(packet)
+            handler(packet)
+        }
     }
 
     override fun addListener(listener: TS3Listener) {
@@ -205,11 +244,12 @@ internal class LocalTeamspeakClientSocketAdapter(
         timeoutMs: Long,
     ) {
         withOperation { delegate.connect(address, password, timeoutMs) }
+        if (verifyAttachmentIdentity && serverUid == null) {
+            queriedServerUid = controlCommands.virtualServerUid(clientId) { isConnected }
+        }
     }
 
-    override fun subscribeAll() {
-        withOperation { delegate.subscribeAll() }
-    }
+    override fun subscribeAll(canSubmit: () -> Boolean) = channelCommands.subscribeAll { isConnected && canSubmit() }
 
     override fun probeLiveness(timeoutMs: Long): Boolean {
         return withOperation {
@@ -252,9 +292,8 @@ internal class LocalTeamspeakClientSocketAdapter(
     override fun joinChannel(
         channelId: Int,
         password: String,
-    ) {
-        withOperation { textCommands.join(channelId, password) }
-    }
+        canSubmit: () -> Boolean,
+    ) = channelCommands.join(channelId, password) { isConnected && canSubmit() }
 
     override fun disconnect(reason: String) {
         delegate.disconnect(reason)
@@ -284,5 +323,6 @@ internal class LocalTeamspeakClientSocketAdapter(
 
     private companion object {
         val BOUNDED_DISCONNECT = BoundedClientDisconnect()
+        const val CHANNEL_COMMAND_TIMEOUT_MS = 4_000L
     }
 }

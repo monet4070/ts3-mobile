@@ -30,6 +30,7 @@ internal class PlaybackSession(
     private var outputFailures = 0
     private var healthyFrames = 0L
     private var idleSince: Long? = null
+    private var unstartedReadySince: Long? = null
     val retired: Boolean get() = closed && output == null
     private val stats = input.budget.stats
 
@@ -45,6 +46,7 @@ internal class PlaybackSession(
         }
         try {
             if (output?.routeReady == false) {
+                unstartedReadySince = null
                 streams.reset()
                 input.clear(canWrite)
                 if (started) {
@@ -61,7 +63,19 @@ internal class PlaybackSession(
             streams.drainAvailable(ReceivePolicy.MAX_INPUT_PACKETS, now, canWrite)
             streams.prepare(now)
             if (!started) {
-                if (!streams.readyToStart(now)) return
+                if (!streams.readyToStart(now)) {
+                    if (output != null) {
+                        val since = unstartedReadySince ?: now.also { unstartedReadySince = it }
+                        if (now - since >= PlaybackPolicy.UNSTARTED_READY_IDLE_NANOS) {
+                            check(retireOutput(OutputRetirement.DRAINED)) { "Previous audio output could not be released" }
+                            idleSince = now
+                        }
+                    } else {
+                        unstartedReadySince = null
+                    }
+                    return
+                }
+                unstartedReadySince = null
                 prepareOutputRoute()
                 if (!canWrite()) return
                 val currentOutput =
@@ -149,6 +163,7 @@ internal class PlaybackSession(
         outputFailures = 0
         healthyFrames = 0
         idleSince = null
+        unstartedReadySince = null
         retryAt = nextRetryAt
         status = if (now < retryAt) PlaybackStatus.RETRYING else PlaybackStatus.BUFFERING
     }
@@ -179,6 +194,7 @@ internal class PlaybackSession(
     private fun retireOutput(reason: OutputRetirement): Boolean {
         if (output != null) stats.observer?.onEvent(AudioDiagnosticEventKind.OUTPUT_RETIRED, reason.code)
         started = false
+        unstartedReadySince = null
         cleanup("discard output") { timeline?.discard() }
         timeline = null
         val released =
@@ -204,6 +220,7 @@ internal object PlaybackPolicy {
     const val TICK_NANOS = 10_000_000L
     const val MIN_WAIT_NANOS = 1_000_000L
     const val MAX_CATCH_UP_NANOS = 50_000_000L
+    const val UNSTARTED_READY_IDLE_NANOS = 500_000_000L
     const val INITIAL_BACKOFF_NANOS = 250_000_000L
     const val MAX_BACKOFF_EXPONENT = 4
     const val MAX_OUTPUT_FAILURES = 3

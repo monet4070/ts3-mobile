@@ -221,28 +221,37 @@ class ChatStore(
         event: Ts3TextEvent,
         type: ChatMessageType = ChatMessageType.TEXT,
     ) {
+        acceptIncoming(scope, attempt, event, type)
+    }
+
+    @Synchronized internal fun acceptIncoming(
+        scope: Long,
+        attempt: Long,
+        event: Ts3TextEvent,
+        type: ChatMessageType = ChatMessageType.TEXT,
+    ): Pair<ChatConversationKey, ChatMessage>? {
         val current = mutable.value
-        if (current.scope != scope || activeAttempt != attempt || !current.connected) return
+        if (current.scope != scope || activeAttempt != attempt || !current.connected) return null
         if (event.mode == TextTargetMode.UNKNOWN || event.issue == TextEventIssue.MISSING_BODY) {
             mutable.value = current.copy(invalidEvent = true)
-            return
+            return null
         }
-        if (event.invokerId != null && event.invokerId == current.ownClientId) return
+        if (event.invokerId != null && event.invokerId == current.ownClientId) return null
         val key =
             when (event.mode) {
                 TextTargetMode.CHANNEL -> ChatConversationKey.Channel
                 TextTargetMode.PRIVATE -> {
                     if (current.ownClientId == null || event.targetId != current.ownClientId || event.invokerId == null) {
                         mutable.value = current.copy(invalidEvent = true)
-                        return
+                        return null
                     }
                     val privateKey =
                         event.invokerUid.chatUid()?.let(ChatConversationKey::User)
                             ?: directory.fallbackKey(checkNotNull(event.invokerId))
-                    if (!ensureConversation(privateKey, event.invokerName?.boundedText(256))) return
+                    if (!ensureConversation(privateKey, event.invokerName?.boundedText(256))) return null
                     privateKey
                 }
-                else -> return
+                else -> return null
             }
         val bounded = event.body.boundedText(MAX_TEXT_EVENT_BYTES)
         val incoming =
@@ -260,6 +269,7 @@ class ChatStore(
                 event.mode == TextTargetMode.PRIVATE -> appended.withPrivateMessageActivity(key)
                 else -> appended
             }
+        return key to incoming
     }
 
     @Synchronized fun receivePoke(

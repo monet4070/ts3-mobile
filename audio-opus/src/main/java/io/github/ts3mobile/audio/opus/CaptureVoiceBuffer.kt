@@ -1,8 +1,10 @@
 package io.github.ts3mobile.audio.opus
 
+import io.github.ts3mobile.protocol.TimedEncodedVoiceFrame
+
 /** Owned by one capture only. All gate/queue transitions share a lock. */
 internal class CaptureVoiceBuffer {
-    private val frames = ArrayDeque<ByteArray>()
+    private val frames = ArrayDeque<TimedEncodedVoiceFrame>()
     private var active = true
     private var speaking = false
     private var revision = 0L
@@ -13,20 +15,28 @@ internal class CaptureVoiceBuffer {
         expectedRevision: Long,
         encoded: List<ByteArray>,
         isSpeaking: Boolean,
-    ) {
-        if (!active || revision != expectedRevision) return
-        for (frame in encoded) {
-            if (frames.size == CAPACITY) frames.removeFirst()
-            frames.addLast(frame)
+        encodedTimestamps: List<Long> = emptyList(),
+    ): Int {
+        if (!active || revision != expectedRevision) return 0
+        var dropped = 0
+        for (index in encoded.indices) {
+            if (frames.size == CAPACITY) {
+                frames.removeFirst()
+                dropped++
+            }
+            frames.addLast(TimedEncodedVoiceFrame(encoded[index], encodedTimestamps.getOrNull(index)))
         }
         speaking = isSpeaking
+        return dropped
     }
 
     @Synchronized fun isTransmitting(): Boolean = active && (speaking || frames.isNotEmpty())
 
     @Synchronized fun isReady(): Boolean = active && frames.isNotEmpty()
 
-    @Synchronized fun poll(): ByteArray? = if (active) frames.removeFirstOrNull() else null
+    fun poll(): ByteArray? = pollTimed()?.bytes
+
+    @Synchronized fun pollTimed(): TimedEncodedVoiceFrame? = if (active) frames.removeFirstOrNull() else null
 
     @Synchronized fun reset() {
         revision++

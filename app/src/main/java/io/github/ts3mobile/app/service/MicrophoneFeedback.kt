@@ -17,10 +17,17 @@ internal class MicrophoneFeedback(
         sendingEnabled: Boolean,
     ) {
         state.update {
+            val previouslyRecording = it.actualAudioDevices.recording
             it.copy(
                 isCapturing = capture.capturing,
                 isTransmitting = sendingEnabled && capture.transmitting,
                 echoCancellationState = capture.echoCancellation,
+                actualAudioDevices =
+                    it.actualAudioDevices.copy(
+                        recording = capture.recording,
+                        input = capture.actualInputDevice.takeIf { capture.recording },
+                        systemMicMuted = it.actualAudioDevices.systemMicMuted.takeIf { capture.recording && previouslyRecording },
+                    ),
             )
         }
     }
@@ -31,6 +38,10 @@ internal class MicrophoneFeedback(
 
     fun continuousPermissionRequired() {
         state.update { it.copy(microphoneError = UserMessage.MicrophonePermissionForContinuous) }
+    }
+
+    fun trialReleaseFailed() {
+        state.update { it.copy(isTransmitting = false, microphoneError = UserMessage.MicrophoneTrialReleaseFailed) }
     }
 
     fun refreshPermission(granted: Boolean) {

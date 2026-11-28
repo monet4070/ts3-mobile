@@ -39,7 +39,30 @@ data class AudioRouteOption(
     val id: Int,
     val kind: AudioRouteKind,
     val deviceName: String? = null,
+    val leAudio: Boolean = false,
+    val bluetoothCall: Boolean = false,
 )
+
+enum class AudioInputKind { AUTOMATIC, BUILTIN, WIRED, USB, LE_AUDIO, OTHER }
+
+enum class BuiltInMicrophonePosition { BOTTOM, BACK, FRONT, TOP }
+
+data class AudioInputOption(
+    val id: Int,
+    val kind: AudioInputKind,
+    val deviceName: String? = null,
+    val builtInPosition: BuiltInMicrophonePosition? = null,
+)
+
+data class AudioInputRouting(
+    val routes: List<AudioInputOption> = listOf(Automatic),
+    val selectedId: Int = SYSTEM_AUDIO_ROUTE_ID,
+    val error: AudioRoutingErrorKind? = null,
+) {
+    companion object {
+        val Automatic = AudioInputOption(SYSTEM_AUDIO_ROUTE_ID, AudioInputKind.AUTOMATIC)
+    }
+}
 
 data class AudioRoutingState(
     val routes: List<AudioRouteOption> = listOf(SystemRoute),
@@ -47,6 +70,7 @@ data class AudioRoutingState(
     val error: AudioRoutingError? = null,
     val safetyMuted: Boolean = false,
     val switching: Boolean = false,
+    val input: AudioInputRouting = AudioInputRouting(),
 ) {
     val selectedRoute: AudioRouteOption
         get() = routes.firstOrNull { it.id == selectedRouteId } ?: SystemRoute

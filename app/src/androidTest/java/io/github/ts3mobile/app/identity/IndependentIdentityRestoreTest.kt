@@ -36,7 +36,7 @@ class IndependentIdentityRestoreTest {
             val source = Scratch()
             val target = Scratch()
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-            val documentUri = Uri.parse("content://io.github.ts3mobile.app.test.backup-documents/${UUID.randomUUID()}")
+            val documentUri = Uri.parse("content://${instrumentation.context.packageName}.backup-documents/${UUID.randomUUID()}")
             val document = AndroidBackupDocument(resolver, documentUri)
             val password = "synthetic cross install password".toCharArray()
             var controller: IdentityRestoreController? = null

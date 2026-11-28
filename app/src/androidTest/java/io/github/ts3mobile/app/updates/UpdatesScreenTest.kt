@@ -50,7 +50,7 @@ class UpdatesScreenTest {
         save("updates-en-available")
         rule.onNodeWithText("Download APK").performScrollTo().performClick()
         rule.runOnIdle { assertEquals(1, downloads) }
-        rule.onNodeWithContentDescription("Include prereleases").performScrollTo().performClick()
+        rule.onNodeWithText("Include prereleases").performScrollTo().performClick()
         rule.onNodeWithText("Download APK").assertDoesNotExist()
         rule.onNodeWithText("Checking GitHub Releases…").assertIsDisplayed()
     }
@@ -79,7 +79,7 @@ class UpdatesScreenTest {
         rule.onNodeWithText("Your installed version is current or newer").assertDoesNotExist()
         rule.onNodeWithText("Download APK").assertDoesNotExist()
         rule.runOnIdle { state.value = UpdateState(preferenceStatus = UpdatePreferenceStatus.READ_FAILED) }
-        rule.onNodeWithContentDescription("Include prereleases").assertIsNotEnabled()
+        rule.onNodeWithText("Include prereleases").assertIsNotEnabled()
         rule.onNodeWithText("Check again").assertIsNotEnabled()
         rule.onNodeWithText("Retry").performClick()
         rule.runOnIdle { assertEquals(1, retries) }

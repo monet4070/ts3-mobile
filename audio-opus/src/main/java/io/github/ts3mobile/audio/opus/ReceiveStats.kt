@@ -10,6 +10,9 @@ internal class ReceiveStats {
 
     @Volatile var actualRoute: AudioRouteKind? = null
 
+    private var outputDevice: ActualAudioDevice? = null
+    private var outputObserver: ((ActualAudioDevice?) -> Unit)? = null
+
     val stalePackets = counts[AudioReceiveCounter.STALE.ordinal]
     val invalidPackets = counts[AudioReceiveCounter.INVALID.ordinal]
     val budgetResets = counts[AudioReceiveCounter.BUDGET_RESETS.ordinal]
@@ -66,6 +69,18 @@ internal class ReceiveStats {
         actualRoute = kind
         count(AudioReceiveCounter.ACTUAL_ROUTE_OBSERVATIONS)
         observer?.onEvent(AudioDiagnosticEventKind.ACTUAL_ROUTE, kind?.ordinal?.toLong() ?: -1)
+    }
+
+    @Synchronized fun setOutputDeviceObserver(observer: ((ActualAudioDevice?) -> Unit)?) {
+        outputObserver = observer
+        observer?.invoke(outputDevice)
+    }
+
+    @Synchronized fun confirmOutputDevice(device: ActualAudioDevice?) {
+        if (outputDevice == device) return
+        outputDevice = device
+        outputObserver?.invoke(device)
+        observer?.onEvent(AudioDiagnosticEventKind.ACTUAL_OUTPUT_DEVICE, device?.ordinal?.toLong() ?: -1L)
     }
 
     fun summaryLine(): String =

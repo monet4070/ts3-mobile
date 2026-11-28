@@ -25,6 +25,7 @@ internal fun ChatConversationContent(
     onFocus: () -> Unit,
     onSelect: (ChatConversationKey) -> Unit,
     onClose: (ChatConversationKey) -> Unit,
+    attachments: ChatAttachmentActions? = null,
 ) {
     holder.SaveableStateProvider(state.active.id) {
         var anchor by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -46,6 +47,6 @@ internal fun ChatConversationContent(
                 }
             }
         }
-        ChatPanel(state, list, onDraft, onSend, { onVisible(state.selected, it) }, onFocus, onSelect, onClose)
+        ChatPanel(state, list, onDraft, onSend, { onVisible(state.selected, it) }, onFocus, onSelect, onClose, attachments)
     }
 }

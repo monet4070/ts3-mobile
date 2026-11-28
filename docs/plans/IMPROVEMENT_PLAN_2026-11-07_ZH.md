@@ -128,7 +128,7 @@ B1 启动时再建立双说话人、短写入、阻塞输出和连续静音切�
 
 **用户结果**：上次调好的输入音量、降噪、AEC 意愿和门控阈值，下次仍然有效。
 
-涉及：[MicrophoneSettings](../../audio-opus/src/main/java/io/github/ts3mobile/audio/opus/MicrophoneSettings.kt)、[MicrophoneController](../../app/src/main/java/io/github/ts3mobile/app/service/MicrophoneController.kt)、[TeamSpeakServiceState](../../app/src/main/java/io/github/ts3mobile/app/service/TeamSpeakServiceState.kt)、[设置界面](../../app/src/main/java/io/github/ts3mobile/app/ui/MicrophoneSettingsDialog.kt)。
+涉及：[MicrophoneSettings](../../audio-opus/src/main/java/io/github/ts3mobile/audio/opus/MicrophoneSettings.kt)、[MicrophoneController](../../app/src/main/java/io/github/ts3mobile/app/service/MicrophoneController.kt)、[TeamSpeakServiceState](../../app/src/main/java/io/github/ts3mobile/app/service/TeamSpeakServiceState.kt)、原 `MicrophoneSettingsDialog.kt`（现为[麦克风设置页](../../app/src/main/java/io/github/ts3mobile/app/ui/MicrophoneSettingsScreen.kt)）。
 
 设计与边界：
 

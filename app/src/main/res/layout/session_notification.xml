@@ -36,5 +36,14 @@
             android:layout_height="match_parent"
             android:layout_weight="1" />
 
+        <Button
+            android:id="@+id/session_notification_show_ptt"
+            style="@style/SessionNotificationButton"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:visibility="gone" />
+
     </LinearLayout>
 </LinearLayout>

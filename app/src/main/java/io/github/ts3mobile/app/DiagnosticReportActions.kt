@@ -2,50 +2,60 @@ package io.github.ts3mobile.app
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.net.Uri
+import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
+import io.github.ts3mobile.app.documents.DiagnosticExportOperations
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.io.IOException
 
 /** Export formatting and provider writes run away from the UI/audio threads. */
 internal class DiagnosticReportActions(
     private val activity: ComponentActivity,
+    private val export: () -> DiagnosticExportOperations,
     private val report: suspend () -> String?,
 ) {
-    private val pending by lazy { PendingDiagnosticExport(File(activity.noBackupFilesDir, "pending-diagnostic-export.json")) }
-    private var preparing = false
+    private var pickerId: String? = null
     private val saveDocument =
-        activity.registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-            perform(if (uri != null) R.string.diagnostics_saved else null) {
-                if (uri != null) {
-                    val bytes = pending.read()
-                    activity.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
-                        ?: throw IOException("Document output unavailable")
-                }
-                pending.clear()
-            }
-        }
+        activity.registerForActivityResult(ActivityResultContracts.CreateDocument("application/json"), ::completeExport)
+
+    fun restorePicker() {
+        val registry = activity.savedStateRegistry
+        val offered = registry.consumeRestoredStateForKey(STATE_KEY)?.getString(PICKER_ID) ?: export().pickerId
+        pickerId = offered?.takeIf { export().restorePicking(it) }
+        registry.registerSavedStateProvider(STATE_KEY) { Bundle().apply { putString(PICKER_ID, pickerId) } }
+    }
 
     fun save() {
-        if (preparing) return
-        preparing = true
+        val operations = export()
+        val id = operations.reserve()
+        if (id == null) {
+            toast(R.string.diagnostics_export_busy)
+            return
+        }
         activity.lifecycleScope.launch {
+            var launched = false
             try {
-                // Awaits diagnostics initialization; the activity may already be unbound from the service.
                 val text = withContext(Dispatchers.Default) { report() } ?: throw IOException("Diagnostics unavailable")
-                withContext(Dispatchers.IO) { pending.prepare(text) }
+                operations.prepare(id, text)
+                operations.picking(id)
+                pickerId = id
                 saveDocument.launch("TS3-Mobile-diagnostics-${System.currentTimeMillis()}.json")
+                launched = true
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 toast(R.string.diagnostics_export_failed)
             } finally {
-                preparing = false
+                if (!launched) {
+                    if (pickerId == id) pickerId = null
+                    operations.abort(id)
+                }
             }
         }
     }
@@ -81,20 +91,35 @@ internal class DiagnosticReportActions(
         }
     }
 
-    private fun perform(
-        success: Int?,
-        write: () -> Unit,
-    ) {
-        activity.lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) { write() }
-                success?.let(::toast)
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                toast(R.string.diagnostics_export_failed)
+    private fun completeExport(uri: Uri?) {
+        val id = pickerId
+        pickerId = null
+        val context = activity.applicationContext
+        val write: ((ByteArray) -> Unit)? =
+            uri?.let { destination ->
+                { bytes ->
+                    context.contentResolver.openOutputStream(destination, "wt")?.use { it.write(bytes) }
+                        ?: throw IOException("Document output unavailable")
+                }
             }
-        }
+        val accepted =
+            id != null &&
+                export().resolve(id, write) { success ->
+                    val message =
+                        when (success) {
+                            true -> R.string.diagnostics_saved
+                            false -> R.string.diagnostics_export_failed
+                            null -> null
+                        }
+                    if (message != null) Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                }
+        if (!accepted && uri != null) toast(R.string.diagnostics_export_failed)
     }
 
     private fun toast(message: Int) = Toast.makeText(activity, message, Toast.LENGTH_SHORT).show()
+
+    private companion object {
+        const val STATE_KEY = "diagnostic-document-picker"
+        const val PICKER_ID = "operation"
+    }
 }

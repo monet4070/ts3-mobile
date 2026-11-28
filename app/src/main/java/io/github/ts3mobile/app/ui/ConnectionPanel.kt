@@ -66,7 +66,7 @@ internal fun ConnectionForm(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     SectionLabel(stringResource(R.string.section_server_details), Modifier.align(Alignment.CenterVertically))
-                    OutlinedButton(onClick = onOpenBookmarks, enabled = !busy) {
+                    OutlinedButton(onClick = onOpenBookmarks, modifier = Modifier.guideAnchor(GuideAnchor.BOOKMARKS), enabled = !busy) {
                         AppIcon(UiIcon.Bookmark, null, Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(stringResource(R.string.bookmark_open))

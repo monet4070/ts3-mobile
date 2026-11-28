@@ -1,6 +1,7 @@
 package io.github.ts3mobile.app.service
 
 import android.app.Instrumentation
+import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -30,12 +31,16 @@ internal fun Instrumentation.withOfflineConnectedSession(test: (TeamSpeakService
         }
     val context = targetContext
     val intent = Intent(context, TeamSpeakService::class.java)
+    val notifications = context.getSystemService(NotificationManager::class.java)
+    notifications.cancelFixtureNotification(SessionNotifications.NOTIFICATION_ID)
     assertTrue(context.bindService(intent, connection, Context.BIND_AUTO_CREATE))
+    var fixtureService: TeamSpeakService? = null
     try {
         assertTrue(ready.await(5, TimeUnit.SECONDS))
         val binder = checkNotNull(bound)
         val owner = binder.javaClass.getDeclaredField("this\$0").apply { isAccessible = true }
         val service = owner.get(binder) as TeamSpeakService
+        fixtureService = service
         runOnMainSync {
             service.sessionGeneration.beginSession()
             service.mutableState.value =
@@ -48,8 +53,13 @@ internal fun Instrumentation.withOfflineConnectedSession(test: (TeamSpeakService
         }
         test(service, binder)
     } finally {
-        context.unbindService(connection)
-        context.stopService(intent)
-        waitForIdleSync()
+        try {
+            runOnMainSync { fixtureService?.removeForegroundNotification() }
+        } finally {
+            context.unbindService(connection)
+            context.stopService(intent)
+            waitForIdleSync()
+            notifications.cancelFixtureNotification(SessionNotifications.NOTIFICATION_ID)
+        }
     }
 }

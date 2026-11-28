@@ -1,8 +1,8 @@
 package io.github.ts3mobile.app.service
 
+import io.github.ts3mobile.protocol.ConnectionFailureCategory
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
-import io.github.ts3mobile.protocol.ServerConfig
 import io.github.ts3mobile.protocol.SessionSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Drives the automatic reconnect loop: waits for network availability,
@@ -26,122 +27,179 @@ internal class ReconnectEngine(
         host.serviceScope.launch(start = CoroutineStart.LAZY, block = block)
     },
 ) {
-    private var reconnectAttempt = 0
-    private var reconnectJob: Job? = null
+    private class Recovery(val epoch: Long, var lostNetworkGeneration: Long?) {
+        lateinit var job: Job
+        var pendingLoss = false
+    }
+
+    private val lock = Any()
+    private val reconnectAttempt = AtomicInteger()
+    private var recovery: Recovery? = null
 
     val isActive: Boolean
-        get() = reconnectJob?.isActive == true
+        get() = synchronized(lock) { recovery != null }
 
     fun resetAttemptCount() {
-        reconnectAttempt = 0
+        reconnectAttempt.set(0)
     }
 
     fun cancel() {
-        reconnectJob?.cancel()
+        val previous = synchronized(lock) { recovery.also { recovery = null } }
+        previous?.job?.cancel()
     }
 
     fun launch(
         cause: ConnectionStatus,
         epoch: Long,
     ) {
-        if (!isEpochActive(epoch)) return
+        val job = reserveLoss(cause, epoch) ?: return
+        host.refreshDiagnostics()
+        host.updateNotification()
+        job.start()
+    }
+
+    fun reserveLoss(
+        cause: ConnectionStatus,
+        epoch: Long,
+        lostNetworkGeneration: Long? = null,
+    ): Job? {
+        if (!isEpochActive(epoch)) return null
         val message =
             if (host.networkAvailable.value) {
                 UserMessage.ConnectionInterrupted(cause.detail?.takeIf(String::isNotBlank))
             } else {
                 UserMessage.WaitingForNetwork
             }
-        host.mutableState.update { current ->
-            current
-                .withStatus(
-                    ConnectionStatus(
-                        ConnectionPhase.RECONNECTING,
-                        cause.detail,
-                        retryable = true,
-                    ),
-                    message,
-                )
-                .copy(
-                    snapshot = SessionSnapshot.Empty,
-                    isTransmitting = false,
-                    switchingChannelId = null,
-                )
+        var scheduled: Recovery? = null
+        host.sessionGeneration.withActive(epoch) {
+            scheduled = synchronized(lock) { registerLoss(epoch, lostNetworkGeneration) } ?: return@withActive
+            host.mutableState.update { current ->
+                current
+                    .withStatus(ConnectionStatus(ConnectionPhase.RECONNECTING, cause.detail, retryable = true), message)
+                    .copy(snapshot = SessionSnapshot.Empty, isTransmitting = false, switchingChannelId = null)
+            }
         }
-        host.refreshDiagnostics()
-        host.updateNotification()
-        if (isActive) return
+        return scheduled?.job
+    }
 
+    private fun registerLoss(
+        epoch: Long,
+        lostNetworkGeneration: Long?,
+    ): Recovery? {
+        val current = recovery
+        if (current != null) {
+            if (current.epoch != epoch) return null
+            current.pendingLoss = true
+            current.lostNetworkGeneration = lostNetworkGeneration
+            return current
+        }
+
+        val owner = Recovery(epoch, lostNetworkGeneration)
         val job =
             prepareJob {
                 if (!isEpochActive(epoch)) return@prepareJob
-                delegate.suspendAudioForReconnect()
-                loop(epoch)
-            } ?: return
-        reconnectJob = job
+                if (!delegate.suspendAudioForReconnect(epoch)) return@prepareJob
+                loop(owner)
+            } ?: return null
+        owner.job = job
+        recovery = owner
         job.invokeOnCompletion {
-            if (reconnectJob === job) reconnectJob = null
+            synchronized(lock) { if (recovery === owner) recovery = null }
         }
-        job.start()
+        return owner.takeUnless { job.isCancelled }
     }
 
-    private suspend fun loop(epoch: Long) {
-        val config = delegate.desiredConfig ?: return
+    private suspend fun loop(owner: Recovery) {
+        val epoch = owner.epoch
+        var handoffRetryUsed = false
         while (isEpochActive(epoch)) {
             if (!host.networkAvailable.value) {
-                host.mutableState.update { current ->
-                    current.withStatus(
-                        ConnectionStatus(
-                            ConnectionPhase.RECONNECTING,
-                            retryable = true,
-                        ),
-                        UserMessage.WaitingForNetwork,
-                    )
-                }
-                host.updateNotification()
+                if (!publish(epoch, UserMessage.WaitingForNetwork)) return
                 host.networkAvailable.first { it }
             }
             if (!isEpochActive(epoch)) return
 
-            val attempt = reconnectAttempt + 1
-            val delayMs = host.reconnectPolicy.delayForAttempt(attempt)
-            host.mutableState.update { current ->
-                current.withStatus(
-                    ConnectionStatus(
-                        ConnectionPhase.RECONNECTING,
-                        retryable = true,
-                    ),
-                    UserMessage.ReconnectScheduled(delayMs / 1_000, attempt),
-                )
+            val attempt = reconnectAttempt.get() + 1
+            if (!handoffRetryUsed) {
+                val delayMs = host.reconnectPolicy.delayForAttempt(attempt)
+                if (!publish(epoch, UserMessage.ReconnectScheduled(delayMs / 1_000, attempt))) return
+                delay(delayMs)
             }
-            host.updateNotification()
-            delay(delayMs)
             if (!host.networkAvailable.value) continue
-            if (!isEpochActive(epoch)) return
+            if (!startAttempt(owner)) return
 
-            reconnectAttempt = attempt
-            host.mutableState.update { current ->
-                current.withStatus(
-                    ConnectionStatus(
-                        ConnectionPhase.RECONNECTING,
-                        retryable = true,
-                    ),
-                    UserMessage.Reconnecting(attempt),
-                )
-            }
-            host.updateNotification()
+            reconnectAttempt.set(attempt)
+            if (!publish(epoch, UserMessage.Reconnecting(attempt))) return
+            val attemptNetwork = delegate.confirmedNetworkGeneration()
 
             when (val result = delegate.performAttempt(epoch)) {
-                AttemptResult.Success -> return
+                AttemptResult.Success -> {
+                    if (!continueAfterSuccess(owner) || !delegate.suspendAudioForReconnect(epoch)) return
+                    handoffRetryUsed = false
+                }
                 AttemptResult.Stale -> return
                 is AttemptResult.Failed -> {
-                    if (!result.retryable) {
+                    if (!handoffRetryUsed && canDeferRefusal(owner, result.status, attemptNetwork)) {
+                        if (!delegate.suspendAudioForReconnect(epoch)) return
+                        if (!publish(epoch, UserMessage.HandoffIdentityWait(RECOMMENDED_RETRY_WAIT_SECONDS))) return
+                        delay(RECOMMENDED_RETRY_WAIT_SECONDS * 1_000L)
+                        handoffRetryUsed = true
+                    } else if (!result.retryable || handoffRetryUsed) {
                         delegate.finishTerminalFailure(result.status, epoch)
                         return
+                    } else if (!delegate.suspendAudioForReconnect(epoch)) {
+                        return
                     }
-                    delegate.suspendAudioForReconnect()
                 }
             }
         }
+    }
+
+    private fun canDeferRefusal(
+        owner: Recovery,
+        status: ConnectionStatus,
+        attemptNetwork: Long?,
+    ): Boolean {
+        if (status.category != ConnectionFailureCategory.CLONES_LIMIT || attemptNetwork == null) return false
+        val previous = synchronized(lock) { owner.lostNetworkGeneration } ?: return false
+        return previous != attemptNetwork
+    }
+
+    private fun startAttempt(owner: Recovery): Boolean =
+        synchronized(lock) {
+            if (recovery !== owner) return@synchronized false
+            owner.pendingLoss = false
+            true
+        }
+
+    private fun continueAfterSuccess(owner: Recovery): Boolean =
+        synchronized(lock) {
+            if (recovery !== owner) return@synchronized false
+            if (owner.pendingLoss) {
+                owner.pendingLoss = false
+                true
+            } else {
+                recovery = null
+                false
+            }
+        }
+
+    private fun publish(
+        epoch: Long,
+        message: UserMessage,
+    ): Boolean {
+        if (!isEpochActive(epoch)) return false
+        val updated =
+            host.sessionGeneration.withActive(epoch) {
+                host.mutableState.update { current ->
+                    current.withStatus(ConnectionStatus(ConnectionPhase.RECONNECTING, retryable = true), message)
+                }
+                if (message is UserMessage.HandoffIdentityWait) {
+                    host.recordDiagnostic(DiagnosticEventKind.NETWORK_HANDOFF_RETRY_DEFERRED, message.seconds)
+                }
+            }
+        if (updated) host.updateNotification()
+        return updated
     }
 
     private fun isEpochActive(epoch: Long): Boolean = host.sessionGeneration.isActive(epoch) && delegate.isEpochActive(epoch)
@@ -149,7 +207,7 @@ internal class ReconnectEngine(
     internal interface Delegate {
         fun isEpochActive(epoch: Long): Boolean = true
 
-        val desiredConfig: ServerConfig?
+        fun confirmedNetworkGeneration(): Long? = null
 
         suspend fun performAttempt(epoch: Long): AttemptResult
 
@@ -158,6 +216,6 @@ internal class ReconnectEngine(
             epoch: Long,
         )
 
-        suspend fun suspendAudioForReconnect()
+        suspend fun suspendAudioForReconnect(epoch: Long): Boolean
     }
 }

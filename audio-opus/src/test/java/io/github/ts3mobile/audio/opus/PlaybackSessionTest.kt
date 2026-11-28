@@ -27,6 +27,31 @@ class PlaybackSessionTest {
         }
     }
 
+    @Test fun recoveredUnstartedOutputRetiresWhenNoNewSpeechArrivesWithinIdleWindow() {
+        Fixture().use { fixture ->
+            fixture.routeReady = false
+            fixture.feed(0)
+            fixture.session.tick(60 * MS)
+            val first = fixture.outputs.single()
+            assertEquals(1, fixture.creations)
+
+            first.routeReady = true
+            fixture.routeReady = true
+            fixture.session.tick(200 * MS)
+            assertFalse(first.closed)
+            fixture.session.tick(699 * MS)
+            assertFalse(first.closed)
+            fixture.session.tick(700 * MS)
+            assertTrue(first.closed)
+            assertEquals(null, fixture.session.output)
+
+            fixture.feed(1000 * MS)
+            fixture.session.tick(1060 * MS)
+            assertEquals(2, fixture.creations)
+            assertTrue(fixture.outputs.last().accepted.isNotEmpty())
+        }
+    }
+
     @Test fun losingBluetoothRouteDuringRecoveryRetiresOutputBeforeAnyFurtherWrite() {
         Fixture().use { fixture ->
             fixture.feed(0)
@@ -170,6 +195,25 @@ class PlaybackSessionTest {
             fixture.session.tick(1060 * MS)
             assertEquals(1, fixture.creations)
             first.failClose = false
+        }
+    }
+
+    @Test fun aLateWorkerDoesNotSpendRecoveryBudgetWhenThePlaybackHeadHasAdvanced() {
+        Fixture().use { fixture ->
+            fixture.blockWrites = true
+            fixture.feed(0)
+            fixture.session.tick(60 * MS)
+            val output = fixture.outputs.single()
+            output.writeResults.addAll(listOf(240, 0))
+            fixture.session.tick(70 * MS)
+            assertEquals(240L, output.acceptedFrames)
+            output.playbackHead = 240
+            output.maxWriteSamples = Int.MAX_VALUE
+            fixture.session.tick(180 * MS)
+            assertEquals(480L, output.acceptedFrames)
+            assertEquals(1, fixture.creations)
+            assertEquals(0L, fixture.queue.budget.stats.outputFailures.get())
+            assertEquals(PlaybackStatus.PLAYING, fixture.session.status)
         }
     }
 

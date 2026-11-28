@@ -26,4 +26,19 @@ class ReconnectPolicyTest {
         assertEquals(30_000L, delays.last())
         assertEquals(95, delays.count { it == 30_000L })
     }
+
+    @Test
+    fun appliesBoundedSymmetricJitterWhenConfigured() {
+        val low = ReconnectPolicy(jitterRatio = 0.2, randomUnit = { 0.0 })
+        val mid = ReconnectPolicy(jitterRatio = 0.2, randomUnit = { 0.5 })
+        val high = ReconnectPolicy(jitterRatio = 0.2, randomUnit = { 1.0 })
+
+        assertEquals(800L, low.delayForAttempt(1))
+        assertEquals(1_000L, mid.delayForAttempt(1))
+        assertEquals(1_200L, high.delayForAttempt(1))
+
+        assertEquals(24_000L, low.delayForAttempt(6))
+        assertEquals(30_000L, mid.delayForAttempt(6))
+        assertEquals(36_000L, high.delayForAttempt(6))
+    }
 }

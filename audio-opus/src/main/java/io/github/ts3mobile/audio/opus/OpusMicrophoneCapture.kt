@@ -9,6 +9,8 @@ import android.media.AudioRecord
 import android.media.AudioRouting
 import android.os.Build
 import android.os.Process
+import io.github.ts3mobile.protocol.TimedEncodedVoiceFrame
+import io.github.ts3mobile.protocol.TimedEncodedVoiceSource
 import io.github.ts3mobile.protocol.sanitizedFailureTypes
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -18,7 +20,7 @@ class OpusMicrophoneCapture private constructor(
     private val onFailure: (Throwable) -> Unit,
     private val onStateChanged: (MicrophoneCaptureState) -> Unit,
     private val encodeAudio: Boolean,
-) : MicrophoneCapture {
+) : MicrophoneCapture, TimedEncodedVoiceSource {
     constructor(
         context: Context,
         onFailure: (Throwable) -> Unit,
@@ -31,6 +33,7 @@ class OpusMicrophoneCapture private constructor(
     private val lifecycleLock = Any()
     private var options = MicrophoneProcessingOptions()
     private val captureGeneration = AtomicLong(0)
+    private val captureOverflow = AtomicLong(0)
     private val levelMeter = MicrophoneLevelMeter()
     override val generation: Long get() = captureGeneration.get()
 
@@ -45,6 +48,8 @@ class OpusMicrophoneCapture private constructor(
     @Volatile
     private var preferredDevice: AudioDeviceInfo? = null
 
+    @Volatile private var bluetoothCallInput = false
+
     @Volatile
     private var worker: Thread? = null
 
@@ -54,9 +59,14 @@ class OpusMicrophoneCapture private constructor(
     val actualInputType: Int? get() = control?.takeIf { it.running.get() }?.routedDeviceType
 
     val isInputSilenced: Boolean
-        get() =
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                resources?.record?.activeRecordingConfiguration?.isClientSilenced == true
+        get() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+            return synchronized(lifecycleLock) {
+                if (control?.running?.get() != true) return@synchronized false
+                val active = resources?.takeIf { !it.released } ?: return@synchronized false
+                runCatching { active.record.activeRecordingConfiguration?.isClientSilenced == true }.getOrDefault(false)
+            }
+        }
 
     override fun configure(
         settings: MicrophoneSettings,
@@ -74,11 +84,19 @@ class OpusMicrophoneCapture private constructor(
         }
     }
 
-    override fun setPreferredDevice(device: AudioDeviceInfo?) {
+    override fun setPreferredDevice(device: AudioDeviceInfo?) = setInputRoute(device, bluetoothCall = false)
+
+    override fun setInputRoute(
+        device: AudioDeviceInfo?,
+        bluetoothCall: Boolean,
+    ) {
         synchronized(lifecycleLock) {
-            if (preferredDevice?.id == device?.id) return
+            val deviceChanged = preferredDevice?.id != device?.id
+            if (!deviceChanged && bluetoothCallInput == bluetoothCall) return
+            bluetoothCallInput = bluetoothCall
             preferredDevice = device
             invalidateRouting()
+            if (!deviceChanged) return
             resources?.record?.let { record ->
                 runCatching {
                     check(record.setPreferredDevice(device)) { "Microphone device preference was rejected" }
@@ -135,7 +153,7 @@ class OpusMicrophoneCapture private constructor(
             try {
                 captureResources.startRecording()
                 captureResources.listen(newControl.routingListener)
-                if (!encodeAudio) newControl.routedDeviceType = captureResources.record.routedDevice?.type
+                newControl.routedDeviceType = runCatching { captureResources.record.routedDevice?.type }.getOrNull()
             } catch (error: RuntimeException) {
                 newControl.running.set(false)
                 levelMeter.stop(newControl.generation)
@@ -190,9 +208,11 @@ class OpusMicrophoneCapture private constructor(
 
     override fun isReady(): Boolean = control?.frames?.isReady() == true
 
-    override fun pollEncodedFrame(): ByteArray? {
+    fun takeCaptureOverflow(): Long = captureOverflow.getAndSet(0)
+
+    override fun pollTimedEncodedFrame(): TimedEncodedVoiceFrame? {
         val current = control ?: return null
-        val frame = current.frames.poll()
+        val frame = current.frames.pollTimed()
         if (frame != null) current.provided.incrementAndGet()
         publishState(current)
         return frame
@@ -215,6 +235,7 @@ class OpusMicrophoneCapture private constructor(
         val stats = CaptureSessionStats()
         val inputPcm = ShortArray(RNNOISE_FRAME_SAMPLES)
         val assembler = CaptureInputAssembler()
+        val encodedTimestamps = ArrayList<Long>(CaptureVoiceBuffer.CAPACITY)
         val pipeline =
             MicrophoneCapturePipeline(denoiser::processInPlace, encoder?.let { it::encode }, stats) { settings ->
                 denoiser.reset()
@@ -242,10 +263,15 @@ class OpusMicrophoneCapture private constructor(
                 if (read < 0) error("AudioRecord read failed: $read")
                 if (read == 0) continue
                 if (revision != captureControl.frames.revision()) continue
+                if (bluetoothCallInput && record.routedDevice?.type != AudioDeviceInfo.TYPE_BLUETOOTH_SCO) continue
                 val denoiserPcm = assembler.append(inputPcm, read) ?: continue
-                val encoded = pipeline.process(denoiserPcm, current, revision, routeRevision, levelMeter.isObserved())
+                encodedTimestamps.clear()
+                val encoded = pipeline.process(denoiserPcm, current, revision, routeRevision, levelMeter.isObserved(), encodedTimestamps)
                 if (encoded == null) continue
-                if (encodeAudio) captureControl.frames.publish(revision, encoded, pipeline.isSpeaking)
+                if (encodeAudio) {
+                    val dropped = captureControl.frames.publish(revision, encoded, pipeline.isSpeaking, encodedTimestamps)
+                    if (dropped != 0) captureOverflow.addAndGet(dropped.toLong())
+                }
                 if (pipeline.levelDb.isFinite()) {
                     levelMeter.offer(
                         captureControl.generation,
@@ -293,16 +319,40 @@ class OpusMicrophoneCapture private constructor(
     }
 
     private fun publishState(current: CaptureControl) {
+        if (control !== current) return
+        val running = current.running.get()
+        val capturing = resources?.released == false
+        val transmitting = running && current.frames.isTransmitting()
+        val echo = if (running) current.echoState else EchoCancellationState.PENDING
+        val deviceType = if (running) current.routedDeviceType else null
+        val previous = current.lastState
+        if (previous != null &&
+            previous.capturing == capturing &&
+            previous.transmitting == transmitting &&
+            previous.echoCancellation == echo &&
+            previous.recording == running &&
+            current.lastPublishedDeviceType == deviceType
+        ) {
+            return
+        }
         synchronized(lifecycleLock) {
             if (control !== current) return
+            val lockedRunning = current.running.get()
+            val lockedDeviceType = if (lockedRunning) current.routedDeviceType else null
             val snapshot =
                 MicrophoneCaptureState(
                     capturing = resources?.released == false,
-                    transmitting = current.running.get() && current.frames.isTransmitting(),
-                    echoCancellation = if (current.running.get()) current.echoState else EchoCancellationState.PENDING,
+                    transmitting = lockedRunning && current.frames.isTransmitting(),
+                    echoCancellation = if (lockedRunning) current.echoState else EchoCancellationState.PENDING,
+                    recording = lockedRunning,
+                    actualInputDevice = actualAudioDevice(lockedDeviceType),
                 )
-            if (snapshot == current.lastState) return
+            if (snapshot == current.lastState) {
+                current.lastPublishedDeviceType = lockedDeviceType
+                return
+            }
             current.lastState = snapshot
+            current.lastPublishedDeviceType = lockedDeviceType
             onStateChanged(snapshot)
         }
     }
@@ -315,11 +365,14 @@ class OpusMicrophoneCapture private constructor(
         val routeRevision = AtomicLong()
 
         @Volatile var echoState = EchoCancellationState.PENDING
-        var lastState: MicrophoneCaptureState? = null
+
+        @Volatile var lastState: MicrophoneCaptureState? = null
         lateinit var routingListener: AudioRouting.OnRoutingChangedListener
         var routedDeviceId: Int? = null
 
         @Volatile var routedDeviceType: Int? = null
+
+        @Volatile var lastPublishedDeviceType: Int? = null
     }
 
     companion object {

@@ -17,6 +17,15 @@ kotlin {
     }
 }
 
+tasks.withType<Test>().configureEach {
+    systemProperty("ts3j.voiceTimingExpected", providers.gradleProperty("ts3jVoiceTimingRepository").isPresent.toString())
+    providers.gradleProperty("ts3LocalFileProbePort").orNull?.let {
+        systemProperty("ts3.fileProbePort", it)
+        outputs.upToDateWhen { false }
+        outputs.doNotCacheIf("The local protocol fixture depends on a live server") { true }
+    }
+}
+
 // Lock the resolved dependency graph of every configuration in this module to
 // the committed gradle.lockfile. The dependencyLocking block alone only sets
 // policy; resolutionStrategy.activateDependencyLocking() is what actually

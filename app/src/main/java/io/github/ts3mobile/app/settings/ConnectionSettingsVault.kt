@@ -38,6 +38,10 @@ class ConnectionSettingsVault internal constructor(
             Unit
         }
 
+    internal suspend fun clear() {
+        store.edit { it.remove(payloadKey) }
+    }
+
     private companion object {
         val payloadKey = stringPreferencesKey("encrypted_form")
     }

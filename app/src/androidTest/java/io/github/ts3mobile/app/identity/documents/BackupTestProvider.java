@@ -7,6 +7,9 @@ import android.net.Uri;
 import android.os.ParcelFileDescriptor;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 
 /** Standalone instrumentation-package provider; no target-APK/Kotlin runtime dependency. */
 public final class BackupTestProvider extends ContentProvider {
@@ -20,7 +23,32 @@ public final class BackupTestProvider extends ContentProvider {
     }
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         if ("r".equals(mode) && "true".equals(uri.getQueryParameter("denyRead"))) throw new FileNotFoundException("Fixture read denied");
+        if (mode.startsWith("w") && "true".equals(uri.getQueryParameter("failAfterPrefix"))) return prefixThenFail(file(uri));
         return ParcelFileDescriptor.open(file(uri), ParcelFileDescriptor.parseMode(mode));
+    }
+    private ParcelFileDescriptor prefixThenFail(File destination) throws FileNotFoundException {
+        try {
+            ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createReliablePipe();
+            Thread writer = new Thread(() -> {
+                try (InputStream source = new ParcelFileDescriptor.AutoCloseInputStream(pipe[0]);
+                     FileOutputStream target = new FileOutputStream(destination)) {
+                    byte[] prefix = new byte[4096];
+                    int read = source.read(prefix);
+                    if (read > 0) target.write(prefix, 0, read);
+                    target.flush();
+                    pipe[0].closeWithError("Fixture rejected the remaining bytes");
+                } catch (IOException error) {
+                    android.util.Log.w("FixtureDocument", "Fixture pipe closed", error);
+                }
+            }, "fixture-document-prefix");
+            writer.setDaemon(true);
+            writer.start();
+            return pipe[1];
+        } catch (IOException error) {
+            FileNotFoundException failure = new FileNotFoundException("Fixture pipe unavailable");
+            failure.initCause(error);
+            throw failure;
+        }
     }
     private File file(Uri uri) throws FileNotFoundException {
         String name = uri.getLastPathSegment();

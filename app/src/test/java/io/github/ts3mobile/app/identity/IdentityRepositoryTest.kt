@@ -29,6 +29,7 @@ class IdentityRepositoryTest {
             fixture.edit { it[IdentityStore.ACTIVE] = fixture.cipher.encrypt(first.toByteArray()) }
             val repository = IdentityRepository(fixture.storage, dispatcher = StandardTestDispatcher(testScheduler))
             val revision = repository.snapshot().revision
+            val initialReadVersion = repository.readVersion.value
             val ack = CompletableDeferred<Unit>()
             val entered = CompletableDeferred<Unit>()
             val commitCall = fixture.calls + 1
@@ -44,11 +45,14 @@ class IdentityRepositoryTest {
             runCurrent()
             assertFalse(ui.isCompleted)
             assertEquals(IdentityUseState.MAINTENANCE, repository.gate.state.value)
+            assertTrue(repository.readVersion.value.changing)
             assertNull(repository.gate.beginConnection())
             assertNull(repository.gate.beginMaintenance())
             ack.complete(Unit)
             ui.join()
             assertEquals(IdentityUseState.IDLE, repository.gate.state.value)
+            assertFalse(repository.readVersion.value.changing)
+            assertTrue(repository.readVersion.value.version > initialReadVersion.version)
             assertEquals(Ts3IdentityCodec.inspect(second), repository.snapshot().active)
             assertNull(fixture.values.value[IdentityStore.PENDING])
         }

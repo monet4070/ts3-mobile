@@ -20,8 +20,20 @@ import org.junit.Test
 
 class PlaybackNotificationDeliveryTest {
     @get:Rule val rule = createEmptyComposeRule()
+
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
+    private val manager = context.getSystemService(NotificationManager::class.java)
+
+    @Test fun offlineFixtureRemovesItsNotificationBeforeClosingTheActivity() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            instrumentation.withOfflineConnectedSession { _, _ -> waitForAction(R.string.notification_mute_playback) }
+            assertFalse(manager.activeNotifications.any { it.id == SessionNotifications.NOTIFICATION_ID })
+        }
+    }
 
     @Test fun immutableNotificationActionsMuteResumeAndShowRouteCheckWhenProtected() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -107,12 +119,39 @@ class PlaybackNotificationDeliveryTest {
         }
     }
 
+    @Test fun aBurstSettlesOnTheFinalRouteActionAndDoesNotApplyAStaleResume() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            instrumentation.withOfflineConnectedSession { service, _ ->
+                waitForAction(R.string.notification_mute_playback).actionIntent.send()
+                val oldResume = waitForAction(R.string.notification_resume_playback)
+                instrumentation.runOnMainSync {
+                    val initial = service.mutableState.value
+                    repeat(30) { index ->
+                        service.mutableState.value = initial.copy(playbackMuted = index % 2 == 0)
+                        service.updateNotification()
+                    }
+                    service.mutableState.value = initial.copy(audioRouting = initial.audioRouting.copy(safetyMuted = true))
+                    service.updateNotification()
+                }
+                waitForAction(R.string.notification_check_route)
+                assertNull(action(R.string.notification_resume_playback))
+                oldResume.actionIntent.send()
+                instrumentation.waitForIdleSync()
+                assertTrue(service.mutableState.value.playbackMuted)
+                assertFalse(service.mutableState.value.isCapturing)
+            }
+        }
+    }
+
     private fun activeSessionNotification(): Notification =
-        context.getSystemService(NotificationManager::class.java).activeNotifications
-            .single { it.id == SessionNotifications.NOTIFICATION_ID }.notification
+        manager.activeNotifications.single { it.id == SessionNotifications.NOTIFICATION_ID }.notification
 
     private fun action(label: Int): Notification.Action? =
-        context.getSystemService(NotificationManager::class.java).activeNotifications.asSequence()
+        manager.activeNotifications.asSequence()
+            .filter { it.id == SessionNotifications.NOTIFICATION_ID }
             .flatMap { it.notification.actions.orEmpty().asSequence() }
             .firstOrNull { it.title.toString() == context.getString(label) }
 

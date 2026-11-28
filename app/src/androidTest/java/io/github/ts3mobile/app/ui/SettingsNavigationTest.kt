@@ -75,10 +75,12 @@ class SettingsNavigationTest {
         val fixture = UiFixture()
         rule.setContent { fixture.Render(locale = "zh-CN") }
         rule.openAppSettings("更多选项", "设置")
+        rule.onNodeWithText("TS3 Mobile").assertDoesNotExist()
+        rule.onNodeWithText("麦克风设置").assertIsDisplayed()
+        savePreview("settings-zh-light")
         rule.onNodeWithText("检查更新").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("查看是否有新版本").assertDoesNotExist()
         rule.onNodeWithText("麦克风设置").performScrollTo()
-        savePreview("settings-zh-light")
         rule.onNodeWithText("麦克风设置").assertHasClickAction().performClick()
         rule.onNodeWithText("本机试麦").assertIsDisplayed().assertIsNotEnabled()
         rule.onNodeWithText("请等待连接或音频设备切换完成").assertIsDisplayed()

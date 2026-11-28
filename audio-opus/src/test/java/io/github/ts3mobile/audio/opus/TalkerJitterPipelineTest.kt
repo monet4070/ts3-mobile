@@ -94,6 +94,32 @@ class TalkerJitterPipelineTest {
         assertTrue(decoder.nullDecodeCount >= 1)
     }
 
+    @Test
+    fun dropsPreStallMediaOlderThanMaxAgeWhilePreservingWithinJitterBudget() {
+        val decoder = FakeDecoder()
+        val pipeline = TalkerJitterPipeline(decoderFactory = { decoder })
+        pipeline.offer(queued(0, 0L))
+        pipeline.offer(queued(1, 20_000_000L))
+        pipeline.fillPcm(INITIAL_HOLD_NANOS + 10)
+        // Only consume half of packet 0 (480 samples), leaving packet 0 tail + packet 1 decoded in PCM.
+        assertEquals(TALKER_SAMPLES, pipeline.readPcm(TALKER_SAMPLES).size)
+
+        // Within the 360ms max age budget (200ms), buffered PCM remains playable.
+        pipeline.fillPcm(200_000_000L)
+        assertEquals(TALKER_SAMPLES, pipeline.readPcm(TALKER_SAMPLES).size)
+        assertEquals(0L, pipeline.resetDroppedPcmSamples)
+
+        // After a 500ms stall, pre-stall media older than 360ms is dropped instead of playing late.
+        pipeline.offer(queued(2, 480_000_000L))
+        pipeline.fillPcm(500_000_000L)
+        assertTrue(pipeline.resetDroppedPcmSamples > 0L)
+        val resumed = pipeline.readPcm(TALKER_SAMPLES)
+        assertEquals(TALKER_SAMPLES, resumed.size)
+        // Resumed PCM fades in from sample 0 over FADE_SAMPLES and continues with packet 2 (base 200).
+        assertEquals(0, resumed[0].toInt())
+        assertEquals(440, resumed[240].toInt())
+    }
+
     private fun advance(
         pipeline: TalkerJitterPipeline,
         startNanos: Long,

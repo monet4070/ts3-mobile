@@ -8,14 +8,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,12 +24,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.ui.FeatureAction
+import io.github.ts3mobile.app.ui.FeatureNotice
+import io.github.ts3mobile.app.ui.Panel
 import io.github.ts3mobile.app.ui.SettingsScaffold
 import io.github.ts3mobile.app.ui.SettingsSection
+import io.github.ts3mobile.app.ui.SettingsToggleRow
 import io.github.ts3mobile.app.ui.UiIcon
 
 @Composable
@@ -56,44 +57,38 @@ internal fun UpdatesScreen(
                     ReleaseNotesReader(release, { readingNotes = false }, Modifier.weight(1f))
                 } else {
                     Column(
-                        Modifier.weight(1f).verticalScroll(summaryScroll).padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                        Modifier.weight(1f).verticalScroll(summaryScroll).padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        Text(
-                            stringResource(R.string.updates_current, installed.name, installed.code),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
                         UpdateChannelSection(state, onSelect, onCheck, onRetryPreference)
+                        FeatureNotice(UiIcon.Info, stringResource(R.string.updates_current, installed.name, installed.code))
                         when (val check = state.check) {
                             UpdateCheck.Checking ->
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    CircularProgressIndicator()
-                                    Text(stringResource(R.string.updates_checking))
+                                Panel(Modifier.fillMaxWidth()) {
+                                    Row(
+                                        Modifier.padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                        Text(stringResource(R.string.updates_checking), style = MaterialTheme.typography.bodyMedium)
+                                    }
                                 }
                             is UpdateCheck.Complete -> {
                                 UpdateReleaseCard(check.release, installed, onReleasePage, onDownload)
                                 if (check.release.notes.isNotBlank()) ReleaseNotesPreview(check.release) { readingNotes = true }
                             }
-                            UpdateCheck.NoRelease -> Text(stringResource(R.string.updates_no_release))
+                            UpdateCheck.NoRelease -> FeatureNotice(UiIcon.Info, stringResource(R.string.updates_no_release))
                             is UpdateCheck.Failed ->
-                                Surface(
-                                    shape = MaterialTheme.shapes.large,
-                                    color = MaterialTheme.colorScheme.errorContainer,
-                                ) {
-                                    Text(
-                                        stringResource(check.failure.message()),
-                                        Modifier.padding(16.dp),
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                    )
-                                }
+                                FeatureNotice(UiIcon.Info, stringResource(check.failure.message()), error = true)
                             UpdateCheck.Idle -> Unit
                         }
-                        OutlinedButton(onClick = { onReleasePage(RELEASES_PAGE_URL) }) {
-                            Text(stringResource(R.string.updates_all_releases))
-                        }
+                        FeatureAction(
+                            UiIcon.ExternalLink,
+                            stringResource(R.string.updates_all_releases),
+                            { onReleasePage(RELEASES_PAGE_URL) },
+                            Modifier.fillMaxWidth(),
+                        )
                     }
                 }
             }
@@ -111,19 +106,21 @@ private fun UpdateChannelSection(
     val busy = state.preferenceStatus in setOf(UpdatePreferenceStatus.LOADING, UpdatePreferenceStatus.SAVING)
     val label = stringResource(R.string.updates_include_prereleases)
     SettingsSection(stringResource(R.string.updates_channel_title), UiIcon.Sliders) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            Switch(
-                modifier = Modifier.semantics { contentDescription = label },
-                checked = state.channel == UpdateChannel.INCLUDE_PRERELEASES,
-                onCheckedChange = { onSelect(if (it) UpdateChannel.INCLUDE_PRERELEASES else UpdateChannel.STABLE) },
-                enabled = !busy && state.preferenceStatus != UpdatePreferenceStatus.READ_FAILED,
+        SettingsToggleRow(
+            label,
+            state.channel == UpdateChannel.INCLUDE_PRERELEASES,
+            { onSelect(if (it) UpdateChannel.INCLUDE_PRERELEASES else UpdateChannel.STABLE) },
+            enabled = !busy && state.preferenceStatus != UpdatePreferenceStatus.READ_FAILED,
+        )
+        if (state.channel == UpdateChannel.INCLUDE_PRERELEASES) {
+            FeatureNotice(
+                UiIcon.Info,
+                stringResource(R.string.updates_prerelease_warning),
             )
         }
-        if (state.channel == UpdateChannel.INCLUDE_PRERELEASES) Text(stringResource(R.string.updates_prerelease_warning))
-        if (busy) Text(stringResource(R.string.updates_loading_choice))
+        if (busy) FeatureNotice(UiIcon.Refresh, stringResource(R.string.updates_loading_choice))
         if (state.preferenceStatus in setOf(UpdatePreferenceStatus.READ_FAILED, UpdatePreferenceStatus.WRITE_FAILED)) {
-            Text(stringResource(R.string.updates_preference_failed), color = MaterialTheme.colorScheme.error)
+            FeatureNotice(UiIcon.Info, stringResource(R.string.updates_preference_failed), error = true)
             OutlinedButton(onClick = onRetryPreference) { Text(stringResource(R.string.action_retry_control)) }
         }
         OutlinedButton(

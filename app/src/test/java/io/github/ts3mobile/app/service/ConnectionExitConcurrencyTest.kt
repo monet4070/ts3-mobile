@@ -1,5 +1,8 @@
 package io.github.ts3mobile.app.service
 
+import io.github.ts3mobile.app.identity.IdentityUseGate
+import io.github.ts3mobile.app.identity.IdentityUseState
+import io.github.ts3mobile.audio.opus.MicrophoneSettings
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import io.github.ts3mobile.protocol.DisconnectOutcome
@@ -9,14 +12,18 @@ import io.github.ts3mobile.protocol.SessionSnapshot
 import io.github.ts3mobile.protocol.Ts3SessionClient
 import io.github.ts3mobile.protocol.Ts3SessionListener
 import io.github.ts3mobile.protocol.VoiceFrame
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -41,14 +48,17 @@ import java.util.concurrent.atomic.AtomicInteger
 class ConnectionExitConcurrencyTest {
     private lateinit var host: Host
     private lateinit var coordinator: ConnectionCoordinator
+    private lateinit var identityGate: IdentityUseGate
 
     @Before
     fun setUp() {
         host = Host()
+        identityGate = IdentityUseGate()
         coordinator =
             ConnectionCoordinator(
                 host,
                 clockMs = { System.nanoTime() / NANOS_PER_MILLISECOND },
+                identityGate = identityGate,
                 sessionFactory = { host.nextSession },
             )
         host.coordinator = coordinator
@@ -200,6 +210,206 @@ class ConnectionExitConcurrencyTest {
         assertEquals("cancelled identity work opened a socket", 0, session.connectCalls.get())
     }
 
+    @Test
+    fun concurrentExitDuringTerminalFailureRetirementNeverThrowsAndSettlesIdentityGate() {
+        repeat(25) {
+            val failingSession =
+                ScriptedSession(
+                    connectError = IllegalStateException("terminal failure"),
+                )
+            host.nextSession = failingSession
+            val failureFinishing = CompletableDeferred<Unit>()
+            host.finishTerminalAction = { failureFinishing.complete(Unit) }
+            assertTrue(coordinator.beginConnection(CONFIG))
+            runBlocking { failureFinishing.await() }
+
+            // Race requestExit directly against finishTerminalFailure retiring identityLease.
+            coordinator.requestExit(ExitTrigger.USER_DISCONNECT)
+            assertTrue(awaitUntil { identityGate.state.value == IdentityUseState.IDLE })
+            host.finishTerminalAction = {}
+        }
+    }
+
+    @Test
+    fun connectAndExitPreserveUserMicrophoneSettingsAndAudioDiagnosticsStatus() {
+        val initialSettings =
+            MicrophoneSettings(
+                volumePercent = 165,
+                noiseSuppression = false,
+                echoCancellation = false,
+                gateThresholdDb = -28,
+            )
+        val initialAudioDiag = AudioDiagnosticStatus(savedSamples = 42, sessions = 3, marks = 2)
+        host.mutableState.value =
+            TeamSpeakServiceState(
+                microphoneMode = MicrophoneMode.VOLUME_GATE,
+                microphoneSettings = initialSettings,
+                audioDiagnostics = initialAudioDiag,
+            )
+        host.nextSession = ScriptedSession()
+        assertTrue(coordinator.beginConnection(CONFIG))
+        assertEquals(initialSettings, host.mutableState.value.microphoneSettings)
+        assertEquals(MicrophoneMode.VOLUME_GATE, host.mutableState.value.microphoneMode)
+        assertEquals(initialAudioDiag, host.mutableState.value.audioDiagnostics)
+
+        assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.CONNECTED })
+        coordinator.requestExit(ExitTrigger.USER_DISCONNECT)
+        assertTrue(awaitUntil { identityGate.state.value == IdentityUseState.IDLE })
+        assertEquals(initialSettings, host.mutableState.value.microphoneSettings)
+        assertEquals(MicrophoneMode.VOLUME_GATE, host.mutableState.value.microphoneMode)
+        assertEquals(initialAudioDiag, host.mutableState.value.audioDiagnostics)
+    }
+
+    @Test
+    fun connectAfterDegradedExitWithStuckMutexFailsWithinBudgetWithoutTouchingAudioAndSucceedsAfterUnlock() {
+        val boundedCoordinator =
+            ConnectionCoordinator(
+                host,
+                clockMs = { System.nanoTime() / NANOS_PER_MILLISECOND },
+                identityGate = identityGate,
+                sessionFactory = { host.nextSession },
+                sessionMutexTimeoutMs = 300L,
+            )
+        try {
+            boundedCoordinator.beginConnection(CONFIG)
+            assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.CONNECTED })
+
+            runBlocking { host.sessionMutex.lock() }
+            try {
+                boundedCoordinator.requestDisconnect()
+                assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.DISCONNECTED })
+
+                val captureStopsBeforeConnect = host.captureStopCalls.get()
+                val routingStartsBeforeConnect = host.routingStarts.get()
+                val playbackStartsBeforeConnect = host.playbackStarts.get()
+                val connectsBeforeRetry = host.nextSession.connectCalls.get()
+
+                assertTrue(boundedCoordinator.beginConnection(SECOND_CONFIG))
+                assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.ERROR })
+                assertEquals(UserMessage.PreviousSessionBusy, host.mutableState.value.statusMessage)
+                assertFalse(host.mutableState.value.status.retryable)
+                assertTrue(awaitUntil { identityGate.state.value == IdentityUseState.IDLE })
+                assertEquals(captureStopsBeforeConnect, host.captureStopCalls.get())
+                assertEquals(routingStartsBeforeConnect, host.routingStarts.get())
+                assertEquals(playbackStartsBeforeConnect, host.playbackStarts.get())
+                assertEquals(connectsBeforeRetry, host.nextSession.connectCalls.get())
+            } finally {
+                host.sessionMutex.unlock()
+            }
+
+            assertTrue(awaitUntil { host.playbackStopCalls.get() >= 1 && host.routingStopCalls.get() >= 1 })
+            host.nextSession = ScriptedSession()
+            assertTrue(boundedCoordinator.beginConnection(SECOND_CONFIG))
+            assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.CONNECTED })
+            assertEquals(1, host.nextSession.connectCalls.get())
+        } finally {
+            boundedCoordinator.close()
+        }
+    }
+
+    @Test
+    fun nextConnectFailsBoundedlyWhenPreviousExitHangsInAudioCleanupWithoutStartingAudio() {
+        val boundedCoordinator =
+            ConnectionCoordinator(
+                host,
+                clockMs = { System.nanoTime() / NANOS_PER_MILLISECOND },
+                identityGate = identityGate,
+                sessionMutexTimeoutMs = 300L,
+                sessionFactory = { host.nextSession },
+            )
+        val stopEntered = CountDownLatch(1)
+        val releaseStop = CountDownLatch(1)
+        try {
+            boundedCoordinator.beginConnection(CONFIG)
+            assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.CONNECTED })
+
+            val hungOnce = AtomicBoolean(true)
+            host.microphoneStopAction = {
+                if (hungOnce.compareAndSet(true, false)) {
+                    stopEntered.countDown()
+                    releaseStop.await(WAIT_SECONDS, TimeUnit.SECONDS)
+                }
+            }
+            boundedCoordinator.requestDisconnect()
+            assertTrue(stopEntered.await(WAIT_SECONDS, TimeUnit.SECONDS))
+
+            val routingStartsBeforeConnect = host.routingStarts.get()
+            val playbackStartsBeforeConnect = host.playbackStarts.get()
+            val connectsBeforeRetry = host.nextSession.connectCalls.get()
+
+            assertTrue(boundedCoordinator.beginConnection(SECOND_CONFIG))
+            assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.ERROR })
+            assertEquals(UserMessage.PreviousSessionBusy, host.mutableState.value.statusMessage)
+            assertFalse(host.mutableState.value.status.retryable)
+            assertEquals(routingStartsBeforeConnect, host.routingStarts.get())
+            assertEquals(playbackStartsBeforeConnect, host.playbackStarts.get())
+            assertEquals(connectsBeforeRetry, host.nextSession.connectCalls.get())
+
+            releaseStop.countDown()
+            assertTrue(awaitUntil { !host.sessionMutex.isLocked && identityGate.state.value == IdentityUseState.IDLE })
+            host.nextSession = ScriptedSession()
+            assertTrue(boundedCoordinator.beginConnection(SECOND_CONFIG))
+            assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.CONNECTED })
+            assertEquals(1, host.nextSession.connectCalls.get())
+        } finally {
+            releaseStop.countDown()
+            boundedCoordinator.close()
+        }
+    }
+
+    @Test
+    fun staleBusyFailureCannotCloseReplacementSessionsSocket() {
+        val replacementSession = ScriptedSession()
+        val createdSessions = CopyOnWriteArrayList<ScriptedSession>()
+        val raceCoordinator =
+            ConnectionCoordinator(
+                host,
+                clockMs = { System.nanoTime() / NANOS_PER_MILLISECOND },
+                identityGate = identityGate,
+                sessionMutexTimeoutMs = 200L,
+                sessionFactory = { replacementSession.also { createdSessions += it } },
+            )
+        val hookEntered = CountDownLatch(1)
+        val resumeHook = CountDownLatch(1)
+        val staleFailureFinished = CountDownLatch(1)
+        val testLockOwner = Any()
+        var testHoldsMutex = false
+        try {
+            runBlocking { host.sessionMutex.lock(testLockOwner) }
+            testHoldsMutex = true
+            try {
+                host.connectionFailureAction = {
+                    hookEntered.countDown()
+                    resumeHook.await(WAIT_SECONDS, TimeUnit.SECONDS)
+                }
+                host.finishTerminalAction = { staleFailureFinished.countDown() }
+                assertTrue(raceCoordinator.beginConnection(CONFIG))
+                assertTrue(hookEntered.await(WAIT_SECONDS, TimeUnit.SECONDS))
+                host.connectionFailureAction = {}
+                testHoldsMutex = false
+                host.sessionMutex.unlock(testLockOwner)
+
+                assertTrue(raceCoordinator.beginConnection(SECOND_CONFIG))
+                assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.CONNECTED })
+            } finally {
+                resumeHook.countDown()
+                if (testHoldsMutex) {
+                    testHoldsMutex = false
+                    host.sessionMutex.unlock(testLockOwner)
+                }
+            }
+
+            assertTrue("stale busy-failure cleanup did not finish", staleFailureFinished.await(WAIT_SECONDS, TimeUnit.SECONDS))
+            assertTrue(awaitUntil { host.mutableState.value.status.phase == ConnectionPhase.CONNECTED })
+            assertEquals(1, createdSessions.size)
+            assertEquals(0, replacementSession.closeCalls.get())
+            assertEquals(SECOND_CONFIG, replacementSession.connectedConfig)
+        } finally {
+            host.finishTerminalAction = {}
+            raceCoordinator.close()
+        }
+    }
+
     private fun awaitUntil(condition: () -> Boolean): Boolean {
         val deadline = System.nanoTime() + WAIT_SECONDS * NANOS_PER_SECOND
         while (System.nanoTime() < deadline) {
@@ -214,6 +424,7 @@ class ConnectionExitConcurrencyTest {
         private val connectGate: CountDownLatch? = null,
         private val exitEntered: CountDownLatch? = null,
         private val exitGate: CountDownLatch? = null,
+        private val connectError: Throwable? = null,
     ) : Ts3SessionClient {
         val connectCalls = AtomicInteger()
         val closeCalls = AtomicInteger()
@@ -240,6 +451,7 @@ class ConnectionExitConcurrencyTest {
             connectedConfig = config
             connectEntered?.countDown()
             connectGate?.await(WAIT_SECONDS, TimeUnit.SECONDS)
+            connectError?.let { throw it }
             if (!closed) listener.onStatusChanged(ConnectionStatus(ConnectionPhase.CONNECTED))
         }
 
@@ -292,6 +504,11 @@ class ConnectionExitConcurrencyTest {
         @Volatile
         var microphoneStopDelayMs = 0L
         var playbackStopDelayMs = 0L
+        val captureStopCalls = AtomicInteger()
+        val routingStarts = AtomicInteger()
+        val routingStopCalls = AtomicInteger()
+        val playbackStarts = AtomicInteger()
+        val playbackStopCalls = AtomicInteger()
 
         val diagnosticCodes = CopyOnWriteArrayList<Pair<DiagnosticEventKind, Long>>()
 
@@ -304,6 +521,17 @@ class ConnectionExitConcurrencyTest {
 
         var microphoneStopAction: () -> Unit = {}
         var identityAction: () -> Unit = {}
+        var finishTerminalAction: () -> Unit = {}
+        var connectionFailureAction: () -> Unit = {}
+
+        override fun onConnectionFailure(status: ConnectionStatus) {
+            connectionFailureAction()
+        }
+
+        override fun finishTerminalOnMainThread(epoch: Long) {
+            finishTerminalAction()
+            super.finishTerminalOnMainThread(epoch)
+        }
 
         @Volatile
         var coordinator: ConnectionCoordinator? = null
@@ -325,6 +553,7 @@ class ConnectionExitConcurrencyTest {
         override fun resetMicrophoneForConnection() = Unit
 
         override suspend fun stopMicrophoneCapture() {
+            captureStopCalls.incrementAndGet()
             runInterruptible {
                 microphoneStopAction()
                 val delay = microphoneStopDelayMs
@@ -337,15 +566,22 @@ class ConnectionExitConcurrencyTest {
             return "identity"
         }
 
-        override fun startAudioRouting() = Unit
+        override fun startAudioRouting() {
+            routingStarts.incrementAndGet()
+        }
 
-        override fun stopAudioRouting() = Unit
+        override fun stopAudioRouting() {
+            routingStopCalls.incrementAndGet()
+        }
 
         override fun applySelectedPlaybackMuted() = Unit
 
-        override suspend fun startPlayback() = Unit
+        override suspend fun startPlayback() {
+            playbackStarts.incrementAndGet()
+        }
 
         override fun stopPlayback() {
+            playbackStopCalls.incrementAndGet()
             if (playbackStopDelayMs > 0) Thread.sleep(playbackStopDelayMs)
         }
 
@@ -373,8 +609,16 @@ class ConnectionExitConcurrencyTest {
         }
 
         fun close() {
-            serviceScope.cancel()
-            executor.shutdownNow()
+            runBlocking {
+                withTimeoutOrNull(TimeUnit.SECONDS.toMillis(WAIT_SECONDS)) {
+                    serviceScope.coroutineContext[Job]?.cancelAndJoin()
+                }
+            }
+            executor.shutdown()
+            if (!executor.awaitTermination(WAIT_SECONDS, TimeUnit.SECONDS)) {
+                executor.shutdownNow()
+                executor.awaitTermination(WAIT_SECONDS, TimeUnit.SECONDS)
+            }
         }
     }
 

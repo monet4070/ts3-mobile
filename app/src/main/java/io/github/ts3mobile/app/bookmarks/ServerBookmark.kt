@@ -6,6 +6,11 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 
+internal fun sameBookmarkHost(
+    host: String,
+    other: String,
+): Boolean = host.trim().equals(other.trim(), ignoreCase = true)
+
 data class ServerBookmark(
     val id: String,
     val revision: Long = 0,
@@ -28,6 +33,11 @@ data class ServerBookmark(
 
     fun forStorage(): ServerBookmark = if (rememberPasswords) this else copy(password = "", channelPassword = "")
 
+    internal fun normalizedForSave(): ServerBookmark {
+        val config = toConfig()
+        return copy(host = config.host, nickname = config.nickname).forStorage()
+    }
+
     fun toConfig() = ServerConfig(host, port, nickname, password, defaultChannelId, channelPassword).normalized()
 
     override fun toString() = "ServerBookmark(<redacted>)"
@@ -35,6 +45,7 @@ data class ServerBookmark(
 
 internal object BookmarkCodec {
     const val MAX_ENTRIES = 50
+    const val MAX_ARCHIVE_BYTES = 256 * 1024
 
     fun encode(entries: List<ServerBookmark>): ByteArray =
         ByteArrayOutputStream().use { bytes ->
@@ -50,6 +61,7 @@ internal object BookmarkCodec {
                     out.writeInt(entry.port)
                     out.writeInt(entry.defaultChannelId ?: 0)
                     out.writeBoolean(entry.rememberPasswords)
+                    require(bytes.size() <= MAX_ARCHIVE_BYTES) { "Bookmark archive exceeds its size limit" }
                 }
             }
             bytes.toByteArray()
@@ -57,7 +69,7 @@ internal object BookmarkCodec {
 
     fun decode(bytes: ByteArray): List<ServerBookmark> =
         DataInputStream(ByteArrayInputStream(bytes)).use { input ->
-            require(bytes.size <= 256 * 1024 && input.readInt() == 1)
+            require(bytes.size <= MAX_ARCHIVE_BYTES && input.readInt() == 1)
             val count = input.readInt()
             require(count in 0..MAX_ENTRIES)
             val entries =
@@ -91,7 +103,7 @@ internal object BookmarkCodec {
         val previous = entries.singleOrNull { it.id == requested.id }
         require((previous == null && requested.revision == 0L) || previous?.revision == requested.revision) { "Stale bookmark" }
         require(previous != null || entries.size < MAX_ENTRIES) { "Bookmark limit" }
-        val updated = requested.forStorage().copy(revision = Math.addExact(requested.revision, 1))
+        val updated = requested.normalizedForSave().copy(revision = Math.addExact(requested.revision, 1))
         return if (previous == null) entries + updated else entries.map { if (it.id == updated.id) updated else it }
     }
 

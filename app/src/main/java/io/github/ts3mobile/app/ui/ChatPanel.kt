@@ -39,6 +39,7 @@ internal fun ChatPanel(
     onFocus: () -> Unit,
     onSelect: (io.github.ts3mobile.app.chat.ChatConversationKey) -> Unit,
     onClose: (io.github.ts3mobile.app.chat.ChatConversationKey) -> Unit,
+    attachments: ChatAttachmentActions? = null,
 ) {
     val scope = rememberCoroutineScope()
     var followTail by rememberSaveable {
@@ -90,11 +91,12 @@ internal fun ChatPanel(
         if (state.overflow) Text(stringResource(R.string.chat_overflow), style = MaterialTheme.typography.labelSmall)
         if (state.invalidEvent) Text(stringResource(R.string.chat_invalid_event), style = MaterialTheme.typography.labelSmall)
         LazyColumn(
-            Modifier.weight(1f).background(MaterialTheme.colorScheme.surfaceContainerLow).testTag("chat_messages"),
+            Modifier.weight(1f).background(MaterialTheme.colorScheme.surfaceContainerLow).testTag("chat_messages")
+                .guideAnchor(GuideAnchor.CHAT_MESSAGES),
             state = list,
         ) {
             if (state.messages.isEmpty()) item { Text(stringResource(R.string.chat_empty), Modifier.padding(16.dp)) }
-            items(state.messages, key = { it.id }) { ChatMessageRow(it, state.active.isPrivate) }
+            items(state.messages, key = { it.id }) { ChatMessageRow(it, state.active.isPrivate, attachments) }
         }
         if (state.unread > 0 && !followTail) {
             OutlinedButton(onClick = {

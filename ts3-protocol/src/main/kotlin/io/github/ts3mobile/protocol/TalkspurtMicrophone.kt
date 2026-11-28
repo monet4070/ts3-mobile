@@ -11,8 +11,11 @@ internal class TalkspurtMicrophone(
 ) : Microphone {
     private val failed = AtomicBoolean(false)
 
-    override fun isReady(): Boolean =
-        if (failed.get()) {
+    @Volatile var voiceTiming: Ts3jVoiceTiming? = null
+
+    override fun isReady(): Boolean {
+        voiceTiming?.clearOffered()
+        return if (failed.get()) {
             false
         } else {
             try {
@@ -22,6 +25,7 @@ internal class TalkspurtMicrophone(
                 false
             }
         }
+    }
 
     override fun getCodec(): CodecType = CodecType.OPUS_VOICE
 
@@ -30,7 +34,19 @@ internal class TalkspurtMicrophone(
             EMPTY_FRAME
         } else {
             try {
-                source.pollEncodedFrame() ?: EMPTY_FRAME
+                val timing = voiceTiming
+                if (timing == null) {
+                    source.pollEncodedFrame() ?: EMPTY_FRAME
+                } else {
+                    val frame =
+                        if (source is TimedEncodedVoiceSource) {
+                            source.pollTimedEncodedFrame()
+                        } else {
+                            source.pollEncodedFrame()?.let { TimedEncodedVoiceFrame(it, null) }
+                        }
+                    timing.offer(frame)
+                    frame?.bytes ?: EMPTY_FRAME
+                }
             } catch (error: Throwable) {
                 reportFailure(error)
                 EMPTY_FRAME

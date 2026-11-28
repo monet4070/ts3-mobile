@@ -13,8 +13,12 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.Ts3MobileApplication
 import io.github.ts3mobile.app.identity.documents.AndroidBackupDocument
+import io.github.ts3mobile.app.ui.GuideDestinationTip
+import io.github.ts3mobile.app.ui.GuideRoute
+import io.github.ts3mobile.app.ui.guideRoute
 import io.github.ts3mobile.app.ui.theme.ApplicationTheme
 
 /** Private in-memory operation survives rotation, never process death or SavedStateHandle. */
@@ -45,6 +49,12 @@ internal class IdentityManagementViewModel(application: Application) : AndroidVi
         }
     }
 
+    fun importDesktop() {
+        if (!exports.state.value.working && !exports.state.value.pickerOutstanding) {
+            restores.beginDesktopImport()
+        }
+    }
+
     init {
         exports.refresh()
     }
@@ -70,6 +80,7 @@ class IdentityManagementActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        val desktopImportEnabled = resources.getBoolean(R.bool.desktop_identity_import_enabled)
         enableEdgeToEdge()
         setContent {
             ApplicationTheme {
@@ -98,24 +109,27 @@ class IdentityManagementActivity : ComponentActivity() {
                         }
                     }
                 }
-                IdentityManagementScreen(
-                    state,
-                    useState,
-                    model::export,
-                    model.exports::refresh,
-                    model.exports::cancel,
-                    ::finish,
-                    restoreActive = restore.active,
-                    restoreContent = {
-                        IdentityRestoreSection(
-                            restore, useState, state.snapshot?.rollback != null,
-                            state.working || state.pickerOutstanding,
-                            model::import, model.restores::beginRollback, model.restores::confirm,
-                            model.restores::refreshConfirmation, model.restores::cancel,
-                            { io.github.ts3mobile.app.service.TeamSpeakService.disconnect(this) },
-                        )
-                    },
-                )
+                GuideDestinationTip(intent.guideRoute(GuideRoute.IDENTITY)) {
+                    IdentityManagementScreen(
+                        state,
+                        useState,
+                        model::export,
+                        model.exports::refresh,
+                        model.exports::cancel,
+                        ::finish,
+                        restoreActive = restore.active,
+                        restoreContent = {
+                            IdentityRestoreSection(
+                                restore, useState, state.snapshot?.rollback != null,
+                                state.working || state.pickerOutstanding,
+                                model::import, model.restores::beginRollback, model.restores::confirm,
+                                model.restores::refreshConfirmation, model.restores::cancel,
+                                { io.github.ts3mobile.app.service.TeamSpeakService.disconnect(this) },
+                                onImportDesktop = if (desktopImportEnabled) model::importDesktop else null,
+                            )
+                        },
+                    )
+                }
             }
         }
     }

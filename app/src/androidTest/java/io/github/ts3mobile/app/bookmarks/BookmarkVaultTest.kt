@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.ts3mobile.app.R
+import io.github.ts3mobile.app.crypto.AndroidKeystoreKeys
+import io.github.ts3mobile.app.crypto.KeystorePayloadCipher
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -136,7 +138,10 @@ class BookmarkVaultTest {
     @Test fun bookmarkCiphertextIsExcludedFromBackupAndTransfer() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-        fun exclusions(id: Int): Int {
+        fun exclusions(
+            id: Int,
+            path: String,
+        ): Int {
             val parser = context.resources.getXml(id)
             var count = 0
             parser.use {
@@ -146,7 +151,7 @@ class BookmarkVaultTest {
                         parser.getAttributeValue(
                             null,
                             "path",
-                        ) == "datastore/ts3_bookmarks.preferences_pb"
+                        ) == path
                     ) {
                         count++
                     }
@@ -155,7 +160,45 @@ class BookmarkVaultTest {
             }
             return count
         }
-        assertEquals(1, exclusions(R.xml.backup_rules))
-        assertEquals(2, exclusions(R.xml.data_extraction_rules))
+        val vaults = listOf("ts3_bookmarks", "ts3_bookmark_channels", "ts3_chat_history")
+        for (path in vaults.map { "datastore/$it.preferences_pb" }) {
+            assertEquals(1, exclusions(R.xml.backup_rules, path))
+            assertEquals(2, exclusions(R.xml.data_extraction_rules, path))
+        }
     }
+
+    @Test fun sizeFailureKeepsReadableCiphertextAndRemovingAnEntryAllowsRetry() =
+        runBlocking {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val file = File(context.cacheDir, "bookmark-capacity-${UUID.randomUUID()}.preferences_pb")
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            try {
+                val store = PreferenceDataStoreFactory.create(scope = scope) { file }
+                val cipher = KeystorePayloadCipher(AndroidKeystoreKeys("ts3_mobile_bookmarks_v1"))
+                val vault = BookmarkVault(store, cipher)
+                val key = stringPreferencesKey("encrypted_bookmarks")
+                val base = List(5) { ServerBookmark("legacy-$it", name = "Fixture", host = "voice.example.invalid", revision = 1) }
+                val remaining = BookmarkCodec.MAX_ARCHIVE_BYTES - BookmarkCodec.encode(base).size
+                val legacy =
+                    base.mapIndexed { index, bookmark ->
+                        val padding = remaining / base.size + if (index == 0) remaining % base.size else 0
+                        bookmark.copy(nickname = " ".repeat(padding) + bookmark.nickname)
+                    }
+                val previousCiphertext = cipher.encrypt(BookmarkCodec.encode(legacy))
+                store.edit { it[key] = previousCiphertext }
+                val requested = ServerBookmark("new-entry", name = "New", host = " voice.example.invalid ", nickname = " Tester ")
+
+                assertTrue(runCatching { vault.save(requested) }.exceptionOrNull() is IllegalArgumentException)
+                assertEquals(previousCiphertext, store.data.first()[key])
+                assertEquals(legacy, vault.read())
+
+                vault.remove(legacy.first())
+                val saved = vault.save(requested)
+                assertEquals(saved, vault.read())
+                assertEquals("Tester", saved.last().nickname)
+            } finally {
+                scope.coroutineContext.job.cancelAndJoin()
+                file.delete()
+            }
+        }
 }

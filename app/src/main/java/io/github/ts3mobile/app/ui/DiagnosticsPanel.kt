@@ -2,20 +2,14 @@ package io.github.ts3mobile.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import io.github.ts3mobile.app.R
 import io.github.ts3mobile.app.service.AudioDiagnosticStatus
@@ -35,18 +29,27 @@ internal fun DiagnosticsPanel(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        FilledTonalButton(
-            onClick = onMarkAudioIssue,
-            enabled = audio.sessions > 0,
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-        ) { Text(stringResource(R.string.diagnostics_audio_mark)) }
-        DiagnosticExportButtons(onCopyDiagnostics, onSaveDiagnostics)
+        SettingsSection(stringResource(R.string.diagnostics_tools_title), UiIcon.FileText) {
+            FeatureAction(
+                UiIcon.Activity,
+                stringResource(R.string.diagnostics_audio_mark),
+                onMarkAudioIssue,
+                modifier = Modifier.fillMaxWidth().guideAnchor(GuideAnchor.DIAGNOSTIC_MARK),
+                enabled = audio.sessions > 0,
+                style = FeatureActionStyle.PRIMARY,
+            )
+            DiagnosticExportButtons(onCopyDiagnostics, onSaveDiagnostics)
+            Text(
+                stringResource(R.string.diagnostics_privacy_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         SettingsSection(stringResource(R.string.diagnostics_audio_title), UiIcon.Activity) {
             Text(stringResource(R.string.diagnostics_audio_retention), style = MaterialTheme.typography.bodySmall)
-            DiagnosticMetric(stringResource(R.string.diagnostics_audio_sessions), audio.sessions.toString())
-            DiagnosticMetric(stringResource(R.string.diagnostics_audio_samples), audio.savedSamples.toString())
-            DiagnosticMetric(
+            SettingsReadout(stringResource(R.string.diagnostics_audio_sessions), audio.sessions.toString())
+            SettingsReadout(stringResource(R.string.diagnostics_audio_samples), audio.savedSamples.toString())
+            SettingsReadout(
                 stringResource(R.string.diagnostics_audio_last_saved),
                 if (audio.lastPersistedTimeMs > 0) {
                     DateFormat.getTimeInstance(DateFormat.MEDIUM).format(Date(audio.lastPersistedTimeMs))
@@ -69,24 +72,18 @@ internal fun DiagnosticsPanel(
         }
 
         SettingsSection(stringResource(R.string.diagnostics_title), UiIcon.Server) {
-            Text(
-                stringResource(R.string.diagnostics_privacy_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            DiagnosticMetric(stringResource(R.string.diagnostics_uptime), formatDuration(diagnostics.uptimeMs))
-            DiagnosticMetric(stringResource(R.string.diagnostics_connection_attempts), diagnostics.connectionAttempts.toString())
-            DiagnosticMetric(stringResource(R.string.diagnostics_reconnect_attempts), diagnostics.reconnectAttempts.toString())
-            DiagnosticMetric(stringResource(R.string.diagnostics_successful_connections), diagnostics.successfulConnections.toString())
-            DiagnosticMetric(stringResource(R.string.diagnostics_failed_connections), diagnostics.failedConnections.toString())
-            DiagnosticMetric(stringResource(R.string.diagnostics_retryable_failures), diagnostics.retryableFailures.toString())
-            DiagnosticMetric(stringResource(R.string.diagnostics_voice_frames_received), diagnostics.voiceFramesReceived.toString())
-            DiagnosticMetric(stringResource(R.string.diagnostics_voice_frames_dropped), diagnostics.voiceFramesDropped.toString())
-            DiagnosticMetric(stringResource(R.string.diagnostics_microphone_errors), diagnostics.microphoneErrors.toString())
-            DiagnosticMetric(stringResource(R.string.diagnostics_channel_join_attempts), diagnostics.channelJoinAttempts.toString())
-            DiagnosticMetric(stringResource(R.string.diagnostics_channel_join_failures), diagnostics.channelJoinFailures.toString())
-            DiagnosticMetric(
+            SettingsReadout(stringResource(R.string.diagnostics_uptime), formatDuration(diagnostics.uptimeMs))
+            SettingsReadout(stringResource(R.string.diagnostics_connection_attempts), diagnostics.connectionAttempts.toString())
+            SettingsReadout(stringResource(R.string.diagnostics_reconnect_attempts), diagnostics.reconnectAttempts.toString())
+            SettingsReadout(stringResource(R.string.diagnostics_successful_connections), diagnostics.successfulConnections.toString())
+            SettingsReadout(stringResource(R.string.diagnostics_failed_connections), diagnostics.failedConnections.toString())
+            SettingsReadout(stringResource(R.string.diagnostics_retryable_failures), diagnostics.retryableFailures.toString())
+            SettingsReadout(stringResource(R.string.diagnostics_voice_frames_received), diagnostics.voiceFramesReceived.toString())
+            SettingsReadout(stringResource(R.string.diagnostics_voice_frames_dropped), diagnostics.voiceFramesDropped.toString())
+            SettingsReadout(stringResource(R.string.diagnostics_microphone_errors), diagnostics.microphoneErrors.toString())
+            SettingsReadout(stringResource(R.string.diagnostics_channel_join_attempts), diagnostics.channelJoinAttempts.toString())
+            SettingsReadout(stringResource(R.string.diagnostics_channel_join_failures), diagnostics.channelJoinFailures.toString())
+            SettingsReadout(
                 stringResource(R.string.diagnostics_last_failure),
                 diagnostics.lastFailure?.name ?: stringResource(R.string.diagnostics_none),
             )
@@ -101,53 +98,14 @@ private fun DiagnosticExportButtons(
 ) {
     if (LocalDensity.current.fontScale > 1.3f) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            DiagnosticExportButton(R.string.action_copy, onCopy, Modifier.fillMaxWidth())
-            DiagnosticExportButton(R.string.diagnostics_save, onSave, Modifier.fillMaxWidth())
+            FeatureAction(UiIcon.Copy, stringResource(R.string.action_copy), onCopy, Modifier.fillMaxWidth())
+            FeatureAction(UiIcon.Download, stringResource(R.string.diagnostics_save), onSave, Modifier.fillMaxWidth())
         }
     } else {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DiagnosticExportButton(R.string.action_copy, onCopy, Modifier.weight(1f))
-            DiagnosticExportButton(R.string.diagnostics_save, onSave, Modifier.weight(1f))
+            FeatureAction(UiIcon.Copy, stringResource(R.string.action_copy), onCopy, Modifier.weight(1f))
+            FeatureAction(UiIcon.Download, stringResource(R.string.diagnostics_save), onSave, Modifier.weight(1f))
         }
-    }
-}
-
-@Composable
-private fun DiagnosticExportButton(
-    label: Int,
-    action: () -> Unit,
-    modifier: Modifier,
-) {
-    OutlinedButton(
-        onClick = action,
-        modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-    ) { Text(stringResource(label)) }
-}
-
-@Composable
-private fun DiagnosticMetric(
-    label: String,
-    value: String,
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 34.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontFamily = FontFamily.Monospace,
-        )
     }
 }
 

@@ -11,13 +11,28 @@ internal enum class IdentityRestoreStatus {
     PREVIEW,
     COMMITTING,
     DONE,
+    ALREADY_CURRENT,
     CANCELLING,
     CANCELLED,
     PICKER_UNAVAILABLE,
     FAILED,
 }
 
-internal data class IdentityReplacementPreview(val previous: IdentitySnapshot, val proposed: Ts3IdentitySummary, val rollback: Boolean)
+internal enum class IdentityImportSource { BACKUP, DESKTOP }
+
+internal data class IdentityReplacementPreview(
+    val previous: IdentitySnapshot,
+    val proposed: Ts3IdentitySummary,
+    val rollback: Boolean,
+    val source: IdentityImportSource? = null,
+) {
+    val isAlreadyCurrent: Boolean get() =
+        source == IdentityImportSource.DESKTOP && previous.active?.uid == proposed.uid && previous.active.keyOffset == proposed.keyOffset
+
+    val isDesktopDowngrade: Boolean get() =
+        source == IdentityImportSource.DESKTOP && previous.active?.uid == proposed.uid &&
+            proposed.securityLevel < previous.active.securityLevel
+}
 
 internal data class IdentityRestoreState(
     val status: IdentityRestoreStatus = IdentityRestoreStatus.READY,
@@ -27,6 +42,7 @@ internal data class IdentityRestoreState(
     val backupFailure: IdentityBackupFailure? = null,
     val importFailure: IdentityImportFailure? = null,
     val storeFailure: IdentityFailure? = null,
+    val source: IdentityImportSource? = null,
 ) {
     val working: Boolean get() =
         status in

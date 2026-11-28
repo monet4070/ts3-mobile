@@ -39,6 +39,7 @@ internal data class ReceivePolicy(
         const val LATE_PACKETS_TO_INCREASE = 2
         const val FADE_SAMPLES = 240
         const val TALKER_IDLE_NANOS = 2_000_000_000L
+        const val MAX_TALKER_MEDIA_AGE_NANOS = 360_000_000L
         const val DEDUPLICATION_HISTORY_PACKETS = 128
     }
 }

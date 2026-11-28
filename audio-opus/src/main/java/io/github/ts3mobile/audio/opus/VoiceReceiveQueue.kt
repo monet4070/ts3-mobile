@@ -47,7 +47,6 @@ internal class VoiceReceiveQueue(
         prune(now)
         if (isExpired(queued, now)) {
             budget.stats.stalePackets.incrementAndGet()
-            budget.invalidate(queued.frame.clientId)
             return false
         }
         val payload = queued.frame.encodedData
@@ -112,28 +111,17 @@ internal class VoiceReceiveQueue(
     }
 
     private fun prune(now: Long) {
-        val stale = frames.filter { isExpired(it, now) }
-        budget.stats.stalePackets.addAndGet(stale.size.toLong())
-        val clients = stale.map { it.frame.clientId }.toSet()
-        clients.forEach(budget::invalidate)
-        if (clients.isNotEmpty()) {
-            val fresh = frames.filterNot { isExpired(it, now) }
-            frames.clear()
-            for (queued in fresh) {
-                if (queued.frame.clientId in clients) {
-                    val info = checkNotNull(queued.info)
-                    val lease = budget.reserve(queued.frame.clientId, info.samples, queued.frame.encodedData.size, queued.arrivalNanos)
-                    if (lease != null) {
-                        frames.addLast(queued.copy(lease = lease))
-                    } else {
-                        budget.stats.invalidPackets.incrementAndGet()
-                    }
-                } else {
-                    frames.addLast(queued)
-                }
+        val iterator = frames.iterator()
+        while (iterator.hasNext()) {
+            val queued = iterator.next()
+            if (isExpired(queued, now)) {
+                iterator.remove()
+                queued.lease?.release()
+                budget.stats.stalePackets.incrementAndGet()
+            } else if (queued.lease?.valid != true) {
+                iterator.remove()
             }
         }
-        frames.removeAll { it.lease?.valid != true }
     }
 
     private fun isExpired(

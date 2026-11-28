@@ -32,6 +32,7 @@ class ConnectionMonitorTest {
         assertFalse(monitor.isCurrentNetwork(2))
         assertEquals(NetworkTransition.SWITCHED, monitor.networkChanged(available(2)))
         assertEquals(NetworkTransition.UNAVAILABLE, monitor.networkChanged(pending.copy(isBlocked = true)))
+        assertEquals(NetworkTransition.SWITCHED, monitor.networkChanged(available(2)))
         assertEquals(NetworkTransition.UNCHANGED, monitor.networkChanged(available(2)))
     }
 

@@ -30,11 +30,13 @@ public final class UpgradeDataProbe extends Instrumentation {
     private String stage;
     private ClassLoader targetLoader;
     private boolean includeTuning;
+    private boolean includeLegacyBackup;
 
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
         stage = arguments.getString("stage", "verify");
         includeTuning = Boolean.parseBoolean(arguments.getString("includeTuning", "false"));
+        includeLegacyBackup = Boolean.parseBoolean(arguments.getString("includeLegacyBackup", "false"));
         start();
     }
 
@@ -97,11 +99,14 @@ public final class UpgradeDataProbe extends Instrumentation {
                     "Fixture marker write failed");
                 recordRawStorage(context, marker);
                 if (includeTuning) seedTuning(context, marker);
-                result.putString("stream", "UPGRADE_REAL_VAULT_FIXTURE_SEEDED\n");
+                if (includeLegacyBackup) LegacyBackupFixture.write(context, identity);
+                result.putString("stream", "UPGRADE_REAL_VAULT_FIXTURE_SEEDED\n" +
+                    (includeLegacyBackup ? "UPGRADE_LEGACY_BACKUP_WRITTEN\n" : ""));
             } else if ("verify".equals(stage)) {
                 require(marker.contains("identity_digest"), "Missing seed marker");
                 require(marker.getInt("uid", -1) == context.getApplicationInfo().uid, "Application UID changed");
-                require(marker.getString("identity_digest", "").equals(digest((String) suspendCall(identities, "getOrCreate"))),
+                String identity = (String) suspendCall(identities, "getOrCreate");
+                require(marker.getString("identity_digest", "").equals(digest(identity)),
                     "Identity changed or could not be decrypted");
                 require(form.equals(suspendCall(settings, "read")), "Connection form changed");
                 List<?> entries = (List<?>) suspendCall(bookmarks, "read");
@@ -119,7 +124,9 @@ public final class UpgradeDataProbe extends Instrumentation {
                 if (marker.contains("tuning_digest")) {
                     require(expectedTuning().equals(suspendCall(tuningStore(context), "read")), "Microphone preferences changed");
                 }
-                result.putString("stream", "UPGRADE_REAL_IDENTITY_FORM_BOOKMARKS_UID_OK\n");
+                if (includeLegacyBackup) LegacyBackupFixture.verify(context, identity);
+                result.putString("stream", "UPGRADE_REAL_IDENTITY_FORM_BOOKMARKS_UID_OK\n" +
+                    (includeLegacyBackup ? "UPGRADE_LEGACY_BACKUP_PREFLIGHT_OK\n" : ""));
             } else {
                 throw new IllegalArgumentException("Unknown stage");
             }

@@ -11,7 +11,7 @@ data class BookmarkConnection(
     val port: Int,
     val nickname: String,
 ) {
-    fun matches(entry: ServerBookmark): Boolean = port == entry.port && host.trim().equals(entry.host.trim(), ignoreCase = true)
+    fun matches(entry: ServerBookmark): Boolean = port == entry.port && sameBookmarkHost(host, entry.host)
 
     override fun toString(): String = "BookmarkConnection(<redacted>)"
 }

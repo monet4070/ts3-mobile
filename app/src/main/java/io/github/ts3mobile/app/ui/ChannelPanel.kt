@@ -48,6 +48,7 @@ internal fun ChannelList(
     state: TeamSpeakServiceState,
     onJoinChannel: (Int, String) -> Unit,
     onPoke: (Ts3Participant) -> Unit = {},
+    previews: ServerImagePreviewScope? = null,
 ) {
     var passwordChannel by remember(state.bookmarkConnection?.token) { mutableStateOf<Ts3Channel?>(null) }
     var expandedChannelIds by rememberSaveable { mutableStateOf(intArrayOf()) }
@@ -96,6 +97,16 @@ internal fun ChannelList(
     }
 
     LazyColumn(Modifier.fillMaxSize()) {
+        val serverIcon = state.snapshot.serverIcon
+        if (serverIcon != null && previews != null) {
+            item(key = "server-image") {
+                FeatureAction(
+                    UiIcon.Image,
+                    stringResource(R.string.server_image_server_icon),
+                    { previews.open(ServerImageTarget.Server, serverIcon) },
+                )
+            }
+        }
         items(rows, key = { it.channel.id }) { row ->
             val isCurrent = row.channel.id == currentChannelId
             val isSwitching = row.channel.id == state.switchingChannelId
@@ -197,6 +208,11 @@ internal fun ChannelList(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    val channelIcon = row.channel.icon
+                    if (channelIcon != null && previews != null) {
+                        val target = ServerImageTarget.Channel(row.channel.id)
+                        ServerImagePreviewButton(target) { previews.open(target, channelIcon) }
+                    }
                     if (isCurrent) {
                         Spacer(Modifier.width(10.dp))
                         AppIcon(

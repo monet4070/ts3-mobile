@@ -4,10 +4,15 @@ Thanks for helping improve TS3 Mobile. This is a community-maintained client;
 changes should preserve connection stability, bounded audio latency, and user
 control over microphone transmission.
 
-The current stable line is 1.1.0 (2026-11-09); 1.0.0 was the first stable release. User documentation starts
-at the [README](README.md); release roles, artifact/signature requirements and
-open acceptance items are in the [release pack](docs/release/README.md).
+User documentation starts at the [README](README.md). The
+[release index](docs/release/README.md) records the published stable version,
+candidate status, artifact/signature requirements and open acceptance items.
 Do not mark a release or a device-matrix row passed merely because docs are ready.
+For 1.3.0 and later changes, keep the English and Simplified Chinese README, user guides,
+troubleshooting, privacy notes, and release notes in sync whenever behavior changes.
+Keep public download links pointed at published GitHub Releases; the
+[1.3.0 verification status](docs/release/CANDIDATE_STATUS_2026-11-25.md) separates CI
+results from signed-device coverage.
 
 ## Before opening a change
 
@@ -30,7 +35,7 @@ a pull request, run the environment check first:
 Then run:
 
 ```powershell
-.\gradlew.bat :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
+.\gradlew.bat quality :ts3-protocol:test :audio-opus:testDebugUnitTest :audio-opus:lintDebug :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease
 ```
 
 After changes to identity handling, dependencies or shrinker rules, also run the
@@ -47,6 +52,24 @@ and runs via ART `app_process`, without installing the app or contacting a serve
 Keep it outside the production build so test references cannot hide R8 mistakes.
 CI runs this check on API 35. A successful release build alone cannot validate
 reflective constructors; see the [issue #3 report](docs/testing/ISSUE_3_RELEASE_IDENTITY_FIX.md).
+
+### Build when JitPack is unavailable
+
+Use a local checkout of the fork containing the pinned commit in
+`tools/build-ts3j-from-source.py`. This does not change Gradle locks or publish
+anything. Maven Central is still needed for uncached dependencies; the builder's
+`--offline` option requires verified cached JARs.
+
+```sh
+python3 tools/build-ts3j-from-source.py --fork /path/to/ts3j --out build/ts3j-source-maven
+./gradlew -Pts3jSourceRepository="$PWD/build/ts3j-source-maven" :ts3-protocol:test --rerun :app:assembleRelease --no-build-cache
+```
+
+Keep a copy of the resulting unsigned APK before running a normal Release build,
+which reuses the same output path. Check that copy with `check-release-identity.ps1`
+(`-ApkPath`) and `check-release-codec.py` (`--apk`) on a booted emulator. The CI
+recovery build does not use JitPack and exercises both probes; the normal build and
+its probes remain separate checks. This is not a live TeamSpeak compatibility test.
 
 The repository quality gate also checks Kotlin formatting across all modules:
 
@@ -77,15 +100,33 @@ test evidence to its dated record; do not present it as a new run. GitHub CI ski
 the paths listed in its documentation-only filters. Publishing uses the exact
 reviewed source commit and final signed APK, as described in the release pack.
 
+Keep independent features and fixes in separate, buildable commits with their
+regressions. Land each slice through CI before stacking unrelated work on it.
+
 Use `.\gradlew.bat ktlintFormat` only for a focused formatting change, then
 review the complete diff before committing it.
 
-For UI changes, run the offline Compose regression/preview suite on an Android
-emulator (no TeamSpeak server or credentials are required):
+On a disposable Android emulator, run the same discovery-based suites used by
+CI (no TeamSpeak server or credentials are required):
 
-```powershell
-.\gradlew.bat :app:connectedDebugAndroidTest
+```sh
+./gradlew :audio-opus:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=io.github.ts3mobile.audio.opus.ManualInstrumentation
+./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=io.github.ts3mobile.app.ManualInstrumentation
 ```
+
+New instrumented regressions are discovered automatically. Mark a class or
+method `ManualInstrumentation` only when it requires a dedicated fixture,
+experiment, hardware/timing run or system-policy preparation. Dedicated probe
+commands select their own classes without the exclusion; for example the
+identity crash harness still runs separately in CI.
+
+Notification tests that publish a card clear and wait for their own ID before
+and after execution. Restore any changed global state (DND, IME, overlay or
+accessibility settings) even on failure. Tests that write through the real
+connection settings vault restore the original value or absence through the
+same DataStore; do not delete open DataStore files. Run tests that revoke runtime
+permissions or modify persistent channel policy on a dedicated, freshly
+prepared emulator: revocation can terminate the app and instrumentation.
 
 The preview tests write PNGs into the app's external `ui-previews` directory.
 CI also runs the main-tab chat navigation, channel/private chat, bookmark
@@ -140,6 +181,15 @@ off/on. `PlaybackLifecycleTest` checks main-thread stop and output retirement;
 `PlaybackFailureTest` verifies visible failure/recovery guidance. JNI concurrency
 is covered by `NativeAudioLifecycleTest`.
 JVM fixtures use virtual time, including the ten-minute receive/playback trace.
+
+### Floating PTT release boundary
+
+Standard Release includes the private connected PTT activity and Android overlay permission,
+but must never include the Debug launcher alias or local recorder service. On a dedicated,
+fresh emulator started with `-no-audio`, run `tools/check-floating-ptt-probe.py` after building
+both APKs to check the manifest boundary and local capture lifecycle. Connected foreground,
+notification recall and card layout use the synthetic-session Android tests instead. Use the
+separate media QA build only for test packaging; it is not a published APK.
 Run formatting separately before checks; do not run format and check tasks
 together with Gradle parallel execution. These checks do not establish physical
 audio quality, Bluetooth bandwidth or power consumption.
@@ -218,6 +268,10 @@ make the check pass. Use a dedicated new AVD, not a personal session.
 python3 tools/check-upgrade-compat.py --device emulator-5558 --sdk "$ANDROID_HOME" --baseline-apk /path/to/baseline-debug.apk --candidate-apk /path/to/candidate.apk
 # For an A2+ baseline, also preserve four non-default microphone preferences:
 python3 tools/check-upgrade-compat.py --device emulator-5558 --sdk "$ANDROID_HOME" --baseline-apk /path/to/a2-or-later-debug.apk --candidate-apk /path/to/candidate.apk --include-tuning
+# Verify a staged update without deleting or reseeding its data between releases:
+python3 tools/check-upgrade-compat.py --device emulator-5558 --baseline-apk /path/to/baseline-debug.apk --via-apk /path/to/hotfix.apk --candidate-apk /path/to/feature.apk --include-tuning
+# With all Debug APKs, have the old app create a synthetic backup and preflight it in each update:
+python3 tools/check-upgrade-compat.py --device emulator-5558 --baseline-apk /path/to/baseline-debug.apk --candidate-apk /path/to/feature-debug.apk --include-legacy-backup
 python3 -m unittest discover -s tools/tests -p 'test_*.py'
 ```
 

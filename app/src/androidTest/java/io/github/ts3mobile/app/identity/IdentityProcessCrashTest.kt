@@ -3,12 +3,14 @@ package io.github.ts3mobile.app.identity
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.ts3mobile.app.ManualInstrumentation
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /** Requires external runner to kill the process at an acknowledged durable boundary. */
+@ManualInstrumentation
 class IdentityProcessCrashTest {
     @Test fun externalProcessBoundaryRecoversOrPreservesTheOriginalFailureEvidence() =
         runBlocking {

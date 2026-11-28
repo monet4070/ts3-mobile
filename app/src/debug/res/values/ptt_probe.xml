@@ -1,0 +1,24 @@
+<resources>
+    <string name="ptt_probe_title">Floating PTT Lab (Debug)</string>
+    <string name="ptt_probe_intro">Tests Android microphone permission only. Press the floating button outside this app to sample the microphone locally. No audio is stored or sent. Do not test during a TeamSpeak connection.</string>
+    <string name="ptt_probe_overlay">Open overlay permission settings</string>
+    <string name="ptt_probe_prepare">Arm for five minutes</string>
+    <string name="ptt_probe_stop">Disarm</string>
+    <string name="ptt_probe_denied">Allow overlays and microphone access, unlock the device, and end any TeamSpeak connection before arming.</string>
+    <string name="ptt_probe_idle">Not armed</string>
+    <string name="ptt_probe_ready">Floating button ready — not recording</string>
+    <string name="ptt_probe_starting">Opening microphone</string>
+    <string name="ptt_probe_sampling">Sampling locally — not sending</string>
+    <string name="ptt_probe_releasing">Releasing microphone — not sending</string>
+    <string name="ptt_probe_hold">Hold to test microphone</string>
+    <string name="ptt_probe_stats">Presses: %1$d. Capture starts: %2$d. Presses with usable input: %3$d. Failures: %4$d. Start p50/p95: %5$s. Release p50/p95: %6$s.</string>
+    <string name="ptt_connected_intro">Use an isolated test channel and get everyone’s consent. Expand the overlay to select a temporary mic mode. Selecting Always on or Gate starts the microphone. In Hold mode, hold the button to speak.</string>
+    <string name="ptt_connected_prepare">Arm connected test</string>
+    <string name="ptt_connected_denied">Connect to a channel and stop any existing recording. Allow overlays, microphone access and notifications; unlock the device and finish any call before arming.</string>
+    <string name="ptt_connected_ready">Connected PTT is ready. No recording. Go Home to show the overlay.</string>
+    <string name="ptt_show_on_desktop">Go Home to show overlay</string>
+    <string name="ptt_overlay_sampling">Sampling</string>
+    <string name="ptt_overlay_local_title">Mic test</string>
+    <string name="ptt_overlay_local_notice">Not saved or sent</string>
+    <string name="ptt_overlay_attempts">%1$d presses · %2$d captures</string>
+</resources>

@@ -129,6 +129,27 @@ class AudioDiagnosticControllerTest {
             assertEquals(1, stored.events.count { it.kind == AudioDiagnosticEvent.STOPPED })
         }
 
+    @Test fun delayedAttachmentReportsMissingGenerationsAndDoesNotDuplicateTheRemainingFinalSample() =
+        runTest {
+            val file = temporary.newFile()
+            val clock = { 1_000 + testScheduler.currentTime }
+            val repository = AudioDiagnosticRepository(file, backgroundScope, clock)
+            val latest = frame(9).copy(generation = 2, active = false)
+            val controller =
+                AudioDiagnosticController(repository, { latest }, { AudioDiagnosticContext() }, clock, { testScheduler.currentTime })
+            controller.start(backgroundScope)
+            runCurrent()
+            controller.onStopped(latest)
+            controller.onStopped(frame(5).copy(active = false))
+            advanceTimeBy(101)
+            runCurrent()
+            val stored = AudioDiagnosticStorage(file).read()
+            assertEquals(2L, stored.samples.single().snapshot.generation)
+            assertEquals(9L, stored.samples.single().snapshot.counters[AudioReceiveCounter.SUBMITTED])
+            assertEquals(1, stored.events.count { it.kind == AudioDiagnosticEvent.STOPPED })
+            assertEquals(1L, stored.events.single { it.kind == AudioDiagnosticEvent.PLAYBACK_GENERATIONS_MISSED }.value)
+        }
+
     @Test fun everyAudioDiagnosticKindIsPersistedWithItsName() =
         runTest {
             val repository = AudioDiagnosticRepository(temporary.newFile(), backgroundScope, { 1_000 })
@@ -140,6 +161,19 @@ class AudioDiagnosticControllerTest {
                 val marker = "\"kind\":\"${kind.name}\""
                 assertEquals("$kind must be persisted exactly once under its own name", 1, report.split(marker).size - 1)
             }
+        }
+
+    @Test fun problemMarkForcesASampleOnTheSameTimelineBeforeThePeriodicDeadline() =
+        runTest {
+            var time = 1_000L
+            val repository = AudioDiagnosticRepository(temporary.newFile(), backgroundScope, { time })
+            val controller = AudioDiagnosticController(repository, { frame(1) }, { AudioDiagnosticContext() }, { time }, { time })
+            controller.sampleNow()
+            time += 50
+            assertTrue(controller.mark())
+            val report = repository.export()
+            assertTrue(report.contains("{\"timeMs\":1050,\"session\":1,\"kind\":\"USER_MARK\""))
+            assertTrue(report.contains("{\"timeMs\":1050,\"elapsedRealtimeMs\":1050,\"windowMs\":50"))
         }
 
     private fun frame(count: Long) =

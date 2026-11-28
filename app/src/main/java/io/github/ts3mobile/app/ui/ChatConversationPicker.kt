@@ -62,6 +62,7 @@ internal fun ChatConversationPicker(
             Row(
                 modifier =
                     Modifier.testTag("chat_conversation_picker").heightIn(min = 48.dp)
+                        .guideAnchor(GuideAnchor.CHAT_CONVERSATIONS)
                         .clip(MaterialTheme.shapes.small)
                         .background(if (expanded) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
                         .clickable(role = Role.Button, onClickLabel = stringResource(R.string.chat_switch_conversation)) { expanded = true }

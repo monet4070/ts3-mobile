@@ -3,17 +3,14 @@ package io.github.ts3mobile.app.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,7 +42,7 @@ internal fun BookmarkListDialog(
         onDismissRequest = onDismiss,
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(stringResource(R.string.bookmarks_title))
+                FeatureTitle(UiIcon.Bookmark, stringResource(R.string.bookmarks_title))
                 if (state.entries.isNotEmpty()) {
                     Text(
                         stringResource(R.string.bookmark_count, state.entries.size),
@@ -61,15 +58,18 @@ internal fun BookmarkListDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (onSaveCurrent != null) {
-                    OutlinedButton(onClick = onSaveCurrent, enabled = available && state.entries.size < BookmarkCodec.MAX_ENTRIES) {
-                        Text(stringResource(R.string.bookmark_save_current))
-                    }
+                    FeatureAction(
+                        UiIcon.Bookmark,
+                        stringResource(R.string.bookmark_save_current),
+                        onSaveCurrent,
+                        enabled = available && state.entries.size < BookmarkCodec.MAX_ENTRIES,
+                    )
                 }
                 if (state.failed) {
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.errorContainer) {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {
                             Text(stringResource(R.string.bookmark_failed), color = MaterialTheme.colorScheme.onErrorContainer)
-                            OutlinedButton(onClick = onReload, enabled = available) { Text(stringResource(R.string.bookmark_reload)) }
+                            FeatureAction(UiIcon.Refresh, stringResource(R.string.bookmark_reload), onReload, enabled = available)
                         }
                     }
                 }
@@ -115,12 +115,14 @@ internal fun BookmarkListDialog(
             }
         },
         confirmButton = {
-            OutlinedButton(onClick = onAdd, enabled = available && state.entries.size < BookmarkCodec.MAX_ENTRIES) {
-                AppIcon(UiIcon.Add, null, Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.bookmark_add))
-            }
+            FeatureAction(
+                UiIcon.Add,
+                stringResource(R.string.bookmark_add),
+                onAdd,
+                modifier = Modifier.guideAnchor(GuideAnchor.BOOKMARK_ADD),
+                enabled = available && state.entries.size < BookmarkCodec.MAX_ENTRIES,
+            )
         },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+        dismissButton = { FeatureAction(UiIcon.Close, stringResource(R.string.action_close), onDismiss) },
     )
 }

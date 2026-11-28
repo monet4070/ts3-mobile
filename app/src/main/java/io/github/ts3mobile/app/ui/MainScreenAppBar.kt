@@ -1,5 +1,6 @@
 package io.github.ts3mobile.app.ui
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -43,6 +44,7 @@ internal fun MainScreenAppBar(
     largeText: Boolean,
     onOpenMenu: () -> Unit,
     actions: List<MainMenuAction>,
+    guidedAction: Int? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     TopAppBar(
@@ -62,19 +64,32 @@ internal fun MainScreenAppBar(
             StatusIndicator(phase)
             Spacer(Modifier.width(4.dp))
             Box {
-                IconButton(onClick = {
-                    onOpenMenu()
-                    expanded = true
-                }) { AppIcon(UiIcon.More, stringResource(R.string.action_more)) }
+                IconButton(
+                    onClick = {
+                        onOpenMenu()
+                        expanded = true
+                    },
+                    modifier = Modifier.guideAnchor(GuideAnchor.MENU),
+                ) { AppIcon(UiIcon.More, stringResource(R.string.action_more)) }
                 DropdownMenu(expanded, { expanded = false }, modifier = Modifier.widthIn(min = 240.dp, max = 320.dp)) {
                     actions.forEach { action ->
                         if (action.startsGroup) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        DropdownMenuItem(text = { Text(stringResource(action.label)) }, leadingIcon = {
-                            AppIcon(action.icon, null)
-                        }, onClick = {
-                            expanded = false
-                            action.action()
-                        })
+                        val highlighted = action.label == guidedAction
+                        DropdownMenuItem(
+                            text = { Text(stringResource(action.label)) },
+                            leadingIcon = { AppIcon(action.icon, null) },
+                            enabled = guidedAction == null || highlighted,
+                            modifier =
+                                if (highlighted) {
+                                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.small)
+                                } else {
+                                    Modifier
+                                },
+                            onClick = {
+                                expanded = false
+                                action.action()
+                            },
+                        )
                     }
                 }
             }

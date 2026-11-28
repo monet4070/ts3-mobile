@@ -20,10 +20,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import java.util.concurrent.TimeUnit
 
 class PokeNotificationsTest {
+    @get:Rule val notificationCleanup = NotificationCleanup(PokeNotifications.NOTIFICATION_ID)
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
     private val manager get() = context.getSystemService(NotificationManager::class.java)

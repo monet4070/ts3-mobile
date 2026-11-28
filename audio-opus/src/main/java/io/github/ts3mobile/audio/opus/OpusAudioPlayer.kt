@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class OpusAudioPlayer internal constructor(
-    @Suppress("UNUSED_PARAMETER") context: Context,
+    context: Context,
     private val reference: PlaybackReferenceSink?,
     private val onRouteChanged: () -> Unit = {},
     private val onStatusChanged: (PlaybackStatus) -> Unit = {},
@@ -37,9 +37,11 @@ class OpusAudioPlayer internal constructor(
     private val participantGains = ConcurrentHashMap<Int, Float>()
     private val userMuted = AtomicBoolean(false)
     private val routeGuard = BluetoothPlaybackGuard()
+    private val standardBluetoothExperiment = context.resources.getBoolean(R.bool.bluetooth_standard_output_experiment)
 
     @Volatile private var routeSwitching = false
     private val lifecycleLock = Any()
+    private var closed = false
     private val admission = PlaybackAdmission()
 
     @Volatile var status = PlaybackStatus.STOPPED
@@ -56,6 +58,7 @@ class OpusAudioPlayer internal constructor(
 
     fun start(profile: ReceiveDelayProfile) {
         synchronized(lifecycleLock) {
+            if (closed) return
             if (control?.running?.get() == true) return
             check(worker?.isAlive != true) { "Previous playback worker has not stopped" }
             check(control?.session?.retired != false) { "Previous playback output has not been released" }
@@ -65,6 +68,7 @@ class OpusAudioPlayer internal constructor(
             val active = PlaybackControl(profile)
             control = active
             publishStatus(PlaybackStatus.BUFFERING)
+            if (!active.running.get()) return
             worker =
                 Thread({ playbackLoop(active) }, "ts3-opus-playback").apply {
                     priority = Thread.MAX_PRIORITY
@@ -93,6 +97,8 @@ class OpusAudioPlayer internal constructor(
     fun setDiagnosticsObserver(observer: AudioDiagnosticsObserver?) {
         inputQueue.budget.stats.observer = observer
     }
+
+    fun setOutputDeviceObserver(observer: ((ActualAudioDevice?) -> Unit)?) = inputQueue.budget.stats.setOutputDeviceObserver(observer)
 
     fun submit(frame: VoiceFrame) {
         inputQueue.budget.stats.count(AudioReceiveCounter.SUBMITTED)
@@ -157,7 +163,7 @@ class OpusAudioPlayer internal constructor(
             val requireBluetooth =
                 routing.selectedRoute.kind == AudioRouteKind.BLUETOOTH ||
                     device?.let { AudioRouteDevices.routeKindForDeviceType(it.type) } == AudioRouteKind.BLUETOOTH
-            val guardChanged = routeGuard.select(routing.selectedRouteId, requireBluetooth)
+            val guardChanged = routeGuard.select(routing.selectedRouteId, requireBluetooth, routing.selectedRoute.bluetoothCall)
             if (requireBluetooth && routing.switching && !routeSwitching) routeGuard.beginBluetoothAttempt()
             if (preferredDevice?.id == device?.id && selectedRouteId == routing.selectedRouteId &&
                 !guardChanged && routeSwitching == routing.switching
@@ -175,9 +181,12 @@ class OpusAudioPlayer internal constructor(
         }
     }
 
-    fun stop() {
+    fun stop() = stop(terminal = false)
+
+    private fun stop(terminal: Boolean) {
         val activeWorker =
             synchronized(lifecycleLock) {
+                if (terminal) closed = true
                 val active = control ?: return
                 admission.invalidateAll()
                 active.running.set(false)
@@ -200,7 +209,7 @@ class OpusAudioPlayer internal constructor(
         }
     }
 
-    override fun close() = stop()
+    override fun close() = stop(terminal = true)
 
     private fun onOutputRouteChanged(output: AndroidPlaybackOutput) {
         var changed = false
@@ -286,6 +295,7 @@ class OpusAudioPlayer internal constructor(
                     outputFactory?.invoke()
                         ?: AndroidPlaybackOutput(
                             preferredDevice, ::onOutputRouteChanged, routeGuard, ::onUnsafeOutputRoute, inputQueue.budget.stats,
+                            standardBluetoothExperiment = standardBluetoothExperiment,
                         )
                 },
                 reference = reference,

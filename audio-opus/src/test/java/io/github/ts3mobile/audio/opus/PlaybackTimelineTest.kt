@@ -8,6 +8,36 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackTimelineTest {
+    @Test fun firstWriteToHeadUsesAcceptedWriteAndEmitsOnlyOnce() {
+        val output = FakePlaybackOutput()
+        output.writeResults.addAll(listOf(0, 1))
+        val stats = ReceiveStats()
+        val delays = mutableListOf<Long>()
+        stats.observer =
+            object : AudioDiagnosticsObserver {
+                override fun onEvent(
+                    kind: AudioDiagnosticEventKind,
+                    value: Long,
+                ) {
+                    if (kind == AudioDiagnosticEventKind.FIRST_WRITE_TO_HEAD_US) delays += value
+                }
+
+                override fun onStopped(snapshot: AudioReceiveDiagnostics) = Unit
+            }
+        var clock = 0L
+        val timeline = PlaybackTimeline(output, receiveStats = stats, clockNanos = { clock })
+        timeline.start(clock)
+        timeline.tick(shortArrayOf(7), clock)
+        clock = TICK
+        timeline.tick(null, clock)
+        assertTrue(delays.isEmpty())
+        output.playbackHead = 1L
+        clock = 3 * TICK
+        timeline.tick(null, clock)
+        timeline.tick(null, 4 * TICK)
+        assertEquals(listOf(20_000L), delays)
+    }
+
     @Test
     fun temporaryStarvationPreservesSubmittedTailAndResumesWithoutFlush() {
         listOf(10L, 20L, 40L).forEach { gapMs ->
@@ -140,6 +170,50 @@ class PlaybackTimelineTest {
         assertThrows(IllegalStateException::class.java) {
             timeline.tick(null, PlaybackTimeline.WRITE_TIMEOUT_NANOS)
         }
+        assertEquals(11, output.writeCalls)
+    }
+
+    @Test fun lateWakeWithHeadProgressWritesOnlyTheFreshUnsubmittedSuffix() {
+        val output = FakePlaybackOutput().apply { writeResults.addAll(listOf(2, 0)) }
+        val timeline = PlaybackTimeline(output)
+        timeline.start(0L)
+        timeline.tick(shortArrayOf(1, 2, 3, 4), 0L, 0L)
+        output.playbackHead = 2
+        timeline.tick(null, 110 * MILLIS)
+        assertEquals(listOf<Short>(1, 2, 3, 4), output.accepted)
+        assertEquals(2L, timeline.playedFrames)
+        assertTrue(timeline.acceptsPcm)
+    }
+
+    @Test fun expiredSuffixIsNeverUsedToProbeAnOtherwiseHealthyOutput() {
+        val output = FakePlaybackOutput().apply { writeResults.addAll(listOf(2, 0)) }
+        val stats = ReceiveStats()
+        val timeline = PlaybackTimeline(output, receiveStats = stats)
+        val mixedAt = PlaybackTimeline.MAX_PCM_AGE_NANOS - 100 * MILLIS
+        timeline.start(mixedAt)
+        timeline.tick(shortArrayOf(1, 2, 3, 4), mixedAt, 0L)
+        timeline.tick(null, mixedAt + 110 * MILLIS)
+        assertEquals(2, output.writeCalls)
+        assertEquals(2L, stats.counters()[AudioReceiveCounter.OUTPUT_EXPIRED_PCM_SAMPLES])
+        assertTrue(timeline.acceptsPcm)
+        val resumedAt = mixedAt + 120 * MILLIS
+        timeline.tick(shortArrayOf(5, 6), resumedAt, resumedAt)
+        assertEquals(listOf<Short>(1, 2, 5, 6), output.accepted)
+    }
+
+    @Test fun droppingExpiredMediaDoesNotResetTheBudgetForAnOutputThatStillCannotWrite() {
+        val output = FakePlaybackOutput().apply { writeResults.addAll(listOf(2, 0)) }
+        val timeline = PlaybackTimeline(output)
+        val mixedAt = PlaybackTimeline.MAX_PCM_AGE_NANOS - 100 * MILLIS
+        timeline.start(mixedAt)
+        timeline.tick(shortArrayOf(1, 2, 3, 4), mixedAt, 0L)
+        output.maxWriteSamples = 0
+        timeline.tick(null, mixedAt + 110 * MILLIS)
+        val resumedAt = mixedAt + 120 * MILLIS
+        assertThrows(IllegalStateException::class.java) {
+            timeline.tick(shortArrayOf(5, 6), resumedAt, resumedAt)
+        }
+        assertEquals(3, output.writeCalls)
     }
 
     @Test

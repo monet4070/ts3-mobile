@@ -79,6 +79,7 @@ internal class TalkerJitterPipeline(
     }
 
     fun readyToStart(now: Long): Boolean {
+        expireStale(now)
         if (pcm.available > 0) return true
         if (started) return pending.isNotEmpty()
         val first = firstArrival ?: return false
@@ -92,6 +93,7 @@ internal class TalkerJitterPipeline(
             token = null
             return
         }
+        expireStale(now)
         if (!started) {
             if (!readyToStart(now)) return
             expected = pending.firstKey()
@@ -211,6 +213,46 @@ internal class TalkerJitterPipeline(
         pending.clear()
         pcm.clear()
         decoder.close()
+    }
+
+    private fun expireStale(now: Long) {
+        val droppedPcm = pcm.dropExpired(now, ReceivePolicy.MAX_TALKER_MEDIA_AGE_NANOS)
+        if (droppedPcm > 0) {
+            resetDroppedPcmSamples += droppedPcm
+            fadeRemaining = ReceivePolicy.FADE_SAMPLES
+        }
+        var droppedPending = 0
+        val iterator = pending.entries.iterator()
+        while (iterator.hasNext()) {
+            val queued = iterator.next().value
+            val ageExpired = now - queued.arrivalNanos > ReceivePolicy.MAX_TALKER_MEDIA_AGE_NANOS
+            if (ageExpired || queued.lease?.valid != true) {
+                iterator.remove()
+                queued.lease?.release()
+                droppedPending++
+                if (ageExpired) budget.stats.stalePackets.incrementAndGet()
+            }
+        }
+        if (droppedPending == 0) return
+        if (pending.isEmpty()) {
+            if (pcm.available == 0) reset(clearSequence = false)
+            return
+        }
+        val nextKey = pending.firstKey()
+        expected?.let { current ->
+            if (nextKey > current) {
+                decoder.reset()
+                delay.discontinuity()
+                budget.stats.count(AudioReceiveCounter.SEQUENCE_SKIPPED, nextKey - current)
+                expected = nextKey
+                missingRun = 0
+                concealedSamples = 0
+                fadeRemaining = ReceivePolicy.FADE_SAMPLES
+            }
+        }
+        if (!started) {
+            firstArrival = pending.values.minOfOrNull { it.arrivalNanos }
+        }
     }
 
     private fun reset(clearSequence: Boolean) {

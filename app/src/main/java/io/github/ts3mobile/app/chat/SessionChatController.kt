@@ -1,7 +1,10 @@
 package io.github.ts3mobile.app.chat
 
+import io.github.ts3mobile.protocol.InvalidIdentityMaterial
+import io.github.ts3mobile.protocol.ServerConfig
 import io.github.ts3mobile.protocol.TextSendOutcome
 import io.github.ts3mobile.protocol.TextTarget
+import io.github.ts3mobile.protocol.Ts3IdentityCodec
 import io.github.ts3mobile.protocol.Ts3Participant
 import io.github.ts3mobile.protocol.Ts3PokeEvent
 import io.github.ts3mobile.protocol.Ts3SessionClient
@@ -15,11 +18,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 
 /** Captures a connection before scheduling, never looks up a newer session from IO. */
-class SessionChatController(
+class SessionChatController internal constructor(
     private val scope: CoroutineScope,
     private val store: ChatStore = ChatStore(),
     private val timeoutMs: Long = 5_000,
+    private val history: ChatHistoryController?,
 ) {
+    constructor(scope: CoroutineScope, store: ChatStore = ChatStore(), timeoutMs: Long = 5_000) : this(scope, store, timeoutMs, null)
+
     private val lock = Any()
     private var connection: Connection? = null
     private var sendJob: Job? = null
@@ -39,9 +45,30 @@ class SessionChatController(
         switching: Boolean,
         participants: List<Ts3Participant> = emptyList(),
         isCurrent: () -> Boolean,
+    ) = bindWithHistory(binding, client, switching, participants, null, isCurrent)
+
+    internal fun bindWithHistory(
+        binding: ChatBinding,
+        client: Ts3SessionClient,
+        switching: Boolean,
+        participants: List<Ts3Participant>,
+        account: ChatHistoryAccount?,
+        isCurrent: () -> Boolean,
     ) = synchronized(lock) {
         if (store.bind(binding.scope, binding.attempt, binding, switching, participants)) {
-            connection = Connection(binding, client, isCurrent)
+            connection = Connection(binding, client, account, isCurrent)
+        }
+    }
+
+    internal fun historyAccount(
+        config: ServerConfig,
+        identity: String,
+    ): ChatHistoryAccount? {
+        if (history == null) return null
+        return try {
+            ChatHistoryAccount.parse(config.host, config.port, Ts3IdentityCodec.inspect(identity).uid)
+        } catch (_: InvalidIdentityMaterial) {
+            null
         }
     }
 
@@ -78,8 +105,16 @@ class SessionChatController(
         epoch: Long,
         attempt: Long,
         event: Ts3TextEvent,
-    ) = synchronized(lock) {
-        store.receive(epoch, attempt, event)
+    ) {
+        synchronized(lock) {
+            val ticket = history?.ticket()
+            val receipt = store.acceptIncoming(epoch, attempt, event) ?: return
+            val captured = connection ?: return
+            if (ticket != null && captured.binding.scope == epoch && captured.binding.attempt == attempt && captured.isCurrent()) {
+                val channel = captured.binding.channelId.takeUnless { state.value.switching }
+                archive(captured, ticket, receipt.first, receipt.second, channel)
+            }
+        }
     }
 
     fun updateDraft(body: String) = store.updateDraft(body)
@@ -126,6 +161,7 @@ class SessionChatController(
                 if (!captured.isCurrent()) return false
                 val request = claim(captured.binding) ?: return false
                 val message = request.message
+                val historyTicket = history?.ticket()
                 scope.launch(start = CoroutineStart.LAZY) {
                     val valid = {
                         synchronized(lock) {
@@ -148,7 +184,18 @@ class SessionChatController(
                         } catch (_: Exception) {
                             TextSendOutcome.Unknown
                         }
-                    store.complete(captured.binding, message.id, outcome)
+                    synchronized(lock) {
+                        if (historyTicket != null && outcome == TextSendOutcome.Accepted && valid()) {
+                            archive(
+                                captured,
+                                historyTicket,
+                                request.conversation,
+                                message.copy(outcome = outcome),
+                                captured.binding.channelId,
+                            )
+                        }
+                        store.complete(captured.binding, message.id, outcome)
+                    }
                 }.also { pending ->
                     sendJob = pending
                     pending.invokeOnCompletion { cause ->
@@ -161,5 +208,21 @@ class SessionChatController(
         return true
     }
 
-    private class Connection(val binding: ChatBinding, val client: Ts3SessionClient, val isCurrent: () -> Boolean)
+    private fun archive(
+        connection: Connection,
+        ticket: Long,
+        key: ChatConversationKey,
+        message: ChatMessage,
+        channelId: Int?,
+    ) {
+        val account = connection.account ?: return
+        ChatHistoryRecord.from(account, key, message, channelId)?.let { history?.offer(ticket, it) }
+    }
+
+    private class Connection(
+        val binding: ChatBinding,
+        val client: Ts3SessionClient,
+        val account: ChatHistoryAccount?,
+        val isCurrent: () -> Boolean,
+    )
 }

@@ -23,6 +23,7 @@ internal class MicrophoneCapturePipeline(
         revision: Long,
         routeRevision: Long = revision,
         measureLevel: Boolean = false,
+        encodedTimestamps: MutableList<Long>? = null,
     ): List<ByteArray>? {
         require(pcm.size == 480)
         if (options != previousOptions || revision != previousRevision) {
@@ -55,6 +56,8 @@ internal class MicrophoneCapturePipeline(
         if (offset < opusPcm.size) return null
         offset = 0
         val frames = processor.process(opusPcm, options, measureLevel)
-        return encode?.let { frames.map(it) }.orEmpty()
+        return encode?.let { encoder ->
+            frames.map { frame -> encoder(frame).also { encodedTimestamps?.add(System.nanoTime()) } }
+        }.orEmpty()
     }
 }

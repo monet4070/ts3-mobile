@@ -39,7 +39,7 @@ internal fun ConnectionFields(
         colors = connectionFieldColors(),
         value = form.host,
         onValueChange = onHostChanged,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().guideAnchor(GuideAnchor.SERVER),
         enabled = enabled,
         singleLine = true,
         label = { Text(stringResource(R.string.field_server_address), maxLines = 1, overflow = TextOverflow.Ellipsis) },

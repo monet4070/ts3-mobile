@@ -214,3 +214,12 @@ unknown or preserve prior values. Caller context and the captured socket generat
 are rechecked before queue claim; stale response data is not published into a new
 application session. Default channel configuration is application-side channel
 restore, not a change to identity, password hashing or the handshake wire format.
+
+## Read-only files in 1.3.0
+
+Channel-file handles expire when their channel visit or session ends. Attachment
+references must match the connected virtual server. The adapter reads an exact
+byte limit from the active session peer; file offers do not choose a different
+host. Android owns the save picker, temporary staging and image decoding. There
+are no upload operations. See the [file guide](../docs/USER_GUIDE.md#files-and-server-images)
+and [1.3.0 verification status](../docs/release/CANDIDATE_STATUS_2026-11-25.md).

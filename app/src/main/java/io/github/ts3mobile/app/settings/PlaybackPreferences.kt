@@ -36,7 +36,7 @@ internal class PlaybackPreferences(private val store: DataStore<Preferences>, pr
     }
 
     suspend fun read(): ReceiveDelayProfile {
-        val stored = store.data.first()[profileKey] ?: return ReceiveDelayProfile.BALANCED
+        val stored = store.data.first()[profileKey] ?: return DEFAULT_PROFILE
         return ReceiveDelayProfile.entries.firstOrNull { it.name == stored }
             ?: throw IOException("Unsupported receive delay preference")
     }
@@ -66,7 +66,8 @@ internal class PlaybackPreferences(private val store: DataStore<Preferences>, pr
         }
     }
 
-    private companion object {
-        val profileKey = stringPreferencesKey("receive_delay_profile")
+    companion object {
+        val DEFAULT_PROFILE = ReceiveDelayProfile.STABILITY
+        private val profileKey = stringPreferencesKey("receive_delay_profile")
     }
 }

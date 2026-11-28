@@ -9,6 +9,7 @@ import io.github.ts3mobile.audio.opus.AudioReceiveDiagnostics
 import io.github.ts3mobile.audio.opus.OpusAudioPlayer
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,8 +26,59 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class OfflineAudioDiagnosticsTest {
+    @Test fun retiringServiceDoesNotWaitForAnInFlightWriteAndReplacementHistoryStaysOrdered() =
+        runBlocking {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val directory = context.cacheDir.resolve("journal-order-${System.nanoTime()}").apply { mkdirs() }
+            val file = directory.resolve("events.tsv")
+            val processScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val retiringScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val journal = DiagnosticJournal(file)
+            val blockedWrite = CompletableDeferred<Unit>()
+            val replacementSaved = CompletableDeferred<Unit>()
+            val release = CountDownLatch(1)
+            val firstWriteReturned = AtomicBoolean(false)
+            val writer =
+                SessionDiagnosticWriter(journal, processScope) {
+                    if (blockedWrite.complete(Unit)) {
+                        release.await(10, TimeUnit.SECONDS)
+                        firstWriteReturned.set(true)
+                    }
+                    journal.persist()
+                    if (file.readText().contains("SERVICE_CREATED\t2")) replacementSaved.complete(Unit)
+                }
+            try {
+                val old = SessionDiagnostics(context, retiringScope, writer)
+                old.record(DiagnosticEventKind.SERVICE_CREATED, 1)
+                withTimeout(3_000) { blockedWrite.await() }
+                withContext(Dispatchers.Main) {
+                    old.close()
+                    retiringScope.cancel()
+                    old.record(DiagnosticEventKind.TASK_REMOVED)
+                    old.close()
+                    val replacement = SessionDiagnostics(context, processScope, writer)
+                    replacement.record(DiagnosticEventKind.SERVICE_CREATED, 2)
+                    assertFalse(firstWriteReturned.get())
+                }
+                release.countDown()
+                withTimeout(3_000) { replacementSaved.await() }
+                assertEquals(
+                    listOf("SERVICE_CREATED\t1", "SERVICE_DESTROYED\t0", "SERVICE_CREATED\t2"),
+                    file.readLines().map { it.substringAfter('\t') },
+                )
+            } finally {
+                release.countDown()
+                retiringScope.cancel()
+                processScope.cancel()
+                directory.deleteRecursively()
+            }
+        }
+
     @Test fun checkpointReopensOfflineAndCombinedReportKeepsOldFieldsAndNumericHistory() {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
         val folder = File(base.cacheDir, "offline-audio-${System.nanoTime()}").apply { mkdirs() }
@@ -54,7 +106,8 @@ class OfflineAudioDiagnosticsTest {
                 object : ContextWrapper(base) {
                     override fun getNoBackupFilesDir(): File = folder
                 }
-            val diagnostics = SessionDiagnostics(context, secondScope)
+            val journal = DiagnosticJournal(File(folder, "session-events.tsv"))
+            val diagnostics = SessionDiagnostics(context, secondScope, SessionDiagnosticWriter(journal, secondScope))
             val report = JSONObject(diagnostics.export(DiagnosticsSnapshot(voiceFramesReceived = 42), restarted.export()))
             assertEquals("ts3-mobile-report/v2", report.getString("schema"))
             assertEquals(42L, report.getJSONObject("session").getLong("voiceFramesReceived"))
@@ -85,6 +138,48 @@ class OfflineAudioDiagnosticsTest {
             val onMainThread =
                 withContext(application.audioDiagnosticDispatcher) { Looper.myLooper() == Looper.getMainLooper() }
             assertFalse("The archive read must run outside the main thread", onMainThread)
+        }
+
+    @Test fun twoPlayerGenerationsBeforeRepositoryAttachmentProduceAnExplicitGap() =
+        runBlocking {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val folder = context.cacheDir.resolve("offline-delayed-${System.nanoTime()}").apply { mkdirs() }
+            val processScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val file = File(folder, "audio.tsv")
+            val player = OpusAudioPlayer(context)
+            val loading = CompletableDeferred<AudioDiagnosticRepository>()
+            try {
+                lateinit var adapter: ServiceAudioDiagnostics
+                val attachment =
+                    AudioDiagnosticsAttachment(loading, Dispatchers.Main.immediate, { false }) { repository ->
+                        adapter =
+                            ServiceAudioDiagnostics(
+                                repository, serviceScope, MutableStateFlow(TeamSpeakServiceState()),
+                                MutableStateFlow(DefaultNetworkState()), player,
+                            )
+                    }
+                attachment.start(serviceScope)
+                repeat(2) {
+                    player.start()
+                    player.stop()
+                }
+                val repository = AudioDiagnosticRepository(file, processScope)
+                loading.complete(repository)
+                withTimeout(3_000) { attachment.awaitReady() }
+                val report = JSONObject(adapter.export())
+                assertEquals(1, report.getJSONArray("sessions").length())
+                val events = report.getJSONArray("events")
+                val gap =
+                    (0 until events.length()).map(events::getJSONObject).single { it.getString("kind") == "PLAYBACK_GENERATIONS_MISSED" }
+                assertEquals(1L, gap.getLong("value"))
+                adapter.close()
+            } finally {
+                player.close()
+                serviceScope.cancel()
+                processScope.cancel()
+                folder.deleteRecursively()
+            }
         }
 
     @Test fun productionServiceAdapterRetainsStoppedPlayerWithoutAnyServerMicrophoneOrAudibleOutput() {

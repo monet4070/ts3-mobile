@@ -19,6 +19,7 @@ import io.github.ts3mobile.protocol.ConnectionFailureCategory
 fun UserMessage.resolve(context: Context): String =
     when (this) {
         UserMessage.IdentityMaintenance -> context.getString(R.string.status_identity_maintenance)
+        UserMessage.PreviousSessionBusy -> context.getString(R.string.status_previous_session_busy)
         UserMessage.NotConnected -> context.getString(R.string.status_not_connected)
         UserMessage.SessionExpired -> context.getString(R.string.status_session_expired)
         UserMessage.WaitingForNetwork -> context.getString(R.string.status_waiting_for_network)
@@ -40,10 +41,13 @@ fun UserMessage.resolve(context: Context): String =
             context.getString(R.string.status_reconnect_scheduled, seconds, attempt)
 
         is UserMessage.Reconnecting -> context.getString(R.string.status_reconnecting_attempt, attempt)
+        is UserMessage.HandoffIdentityWait -> context.getString(R.string.status_handoff_identity_wait, seconds)
         UserMessage.ConnectionLimitWait -> context.connectionLimitGuidance()
         is UserMessage.ChannelJoinFailed -> context.getString(R.string.channel_join_failed, cause)
         UserMessage.ChannelTargetChanged -> context.getString(R.string.channel_target_changed)
         is UserMessage.ChannelRestoreFailed -> context.getString(R.string.channel_restore_failed, cause)
+        UserMessage.ChannelMoveNotSubmitted -> context.getString(R.string.channel_move_not_submitted)
+        is UserMessage.ChannelMoveUnconfirmed -> context.getString(R.string.channel_move_unconfirmed)
         UserMessage.MicrophonePermissionForContinuous ->
             context.getString(R.string.microphone_permission_continuous)
 
@@ -75,12 +79,19 @@ private fun Context.connectionLimitGuidance(): String =
 
 /** Names an audio route, appending the platform device name when one is known. */
 fun AudioRouteOption.resolveLabel(context: Context): String {
-    val kindLabel = context.getString(kind.labelId())
+    val kindLabel =
+        context.getString(
+            when {
+                bluetoothCall -> R.string.audio_device_bluetooth_call_option
+                leAudio -> R.string.audio_device_bluetooth_le
+                else -> kind.labelId()
+            },
+        )
     val name = deviceName?.takeIf { it.isNotBlank() && !it.equals(kindLabel, ignoreCase = true) }
     return name?.let { context.getString(R.string.audio_route_with_device, kindLabel, it) } ?: kindLabel
 }
 
-private fun AudioRoutingError.resolve(context: Context): String =
+internal fun AudioRoutingError.resolve(context: Context): String =
     when (kind) {
         AudioRoutingErrorKind.DEVICE_UNAVAILABLE -> context.getString(R.string.audio_route_unavailable)
         AudioRoutingErrorKind.SWITCH_FAILED ->
@@ -91,7 +102,7 @@ private fun AudioRoutingError.resolve(context: Context): String =
         AudioRoutingErrorKind.BLUETOOTH_ROUTE_LOST -> context.getString(R.string.audio_route_bluetooth_lost)
     }
 
-private fun AudioRouteKind.labelId(): Int =
+internal fun AudioRouteKind.labelId(): Int =
     when (this) {
         AudioRouteKind.SYSTEM -> R.string.audio_route_system
         AudioRouteKind.EARPIECE -> R.string.audio_route_earpiece

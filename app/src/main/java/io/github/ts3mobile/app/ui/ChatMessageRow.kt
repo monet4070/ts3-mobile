@@ -46,6 +46,7 @@ import java.util.Date
 internal fun ChatMessageRow(
     message: ChatMessage,
     isPrivate: Boolean = false,
+    attachments: ChatAttachmentActions? = null,
 ) {
     if (message.kind == ChatMessageKind.CHANNEL) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
@@ -107,16 +108,14 @@ internal fun ChatMessageRow(
                                 style = MaterialTheme.typography.labelLarge,
                             )
                         }
-                        Text(
-                            if (message.type == ChatMessageType.POKE && message.body.isEmpty()) {
-                                stringResource(
-                                    R.string.poke_empty_reason,
-                                )
-                            } else {
-                                message.body
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
+                        if (message.type == ChatMessageType.POKE) {
+                            Text(
+                                message.body.ifEmpty { stringResource(R.string.poke_empty_reason) },
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        } else {
+                            ChatRichBody(message.body, message.truncated, attachments)
+                        }
                         if (message.channelId == null && !isPrivate) {
                             Text(stringResource(R.string.chat_unknown_channel), style = MaterialTheme.typography.labelSmall)
                         }

@@ -7,6 +7,22 @@ import com.github.manevolent.ts3j.util.Ts3String
 import java.util.concurrent.atomic.AtomicReference
 
 internal class Ts3jControlCommands(private val commands: Ts3jTextCommands) {
+    fun virtualServerUid(
+        clientId: Int,
+        canSubmit: () -> Boolean,
+    ): VirtualServerUid? {
+        val uid = AtomicReference<VirtualServerUid?>()
+        val outcome =
+            commands.execute(SingleCommand("whoami", ProtocolRole.CLIENT), 1_500, canSubmit) { response ->
+                val row = response.singleOrNull()
+                if (row?.parameters?.firstOrNull { it.name == "client_id" }?.value?.toIntOrNull() == clientId) {
+                    val advertised = row.parameters.firstOrNull { it.name == "virtualserver_unique_identifier" }?.value
+                    uid.set(advertised?.let(VirtualServerUid::parse))
+                }
+            }
+        return uid.get().takeIf { outcome == TextSendOutcome.Accepted && canSubmit() }
+    }
+
     fun updatePresence(
         presence: OwnPresence,
         timeoutMs: Long,

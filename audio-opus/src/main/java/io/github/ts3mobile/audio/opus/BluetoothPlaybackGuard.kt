@@ -6,6 +6,7 @@ internal enum class PlaybackRouteDecision { ALLOW, WAIT_FOR_BLUETOOTH, MUTE }
 internal class BluetoothPlaybackGuard {
     private var routeId = SYSTEM_AUDIO_ROUTE_ID
     private var required = false
+    private var bluetoothCall = false
     private var bluetoothSeen = false
     private var generation = 0L
 
@@ -14,6 +15,13 @@ internal class BluetoothPlaybackGuard {
 
     @Synchronized
     fun expectsBluetooth(): Boolean = required || bluetoothSeen
+
+    @Synchronized
+    fun expectsBluetoothCall(): Boolean = bluetoothCall
+
+    /** Auto system routes and Bluetooth-protected routes must sample live to detect silent transitions. */
+    @Synchronized
+    fun requiresLiveRouteCheck(): Boolean = required || bluetoothSeen || routeId == SYSTEM_AUDIO_ROUTE_ID
 
     @Synchronized
     fun acknowledgeSafetyMute() {
@@ -32,10 +40,12 @@ internal class BluetoothPlaybackGuard {
     fun select(
         routeId: Int,
         requireBluetooth: Boolean,
+        bluetoothCall: Boolean = false,
     ): Boolean {
-        if (this.routeId == routeId && required == requireBluetooth) return false
+        if (this.routeId == routeId && required == requireBluetooth && this.bluetoothCall == bluetoothCall) return false
         this.routeId = routeId
         required = requireBluetooth
+        this.bluetoothCall = bluetoothCall
         bluetoothSeen = false
         generation++
         return true
@@ -46,9 +56,10 @@ internal class BluetoothPlaybackGuard {
         actual: AudioRouteKind?,
         revision: Long = generation,
         timedOut: Boolean = false,
+        actualBluetoothCall: Boolean = false,
     ): PlaybackRouteDecision {
         if (revision != generation) return PlaybackRouteDecision.WAIT_FOR_BLUETOOTH
-        if (actual == AudioRouteKind.BLUETOOTH) {
+        if (actual == AudioRouteKind.BLUETOOTH && (!bluetoothCall || actualBluetoothCall)) {
             if (required || routeId == SYSTEM_AUDIO_ROUTE_ID) bluetoothSeen = true
             return PlaybackRouteDecision.ALLOW
         }

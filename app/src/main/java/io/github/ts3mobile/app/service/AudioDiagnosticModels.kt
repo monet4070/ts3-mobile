@@ -6,6 +6,7 @@ import io.github.ts3mobile.audio.opus.AudioRouteKind
 import io.github.ts3mobile.audio.opus.AudioRoutingErrorKind
 import io.github.ts3mobile.audio.opus.PlaybackStatus
 import io.github.ts3mobile.protocol.ConnectionPhase
+import io.github.ts3mobile.protocol.VoiceTimingWindow
 
 internal enum class AudioDiagnosticEvent {
     STARTED,
@@ -27,6 +28,11 @@ internal enum class AudioDiagnosticEvent {
     OUTPUT_CREATE_SLOW_MS,
     OUTPUT_START_SLOW_MS,
     RECEIVE_DELAY_PROFILE,
+    ACTUAL_OUTPUT_DEVICE,
+    ACTUAL_INPUT_DEVICE,
+    SYSTEM_MICROPHONE_MUTE,
+    FIRST_WRITE_TO_HEAD_US,
+    PLAYBACK_GENERATIONS_MISSED,
 }
 
 /**
@@ -44,6 +50,8 @@ internal fun audioDiagnosticEvent(kind: AudioDiagnosticEventKind): AudioDiagnost
         AudioDiagnosticEventKind.OUTPUT_CREATE_SLOW_MS -> AudioDiagnosticEvent.OUTPUT_CREATE_SLOW_MS
         AudioDiagnosticEventKind.OUTPUT_START_SLOW_MS -> AudioDiagnosticEvent.OUTPUT_START_SLOW_MS
         AudioDiagnosticEventKind.RECEIVE_DELAY_PROFILE -> AudioDiagnosticEvent.RECEIVE_DELAY_PROFILE
+        AudioDiagnosticEventKind.ACTUAL_OUTPUT_DEVICE -> AudioDiagnosticEvent.ACTUAL_OUTPUT_DEVICE
+        AudioDiagnosticEventKind.FIRST_WRITE_TO_HEAD_US -> AudioDiagnosticEvent.FIRST_WRITE_TO_HEAD_US
     }
 
 data class AudioDiagnosticStatus(
@@ -67,6 +75,7 @@ internal data class AudioDiagnosticContext(
     val network: DiagnosticNetwork = DiagnosticNetwork.UNKNOWN,
     val networkGeneration: Long = 0,
     val cpuLockHeld: Boolean = false,
+    val actualDevices: ActualAudioDevices = ActualAudioDevices(),
 )
 
 internal data class AudioDiagnosticSample(
@@ -76,6 +85,7 @@ internal data class AudioDiagnosticSample(
     val session: Long,
     val snapshot: AudioReceiveDiagnostics,
     val context: AudioDiagnosticContext,
+    val voiceTiming: VoiceTimingWindow? = null,
 )
 
 internal data class AudioDiagnosticEntry(

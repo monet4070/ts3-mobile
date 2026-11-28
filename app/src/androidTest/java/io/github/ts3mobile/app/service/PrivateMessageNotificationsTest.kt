@@ -17,10 +17,12 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import java.io.FileInputStream
 
 class PrivateMessageNotificationsTest {
+    @get:Rule val notificationCleanup = NotificationCleanup(PrivateMessageNotifications.NOTIFICATION_ID)
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
     private val manager get() = context.getSystemService(NotificationManager::class.java)
@@ -100,7 +102,8 @@ class PrivateMessageNotificationsTest {
                 NotificationManager.INTERRUPTION_FILTER_NONE -> "none"
                 NotificationManager.INTERRUPTION_FILTER_PRIORITY -> "priority"
                 NotificationManager.INTERRUPTION_FILTER_ALARMS -> "alarms"
-                else -> "all"
+                NotificationManager.INTERRUPTION_FILTER_ALL -> "all"
+                else -> error("Cannot restore the original notification interruption filter: $original")
             }
         val notifications = PrivateMessageNotifications(context)
         try {
@@ -113,6 +116,7 @@ class PrivateMessageNotificationsTest {
         } finally {
             notifications.clear()
             shell("cmd notification set_dnd $restoreMode")
+            await { manager.currentInterruptionFilter == original }
         }
     }
 

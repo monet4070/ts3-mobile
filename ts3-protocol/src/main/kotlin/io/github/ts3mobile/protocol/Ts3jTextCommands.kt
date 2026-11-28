@@ -6,35 +6,14 @@ import com.github.manevolent.ts3j.protocol.ProtocolRole
 import com.github.manevolent.ts3j.protocol.socket.client.LocalTeamspeakClientSocket
 import com.github.manevolent.ts3j.util.Ts3String
 import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
 /** Orders enqueueing only; response waits never own the submission lock. */
 internal class Ts3jTextCommands(
     private val socket: LocalTeamspeakClientSocket,
     private val operation: (() -> Unit) -> Unit,
+    submissionLock: ReentrantLock = ReentrantLock(),
 ) {
-    private val submissionLock = ReentrantLock()
     private val runner = BoundedSessionCommands(socket, operation, submissionLock)
-
-    fun join(
-        channelId: Int,
-        password: String,
-    ) {
-        val response =
-            submissionLock.withLock {
-                val command =
-                    SingleCommand(
-                        "clientmove",
-                        ProtocolRole.CLIENT,
-                        CommandSingleParameter("cid", channelId.toString()),
-                        CommandSingleParameter("clid", socket.clientId.toString()),
-                    )
-                // Preserve pinned joinChannel password hashing and null/empty behavior.
-                command.add(CommandSingleParameter("cpw", com.github.manevolent.ts3j.util.Ts3Crypt.hashPassword(password)))
-                socket.executeCommand(command)
-            }
-        response.complete()
-    }
 
     fun send(
         target: TextTarget,

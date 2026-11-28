@@ -11,6 +11,8 @@ import android.os.Looper
 internal interface AudioRoutePlatform {
     fun routes(): List<AudioRouteOption>
 
+    fun inputRoutes(): List<AudioInputOption>
+
     fun start(
         onDevicesChanged: () -> Unit,
         onBecomingNoisy: () -> Unit,
@@ -18,9 +20,15 @@ internal interface AudioRoutePlatform {
 
     fun isAvailable(routeId: Int): Boolean
 
+    fun selectBluetoothCall(routeId: Int): Boolean
+
+    fun clearBluetoothCall()
+
     fun preferredOutput(routeId: Int): AudioDeviceInfo?
 
     fun preferredInput(routeId: Int): AudioDeviceInfo?
+
+    fun inputDevice(id: Int): AudioDeviceInfo?
 
     fun stop()
 }
@@ -29,6 +37,7 @@ internal interface AudioRoutePlatform {
 internal class AndroidAudioRoutePlatform(context: Context) : AudioRoutePlatform {
     private val context = context.applicationContext
     private val manager = this.context.getSystemService(AudioManager::class.java)
+    private val bluetoothCall = BluetoothCallRoute(manager)
     private val handler = Handler(Looper.getMainLooper())
     private val bluetoothMonitor = BluetoothRouteMonitor(this.context, handler)
     private var registered = false
@@ -53,27 +62,58 @@ internal class AndroidAudioRoutePlatform(context: Context) : AudioRoutePlatform 
     override fun routes(): List<AudioRouteOption> =
         buildList {
             add(AudioRoutingState.SystemRoute)
-            outputs().map { device ->
-                val kind = AudioRouteDevices.routeKindForDeviceType(device.type)
-                val name =
-                    if (kind in setOf(AudioRouteKind.BLUETOOTH, AudioRouteKind.WIRED, AudioRouteKind.USB)) {
-                        device.productName?.toString()?.trim()?.takeIf(String::isNotEmpty)
-                    } else {
-                        null
-                    }
-                AudioRouteOption(device.id, kind, name)
-            }.distinctBy(AudioRouteOption::id)
+            val media =
+                outputs().map { device ->
+                    val kind = AudioRouteDevices.routeKindForDeviceType(device.type)
+                    val name =
+                        if (kind != AudioRouteKind.EARPIECE && kind != AudioRouteKind.SPEAKER) {
+                            device.displayName()
+                        } else {
+                            null
+                        }
+                    AudioRouteOption(device.id, kind, name, AudioRouteDevices.isLeOutput(device.type))
+                }
+            val calls =
+                bluetoothCall.outputs().map { device ->
+                    AudioRouteOption(device.id, AudioRouteKind.BLUETOOTH, device.displayName(), bluetoothCall = true)
+                }
+            (media + calls).distinctBy(AudioRouteOption::id)
                 .sortedWith(compareBy({ AudioRouteDevices.routeOrder(it.kind) }, { it.deviceName.orEmpty() }))
                 .forEach(::add)
         }
 
-    override fun isAvailable(routeId: Int): Boolean = routeId == SYSTEM_AUDIO_ROUTE_ID || preferredOutput(routeId) != null
+    override fun inputRoutes(): List<AudioInputOption> =
+        listOf(AudioInputRouting.Automatic) +
+            inputs().mapNotNull { device ->
+                val kind = AudioRouteDevices.inputKind(device.type) ?: return@mapNotNull null
+                val builtIn = kind == AudioInputKind.BUILTIN
+                AudioInputOption(
+                    device.id,
+                    kind,
+                    device.displayName().takeUnless { builtIn },
+                    if (builtIn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        AudioRouteDevices.builtInMicrophonePosition(device.address)
+                    } else {
+                        null
+                    },
+                )
+            }.distinctBy(AudioInputOption::id).sortedWith(compareBy({ it.kind }, { it.deviceName.orEmpty() }, { it.id }))
+
+    override fun inputDevice(id: Int): AudioDeviceInfo? =
+        inputs().firstOrNull { it.id == id && AudioRouteDevices.inputKind(it.type) != null }
+
+    override fun isAvailable(routeId: Int): Boolean =
+        routeId == SYSTEM_AUDIO_ROUTE_ID || preferredOutput(routeId) != null || bluetoothCall.outputs().any { it.id == routeId }
+
+    override fun selectBluetoothCall(routeId: Int): Boolean = bluetoothCall.select(routeId)
+
+    override fun clearBluetoothCall() = bluetoothCall.clear()
 
     override fun preferredOutput(routeId: Int): AudioDeviceInfo? = outputs().firstOrNull { it.id == routeId }
 
     override fun preferredInput(routeId: Int): AudioDeviceInfo? {
         val output = preferredOutput(routeId) ?: return null
-        val inputs = manager.getDevices(AudioManager.GET_DEVICES_INPUTS).toList()
+        val inputs = inputs()
         if (AudioRouteDevices.routeKindForDeviceType(output.type) == AudioRouteKind.BLUETOOTH) {
             return inputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
         }
@@ -90,14 +130,22 @@ internal class AndroidAudioRoutePlatform(context: Context) : AudioRoutePlatform 
 
     override fun stop() {
         try {
-            bluetoothMonitor.stop()
+            clearBluetoothCall()
         } finally {
-            onDevicesChanged = {}
-            if (registered) manager.unregisterAudioDeviceCallback(callback)
-            registered = false
+            try {
+                bluetoothMonitor.stop()
+            } finally {
+                onDevicesChanged = {}
+                if (registered) manager.unregisterAudioDeviceCallback(callback)
+                registered = false
+            }
         }
     }
 
     private fun outputs(): List<AudioDeviceInfo> =
         manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).filter { AudioRouteDevices.isSelectableMediaOutput(it.type) }
+
+    private fun inputs(): Array<AudioDeviceInfo> = manager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+
+    private fun AudioDeviceInfo.displayName(): String? = productName?.toString()?.trim()?.takeIf(String::isNotEmpty)
 }

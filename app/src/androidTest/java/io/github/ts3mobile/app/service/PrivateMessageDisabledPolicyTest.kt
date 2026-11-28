@@ -2,6 +2,7 @@ package io.github.ts3mobile.app.service
 
 import android.app.NotificationManager
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.ts3mobile.app.ManualInstrumentation
 import io.github.ts3mobile.app.chat.ChatBinding
 import io.github.ts3mobile.app.chat.ChatStore
 import io.github.ts3mobile.protocol.TextTargetMode
@@ -10,10 +11,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.Rule
 import org.junit.Test
 
 /** Opt-in fixture: change OS policy BEFORE starting instrumentation, since revocation kills the app. */
+@ManualInstrumentation
 class PrivateMessageDisabledPolicyTest {
+    @get:Rule val notificationCleanup = NotificationCleanup(PrivateMessageNotifications.NOTIFICATION_ID)
+
     @Test fun disabledOsPolicySuppressesDeliveryWithoutChangingUnread() {
         val policy = InstrumentationRegistry.getArguments().getString("disabledNotificationPolicy")
         assumeTrue("Requires externally prepared app/channel policy fixture", policy == "app" || policy == "channel")

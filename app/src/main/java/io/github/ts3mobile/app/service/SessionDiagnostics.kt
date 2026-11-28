@@ -8,31 +8,18 @@ import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ConnectionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import java.io.File
 
 internal class SessionDiagnostics(
     private val context: Context,
     private val scope: CoroutineScope,
+    private val writer: SessionDiagnosticWriter,
 ) {
-    private val journal = DiagnosticJournal(File(context.noBackupFilesDir, "session-events.tsv"))
-    private val persistenceRequests = Channel<Unit>(Channel.CONFLATED)
-    private val persistenceLifecycle = Any()
-
-    @Volatile
+    private val lifecycle = Any()
     private var closed = false
-    private val persistenceJob =
-        scope.launch {
-            for (request in persistenceRequests) {
-                synchronized(persistenceLifecycle) {
-                    if (!closed) journal.persist()
-                }
-            }
-        }
     private var stateJob: Job? = null
 
     fun record(
@@ -40,9 +27,9 @@ internal class SessionDiagnostics(
         code: Long = 0L,
         timeMs: Long = System.currentTimeMillis(),
     ) {
-        if (closed) return
-        journal.append(kind, code, timeMs)
-        persistenceRequests.trySend(Unit)
+        synchronized(lifecycle) {
+            if (!closed) writer.append(kind, code, timeMs)
+        }
     }
 
     fun start(state: StateFlow<TeamSpeakServiceState>) {
@@ -80,22 +67,21 @@ internal class SessionDiagnostics(
         )
     }
 
+    suspend fun awaitReady() = writer.awaitLoaded()
+
     fun export(
         snapshot: DiagnosticsSnapshot,
         audio: String? = null,
     ): String =
-        "{\"schema\":\"ts3-mobile-report/v2\",\"session\":${snapshot.toRedactedJson()},\"history\":${journal.toRedactedJson()}" +
+        "{\"schema\":\"ts3-mobile-report/v2\",\"session\":${snapshot.toRedactedJson()},\"history\":${writer.toRedactedJson()}" +
             (audio?.let { ",\"audio\":$it" } ?: "") + "}"
 
     fun close() {
         stateJob?.cancel()
-        synchronized(persistenceLifecycle) {
+        synchronized(lifecycle) {
+            if (closed) return
             closed = true
-            journal.append(DiagnosticEventKind.SERVICE_DESTROYED)
-            persistenceRequests.close()
-            persistenceJob.cancel()
-            // Flush before scope cancellation; a closing writer cannot overwrite a newer service's journal.
-            journal.persist()
+            writer.append(DiagnosticEventKind.SERVICE_DESTROYED, 0L, System.currentTimeMillis())
         }
     }
 

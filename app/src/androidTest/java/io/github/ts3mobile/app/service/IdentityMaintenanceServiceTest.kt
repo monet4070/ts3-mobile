@@ -19,10 +19,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
 /** Real foreground-service entry is rejected before any identity read, socket or capture. */
 class IdentityMaintenanceServiceTest {
+    @get:Rule val notificationCleanup = NotificationCleanup(SessionNotifications.NOTIFICATION_ID)
+
     @Test fun maintenanceRejectsForegroundConnectAndStopsTheStartWithoutPostingConnecting() =
         runBlocking {
             val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -52,15 +55,11 @@ class IdentityMaintenanceServiceTest {
                 assertFalse(state.identityReady)
                 assertFalse(state.isCapturing)
                 val notifications = context.getSystemService(NotificationManager::class.java)
-                // stopForeground returns before NotificationManager publishes the removal.
-                withTimeout(5_000) {
-                    while (notifications.activeNotifications.any { it.id == 4103 }) delay(20)
-                }
-                assertFalse(notifications.activeNotifications.any { it.id == 4103 })
+                notifications.awaitFixtureNotificationRemoval(SessionNotifications.NOTIFICATION_ID)
                 // Beyond Android's foreground promotion deadline: stopped start must not crash the process.
                 delay(12_000)
                 assertEquals(ConnectionPhase.DISCONNECTED, binder.state.value.status.phase)
-                assertFalse(notifications.activeNotifications.any { it.id == 4103 })
+                assertFalse(notifications.activeNotifications.any { it.id == SessionNotifications.NOTIFICATION_ID })
             } finally {
                 identities.gate.finishMaintenance(token)
                 if (bound) context.unbindService(connection)

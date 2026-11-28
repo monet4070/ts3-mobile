@@ -109,12 +109,15 @@ class NativeOpusReceiveTest {
                 pipeline ->
             var samples = 0
             fixture.packets.take(lost + 4).forEachIndexed { index, packet ->
-                if (index != lost) pipeline.offer(QueuedFrame(VoiceFrame(1, index, VoiceCodec.OPUS_VOICE, packet, false), 0))
-                pipeline.fillPcm(60_000_000L + index * 20_000_000L)
+                val arrivalNanos = index * 20_000_000L
+                if (index != lost) {
+                    pipeline.offer(QueuedFrame(VoiceFrame(1, index, VoiceCodec.OPUS_VOICE, packet, false), arrivalNanos))
+                }
+                pipeline.fillPcm(arrivalNanos + 60_000_000L)
                 samples += pipeline.readPcm(960).size
             }
-            repeat(3) {
-                pipeline.fillPcm(4_000_000_000)
+            repeat(3) { drainIndex ->
+                pipeline.fillPcm(60_000_000L + (lost + 4 + drainIndex) * 20_000_000L)
                 samples += pipeline.readPcm(960).size
             }
             assertEquals(lost + 3, normal)
@@ -122,6 +125,28 @@ class NativeOpusReceiveTest {
             assertEquals(0, plc)
             assertEquals((lost + 4) * 960, samples)
             assertEquals(1L, budget.stats.fecAttempts.get())
+        }
+    }
+
+    @Test fun pipelineEvictsStaleNativePacketsOlderThanMaxAgeAndResumesWithFreshPacket() {
+        val fixture = fecCases().single { !it.enabled }
+        val budget = ReceiveMediaBudget()
+        TalkerJitterPipeline(budget = budget).use { pipeline ->
+            pipeline.offer(QueuedFrame(VoiceFrame(1, 0, VoiceCodec.OPUS_VOICE, fixture.packets[0], false), 0L))
+            pipeline.offer(QueuedFrame(VoiceFrame(1, 1, VoiceCodec.OPUS_VOICE, fixture.packets[1], false), 20_000_000L))
+            pipeline.fillPcm(60_000_000L)
+            assertEquals(480, pipeline.readPcm(480).size)
+
+            val staleAfterNs = ReceivePolicy.MAX_TALKER_MEDIA_AGE_NANOS + 140_000_000L
+            pipeline.offer(QueuedFrame(VoiceFrame(1, 2, VoiceCodec.OPUS_VOICE, fixture.packets[2], false), 40_000_000L))
+            pipeline.offer(QueuedFrame(VoiceFrame(1, 3, VoiceCodec.OPUS_VOICE, fixture.packets[3], false), staleAfterNs - 20_000_000L))
+            pipeline.fillPcm(staleAfterNs)
+
+            assertEquals(1L, budget.stats.stalePackets.get())
+            assertEquals(1_440L, pipeline.resetDroppedPcmSamples)
+            assertEquals(480, pipeline.readPcm(480).size)
+            assertEquals(480, pipeline.readPcm(480).size)
+            assertEquals(0, pipeline.readPcm(480).size)
         }
     }
 

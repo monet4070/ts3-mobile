@@ -2,7 +2,7 @@
 
 **Status:** Implemented (Steps 1–4 complete; release acceptance recorded separately)
 **Date:** 2026-08-26
-**Last updated:** 2026-11-04
+**Last updated:** 2026-11-24
 
 > **Implementation note (2026-08-26).** Steps 2, 3 and 4 are complete and validated:
 > all three Gradle modules have `dependencyLocking` in `LockMode.STRICT` with committed
@@ -32,6 +32,29 @@ for source/consumer checks. The earlier pending statements below are dated histo
 they do not describe the current Step 1 status. Forking does not remove JitPack's
 service-availability dependency. New protocol/security changes require a new tag,
 reviewed locks, notices and validation, as recorded in THIRD_PARTY_NOTICES.
+
+## 2026-11-24 source and transport check
+
+Upstream `master`, the fork's `master`, and `ts3mobile-1` still point to `db57d60`.
+Upstream merged PR #54 on 2026-01-05 UTC; its code changes concern the TS5/TS6
+server-license handshake path and its test, not broad transport modernization.
+Normal builds still resolve the fork artifact from JitPack. CI also builds the
+fixed source with `tools/build-ts3j-from-source.py`, runs the protocol suite, and
+assembles a separate minified Release APK from the local Maven artifact. An APK
+hash binds the copy taken before the normal build to the identity/INI and Opus
+probes run on API 35 ART. These checks are separate from the default build and
+do not establish live server interoperability or change the default repository.
+
+Keep TS3j behind the current session interface. Prefer a focused, regression-tested
+fork patch over a parallel transport for a localized issue. Revisit the transport
+only for a demonstrated compatibility, security or product requirement that the
+fork cannot meet at reasonable cost. Test pinned candidates against the same
+fixture, official-server and Android minified-build gates before switching.
+
+An ordinary loopback login later exposed a fixed-width encoding defect in the
+existing TS3j handshake. A focused opt-in source candidate and an offline encoder
+probe are recorded in [qualification notes](../testing/TS3J_WIDTH_CANDIDATE_2026-11-24_ZH.md).
+The default JitPack artifact and immutable tag are still unchanged.
 
 ## Context
 

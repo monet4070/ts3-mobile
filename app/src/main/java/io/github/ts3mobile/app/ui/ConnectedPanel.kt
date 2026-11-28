@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import io.github.ts3mobile.app.chat.PokeRecipient
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.protocol.ConnectionPhase
+import io.github.ts3mobile.protocol.ServerImages
 import io.github.ts3mobile.protocol.TextTarget
 import io.github.ts3mobile.protocol.Ts3Participant
 import io.github.ts3mobile.protocol.boundedText
@@ -62,6 +64,9 @@ internal fun ConnectedContent(
     onChatNotificationConsumed: (String) -> Unit = {},
     onUserNavigation: () -> Unit = {},
     microphoneVolumeShortcut: @Composable () -> Unit = {},
+    openServerImages: ((String) -> ServerImages?)? = null,
+    openChatAttachment: OpenChatAttachment? = null,
+    guideNavigation: GuideNavigation? = null,
 ) {
     ChatSessionState(chat) { conversations ->
         var selectedTab by rememberSaveable { mutableStateOf(SessionTab.CHANNELS) }
@@ -81,6 +86,22 @@ internal fun ConnectedContent(
         val keyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
         val compactHeader = selectedTab == SessionTab.CHAT && LocalConfiguration.current.screenHeightDp < 700
         val recovering = state.status.phase != ConnectionPhase.CONNECTED
+        val chatAttachments =
+            if (!recovering && selectedTab == SessionTab.CHAT && !notificationPicker) {
+                rememberChatAttachmentActions(state, chat.binding, openChatAttachment)
+            } else {
+                null
+            }
+        val imageConnectionToken = state.bookmarkConnection?.token
+        val currentOpenServerImages by rememberUpdatedState(openServerImages)
+        val images =
+            if (!recovering && imageConnectionToken != null && openServerImages != null) {
+                remember(imageConnectionToken, chat.binding?.attempt) {
+                    ServerImagePreviewScope { currentOpenServerImages?.invoke(imageConnectionToken) }
+                }.also { it.Show(state.snapshot) }
+            } else {
+                null
+            }
         var pokeRecipient by remember { mutableStateOf<PokeRecipient?>(null) }
         val openPoke: (Ts3Participant) -> Unit = { participant ->
             onPushToTalkChanged(false)
@@ -113,7 +134,8 @@ internal fun ConnectedContent(
                     notificationSelection = null
                     onPushToTalkChanged(false)
                     selectedTab = it
-                }, chat.totalUnread)
+                    guideNavigation?.onTabSelected?.invoke(it)
+                }, chat.totalUnread, guidedTab = guideNavigation?.route?.tab)
             }
             if (selectedTab == SessionTab.CHANNELS && !recovering) {
                 SectionLabel(stringResource(R.string.channel_gesture_hint), Modifier.padding(horizontal = 20.dp))
@@ -127,7 +149,7 @@ internal fun ConnectedContent(
                                     stringResource(R.string.chat_recovering_lists),
                                 )
                             } else {
-                                ChannelList(state, onJoinChannel, openPoke)
+                                ChannelList(state, onJoinChannel, openPoke, images)
                             }
                         SessionTab.PARTICIPANTS ->
                             if (recovering) {
@@ -138,7 +160,7 @@ internal fun ConnectedContent(
                                     onOpenPrivateChat(it)
                                     onUserNavigation()
                                     selectedTab = SessionTab.CHAT
-                                }, openPoke)
+                                }, openPoke, images)
                             }
                         SessionTab.CHAT ->
                             if (notificationPicker) {
@@ -160,6 +182,7 @@ internal fun ConnectedContent(
                                         onChatConversationSelected(it)
                                     },
                                     onChatConversationClosed,
+                                    chatAttachments,
                                 )
                             }
                     }

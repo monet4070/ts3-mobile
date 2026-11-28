@@ -1,6 +1,7 @@
 package io.github.ts3mobile.app.service
 
 import io.github.ts3mobile.audio.opus.OpusAudioPlayer
+import io.github.ts3mobile.protocol.VoiceTimingWindow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,9 +18,15 @@ internal class ServiceAudioDiagnostics(
     state: MutableStateFlow<TeamSpeakServiceState>,
     network: StateFlow<DefaultNetworkState>,
     player: OpusAudioPlayer,
+    takeVoiceTiming: () -> VoiceTimingWindow? = { null },
 ) : AutoCloseable {
     private val controller =
-        AudioDiagnosticController(repository, player::takeReceiveDiagnostics, { audioDiagnosticContext(state.value, network.value) })
+        AudioDiagnosticController(
+            repository,
+            player::takeReceiveDiagnostics,
+            { audioDiagnosticContext(state.value, network.value) },
+            takeVoiceTiming = takeVoiceTiming,
+        )
 
     init {
         player.setDiagnosticsObserver(controller)
@@ -41,10 +48,7 @@ internal class ServiceAudioDiagnostics(
         return repository.export()
     }
 
-    fun mark(): Boolean {
-        sampleNow()
-        return repository.mark()
-    }
+    fun mark(): Boolean = controller.mark()
 
     override fun close() = controller.serviceStopped()
 }

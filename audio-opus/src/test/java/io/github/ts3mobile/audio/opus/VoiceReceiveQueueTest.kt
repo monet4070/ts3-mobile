@@ -114,6 +114,27 @@ class VoiceReceiveQueueTest {
         assertEquals(960, queue.budget.samples(1))
     }
 
+    @Test fun expiredInputPacketReleasesOnlyItsOwnReservationWithoutInvalidatingTransferredFrames() {
+        val queue = VoiceReceiveQueue({ OpusPacketInfo(960) })
+        assertTrue(queue.offer(queued(1, 0, 0)))
+        val decoded = queue.poll(0)!!
+        assertTrue(decoded.lease!!.valid)
+
+        // Packet 1 enters the queue, expires before playback polls it, and packet 2 arrives stale.
+        assertTrue(queue.offer(queued(1, 1, 0)))
+        assertEquals(1920, queue.budget.samples(1))
+        assertFalse(queue.offer(queued(1, 2, 0), 70 * MS))
+
+        assertTrue("expiring queued input invalidated transferred PCM lease", decoded.lease!!.valid)
+        assertEquals(960, queue.budget.samples(1))
+        assertEquals(2L, queue.budget.stats.stalePackets.get())
+
+        // Subsequent fresh packets for the same talker still preserve the active decoded lease.
+        assertTrue(queue.offer(queued(1, 3, 70 * MS), 70 * MS))
+        assertTrue(decoded.lease!!.valid)
+        assertEquals(1920, queue.budget.samples(1))
+    }
+
     private fun queued(
         client: Int,
         sequence: Int,

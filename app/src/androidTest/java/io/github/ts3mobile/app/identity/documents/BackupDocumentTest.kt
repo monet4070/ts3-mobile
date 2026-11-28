@@ -16,10 +16,11 @@ class BackupDocumentTest {
     @Test fun actualResolverWriteCloseReopenAuthenticatesSyntheticIdentityAndDeniesUnverifiedProvider() =
         runBlocking {
             val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
+            val authority = "${InstrumentationRegistry.getInstrumentation().context.packageName}.backup-documents"
             val material = Ts3IdentityCodec.generate(0)
             val secret = "synthetic provider password".toCharArray()
             for (denyRead in listOf(false, true)) {
-                val uri = Uri.parse("content://io.github.ts3mobile.app.test.backup-documents/${UUID.randomUUID()}?denyRead=$denyRead")
+                val uri = Uri.parse("content://$authority/${UUID.randomUUID()}?denyRead=$denyRead")
                 try {
                     withContext(Dispatchers.IO) {
                         PreparedIdentityBackup.prepare(material, secret).use { prepared ->

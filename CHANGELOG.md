@@ -5,6 +5,43 @@ used milestone naming. After 1.0.0, patch versions are intended for compatible f
 and minor versions for compatible features; Android versionCode increases for
 each distributed update.
 
+## 1.3.0 (versionCode 17)
+
+[English Release Notes](docs/release/1.3.0/RELEASE_NOTES.md) · [中文更新说明](docs/release/1.3.0/RELEASE_NOTES_ZH.md) ·
+[Verification Status & Release Gates / 验收状态](docs/release/CANDIDATE_STATUS_2026-11-25.md)
+
+### Added
+
+- **Connected floating PTT:** Included in standard builds with **Standard** and **Minimal** overlay styles, a compact fixed-height expanded speaker strip (up to three active speakers plus `+N`), silent notification recall, and optional **Auto-show when leaving the app** (Home or Back on the main screen on Android 12+, off by default, never starts recording). Hold mode transmits while pressed; other modes display live microphone state. The local-only recorder lab remains Debug-only.
+- **Read-only channel files, chat attachments, and server images:** Browse channel files and explicitly download files or supported same-server chat attachments (20 MiB per-file limit, length-verified before saving via Android's file picker). Tap an available avatar in the Users list or a displayed custom channel icon to preview it; channel member rows keep their voice indicators. No uploads, automatic downloads, or cross-server retrieval.
+- **Opt-in local chat history and BBCode formatting:** Off-by-default bounded encrypted archive (newest 7 days, max 500 messages / 512 KiB encoded total) for eligible new text messages, browsable and deletable offline per identity. Chat renders basic TeamSpeak BBCode, confirms external link destinations before opening, and preserves raw text on copy.
+- **Bookmark credential isolation and offline channel lists:** Editing a bookmark's host or port clears saved passwords and the old default channel from the draft; editing only the default channel clears only its password. Unchanged bookmarks and the independent connection form are not modified. Added optional offline channel list saving (up to 100 channels per endpoint, max 6 endpoints) under bookmark More settings.
+- **On-demand feature help:** Added **Settings → Help and about → Feature help** with offline guides and in-app control highlights; no tutorial opens automatically on launch.
+- **Separate input/output audio devices and Bluetooth headset microphone options:** Added **Settings → Input and output devices** to choose physical microphones (with built-in position labels and duplicate numbering, without raw addresses) separately from playback devices, including independent **Bluetooth LE Audio** input/output when supported and an explicit, non-persisted **Bluetooth call (use headset microphone)** output option for classic SCO headsets (never auto-selected; releases call mode on switch-back, disconnect, or output failure). Losing an explicit microphone returns to automatic input; Bluetooth output loss retains safety muting.
+- **Actual audio devices panel and timing diagnostics:** Added a read-only **Audio devices in use** panel (under both Input and output devices and Voice playback, reporting Bluetooth media A2DP, Bluetooth call SCO, and Bluetooth LE Audio) and redacted timing buckets/device categories in offline audio diagnostics (exact UDP timing remains in the separate local TS3j QA build).
+- **Debug/QA desktop INI preview boundary:** Debug and opt-in QA builds can preview and confirm single desktop TS3 `.ini` imports separately from encrypted `.ts3mbak` backups; standard release builds keep desktop INI import disabled by default.
+
+### Changed
+
+- **Voice playback default:** Unset installations now default to **Stability first** without overwriting previously saved profiles.
+- **Settings and Identity UI:** Direct **Create encrypted backup** and **Restore from backup** actions on **Identity and backups**; unified switches, choice cards, status readouts, and action layouts across Settings with narrow-screen and large-font reflow.
+- **Safe bookmark connect:** Bookmark **Connect now** will not tear down or replace an active session.
+- **Backup exclusions:** Included playback and update DataStores in Android backup/device-transfer exclusion rules.
+
+### Fixed
+
+- **Wi-Fi ↔ mobile data handoff and clone-limit (`521`) recovery:** Hold the original server session briefly (up to 2 seconds) during unblocked default-network drops and probe it on the new network to continue without reconnecting when possible. Fixed a ts3j initialization race that masked server rejections (including error `521`) as generic interrupts; a confirmed network-switch reconnect hitting `521` now waits 60 seconds and retries once cleanly instead of failing in a fast loop.
+- **Bluetooth and playback safeguards:** Continuously detect unnotified Bluetooth auto-route fallbacks at output boundaries, cleanly retire idle delayed Bluetooth tracks, bound stale-packet eviction to 360 ms, distinguish expired voice from stalled outputs, and move local microphone trial cleanup and diagnostics I/O off the main thread.
+- **Session exit, reconnect, and concurrency hardening:** Preserve user microphone settings and diagnostics across user disconnects; bound exit reclamation and safely recover from stale or failed cleanup without leaving connections stuck; preserve a second disconnect during reconnect handoff; stop obsolete callbacks from interrupting replacement sessions or reopening completed disconnects; ensure capture-release failures still run playback and route cleanup.
+- **Channel, bookmark, download, and notification reliability:** Bound channel subscription and channel move waits without repeating unconfirmed moves; preserve the existing bookmark archive if a save exceeds its size limit; block floating capture while a local microphone trial owns input; keep verified downloads across screen recreation and warn with retry-to-new-destination on potentially incomplete writes; isolate per-operation diagnostic exports; recover only complete committed diagnostic checkpoints, report missed playback generations, and avoid blocking service teardown on disk writes; reconcile final notification actions after rapid updates and prevent retired services from restarting playback.
+- **Chat history clock rollback safety:** Preserve saved chat history across device clock rollbacks, verify writability before retrying, and immediately free queue capacity when clearing the archive.
+- **File transfer and handshake compatibility:** Accept empty, wildcard, and dual-stack multi-address server download offers via offline numeric validation against the active peer address; add bounded retries for recognized handshake unsigned-width errors while keeping pinned `ts3mobile-1`.
+
+### 中文摘要（1.3.0 对比 1.2.0）
+
+- **新增功能**：标准构建内置连接浮窗 PTT（标准／极简样式、紧凑发言栏、通知召回、可选 Android 12+ 退后台自动显示）；新增 **输入与输出设备** 页面支持分别选择麦克风（标注内置位置并编号）与播放设备，支持独立选择 **蓝牙 LE Audio** 输入／输出与手动开启 **蓝牙通话（使用耳机麦克风）**（绝不自动启用或跨会话保存）；支持只读频道文件与同服聊天附件校验后下载（限 20 MiB）及用户头像／频道图标预览；新增默认关闭的本地加密聊天历史（7 天 / 500 条 / 512 KiB 配额）、基础 BBCode 展示与外链核对；收藏支持改址／改频道凭据隔离与离线保存频道列表；新增「设置 → 帮助与关于 → 功能帮助」按需引导；语音播放默认采用稳定优先（不覆盖旧设置），并新增只读「实际使用的音频设备」面板（含蓝牙 A2DP / SCO / LE Audio）与脱敏计时诊断；身份与备份及各项设置完成交互统一与大字号／窄屏适配；桌面 INI 导入在标准正式包中默认关闭。
+- **重点修复与加固**：短暂切网（Wi-Fi ↔ 移动数据）优先探测并保留原服务器会话，修复握手拒绝（含 `521` 同身份限制）被中断掩盖的问题并优化切网重连恢复；加强无回调蓝牙回退防护、空闲延迟音轨回收、360 ms 过期包淘汰及主线程 I/O 解耦；加固会话退出／重连并发与频道切换超时保护，确保主动断开保留麦克风参数与诊断记录，修复聊天历史时钟回拨、验证文件重建保存、收藏超限保旧档、通知最终状态同步与备份排除规则。
+
 ## 1.2.0 — 2026-11-20
 
 - Mix incoming voice with foreground media without taking audio focus or entering

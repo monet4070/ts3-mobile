@@ -50,4 +50,27 @@ class MicrophoneVoiceSourceTest {
         assertTrue(source.tryEnable(source.currentRevision()))
         assertTrue(source.isReady())
     }
+
+    @Test fun authorizationIsRecheckedAfterPollingAndOnlyNonemptyFramesAreCounted() {
+        var authorized = true
+        var payload = byteArrayOf()
+        var duringPoll: () -> Unit = {}
+        var frames = 0
+        val source =
+            MicrophoneVoiceSource(
+                object : EncodedVoiceSource {
+                    override fun isReady() = true
+
+                    override fun pollEncodedFrame() = payload.also { duringPoll() }
+                },
+            )
+        assertTrue(source.tryEnable(source.currentRevision(), { authorized }, { frames++ }))
+        assertEquals(0, source.pollEncodedFrame()?.size)
+        assertEquals(0, frames)
+        payload = byteArrayOf(1)
+        assertEquals(1, source.pollEncodedFrame()?.size)
+        duringPoll = { authorized = false }
+        assertNull(source.pollEncodedFrame())
+        assertEquals(1, frames)
+    }
 }

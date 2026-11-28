@@ -28,7 +28,33 @@ internal object AudioRouteDevices {
         }
 
     fun isSelectableMediaOutput(type: Int): Boolean =
-        type != AudioDeviceInfo.TYPE_BLUETOOTH_SCO && routeKindForDeviceType(type) != AudioRouteKind.OTHER
+        when (type) {
+            AudioDeviceInfo.TYPE_HDMI, AudioDeviceInfo.TYPE_HDMI_ARC, AudioDeviceInfo.TYPE_HDMI_EARC,
+            AudioDeviceInfo.TYPE_DOCK, AudioDeviceInfo.TYPE_AUX_LINE, AudioDeviceInfo.TYPE_LINE_DIGITAL,
+            -> true
+            else -> type != AudioDeviceInfo.TYPE_BLUETOOTH_SCO && routeKindForDeviceType(type) != AudioRouteKind.OTHER
+        }
+
+    fun isLeOutput(type: Int): Boolean = type == AudioDeviceInfo.TYPE_BLE_HEADSET || type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+
+    fun builtInMicrophonePosition(address: String): BuiltInMicrophonePosition? =
+        when (address.trim().lowercase()) {
+            "bottom" -> BuiltInMicrophonePosition.BOTTOM
+            "back" -> BuiltInMicrophonePosition.BACK
+            "front" -> BuiltInMicrophonePosition.FRONT
+            "top" -> BuiltInMicrophonePosition.TOP
+            else -> null
+        }
+
+    fun inputKind(type: Int): AudioInputKind? =
+        when (type) {
+            AudioDeviceInfo.TYPE_BUILTIN_MIC -> AudioInputKind.BUILTIN
+            AudioDeviceInfo.TYPE_WIRED_HEADSET -> AudioInputKind.WIRED
+            AudioDeviceInfo.TYPE_USB_ACCESSORY, AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET -> AudioInputKind.USB
+            AudioDeviceInfo.TYPE_BLE_HEADSET -> AudioInputKind.LE_AUDIO
+            AudioDeviceInfo.TYPE_LINE_ANALOG, AudioDeviceInfo.TYPE_LINE_DIGITAL, AudioDeviceInfo.TYPE_AUX_LINE -> AudioInputKind.OTHER
+            else -> null
+        }
 
     fun routeOrder(kind: AudioRouteKind): Int =
         when (kind) {

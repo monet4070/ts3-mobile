@@ -23,7 +23,11 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.ts3mobile.app.chat.ChatState
+import io.github.ts3mobile.app.documents.DocumentSavesViewModel
 import io.github.ts3mobile.app.invite.ServerInvite
+import io.github.ts3mobile.app.probe.FloatingPttAutoShow
+import io.github.ts3mobile.app.probe.autoShowFloatingPtt
+import io.github.ts3mobile.app.probe.prepareFloatingPttDeparture
 import io.github.ts3mobile.app.service.MicrophoneMode
 import io.github.ts3mobile.app.service.PrivateMessageNotificationIntent
 import io.github.ts3mobile.app.service.PrivateMessageNotifications
@@ -31,12 +35,12 @@ import io.github.ts3mobile.app.service.TeamSpeakService
 import io.github.ts3mobile.app.service.TeamSpeakServiceState
 import io.github.ts3mobile.app.service.allowsOfflineActions
 import io.github.ts3mobile.app.settings.MicrophonePreferenceState
+import io.github.ts3mobile.app.ui.ApplicationDocumentTheme
 import io.github.ts3mobile.app.ui.InviteDialog
 import io.github.ts3mobile.app.ui.MainScreen
 import io.github.ts3mobile.app.ui.MicrophoneTrialDialog
 import io.github.ts3mobile.app.ui.PasteInviteAction
 import io.github.ts3mobile.app.ui.shareInvite
-import io.github.ts3mobile.app.ui.theme.ApplicationTheme
 import io.github.ts3mobile.protocol.ConnectionPhase
 import io.github.ts3mobile.protocol.ServerConfig
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,11 +48,14 @@ import kotlinx.coroutines.flow.emptyFlow
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MainViewModel>()
+    private val documentSaves by viewModels<DocumentSavesViewModel>()
     private var serviceBinder by mutableStateOf<TeamSpeakService.SessionBinder?>(null)
-    private val diagnosticReports = DiagnosticReportActions(this) { serviceBinder?.redactedDiagnosticsJson() }
+    private val diagnosticReports =
+        DiagnosticReportActions(this, { documentSaves.diagnostics }) { serviceBinder?.redactedDiagnosticsJson() }
     private var isBound = false
     private var pushToTalkPressed = false
     private var activityVisible = false
+    private val floatingPttAutoShow = FloatingPttAutoShow(this) { serviceBinder }
 
     private val notificationPermission =
         registerForActivityResult(
@@ -94,10 +101,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        diagnosticReports.restorePicker()
         if (savedInstanceState == null) acceptEntryIntent(intent)
         enableEdgeToEdge()
         setContent {
-            ApplicationTheme {
+            ApplicationDocumentTheme(documentSaves) {
                 val fallbackState = remember { MutableStateFlow(TeamSpeakServiceState()) }
                 val serviceState by (serviceBinder?.state ?: fallbackState)
                     .collectAsStateWithLifecycle()
@@ -147,6 +155,7 @@ class MainActivity : ComponentActivity() {
                     onAudioRouteSelected = { routeId ->
                         serviceBinder?.selectAudioRoute(routeId)
                     },
+                    onAudioInputSelected = { routeId -> serviceBinder?.selectAudioInput(routeId) },
                     onMicrophoneModeChanged = ::setMicrophoneMode,
                     onPushToTalkChanged = ::setPushToTalkPressed,
                     onJoinChannel = { channelId, password ->
@@ -182,12 +191,8 @@ class MainActivity : ComponentActivity() {
                     onBookmarkRemove = viewModel::removeBookmark,
                     onBookmarkSelect = viewModel::applyBookmark,
                     onBookmarkConnect = { entry ->
-                        val phase = serviceBinder?.state?.value?.status?.phase
-                        if (phase == io.github.ts3mobile.protocol.ConnectionPhase.DISCONNECTED ||
-                            phase == io.github.ts3mobile.protocol.ConnectionPhase.ERROR
-                        ) {
-                            viewModel.applyBookmark(entry)
-                            viewModel.submitAndRemember(::requestConnection)
+                        if (serviceBinder?.state?.value?.status?.phase?.allowsOfflineActions == true) {
+                            viewModel.connectBookmark(entry) { requestConnection(it, requireIdle = true) }
                         }
                     },
                     onBookmarkReload = viewModel::reloadBookmarks,
@@ -202,6 +207,7 @@ class MainActivity : ComponentActivity() {
                     onAppearance = { startActivity(Intent(this, io.github.ts3mobile.app.appearance.AppearanceActivity::class.java)) },
                     onOpenRepository = { openProjectRepository(this) },
                     onCheckUpdates = { startActivity(Intent(this, io.github.ts3mobile.app.updates.UpdatesActivity::class.java)) },
+                    featureHelpAvailable = serviceBinder != null && invitePreview == null && chatNotification == null,
                     chatNotification = chatNotification,
                     onChatNotificationConsumed = viewModel.chatNotificationEntry::consumed,
                     onUserNavigation = viewModel.chatNotificationEntry::cancel,
@@ -210,6 +216,17 @@ class MainActivity : ComponentActivity() {
                     onShareServerInvite = serverInvite?.let { { shareInvite(it) } },
                     onShareChannelInvite = channelInvite?.let { { shareInvite(it) } },
                     microphoneTrialDialog = serviceBinder?.let { binder -> { dismiss -> MicrophoneTrialDialog(binder, dismiss) } },
+                    openChannelFiles =
+                        serviceBinder?.takeIf { resources.getBoolean(R.bool.channel_files_probe_enabled) }?.let {
+                                binder ->
+                            binder::currentChannelFiles
+                        },
+                    openServerImages =
+                        serviceBinder?.takeIf { resources.getBoolean(R.bool.channel_files_probe_enabled) }
+                            ?.let { binder -> binder::currentServerImages },
+                    openChatAttachment =
+                        serviceBinder?.takeIf { resources.getBoolean(R.bool.channel_files_probe_enabled) }
+                            ?.let { binder -> binder::openChatAttachment },
                     connectionActions = {
                         PasteInviteAction(
                             enabled =
@@ -280,6 +297,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        prepareFloatingPttDeparture(serviceBinder, leavingMainActivity = true)
+    }
+
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun startActivityForResult(
+        intent: Intent,
+        requestCode: Int,
+        options: Bundle?,
+    ) {
+        val launchIntent = if (autoShowFloatingPtt) Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION) else intent
+        super.startActivityForResult(launchIntent, requestCode, options)
+    }
+
     override fun onPause() {
         activityVisible = false
         serviceBinder?.setAppVisible(false)
@@ -292,6 +324,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         activityVisible = true
         serviceBinder?.setAppVisible(true)
+        floatingPttAutoShow.refreshRootBack()
         launchPendingConnectionIfVisible()
     }
 
@@ -311,8 +344,10 @@ class MainActivity : ComponentActivity() {
     private fun requestConnection(
         config: ServerConfig,
         fromInvite: Boolean = false,
+        requireIdle: Boolean = fromInvite,
     ) {
         if (viewModel.pendingConnection != null) return
+        if (requireIdle && (!activityVisible || serviceBinder?.state?.value?.status?.phase?.allowsOfflineActions != true)) return
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
@@ -320,11 +355,11 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            viewModel.pendingConnection = ConnectionRequest(config, fromInvite)
+            viewModel.pendingConnection = ConnectionRequest(config, fromInvite, requireIdle)
             viewModel.notificationPermissionResolved = false
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            TeamSpeakService.connect(this, config, fromInvite)
+            TeamSpeakService.connect(this, config, fromInvite, requireIdle)
         }
     }
 
@@ -332,10 +367,10 @@ class MainActivity : ComponentActivity() {
         if (!activityVisible || !viewModel.notificationPermissionResolved) return
         val request = viewModel.pendingConnection ?: return
         val phase = serviceBinder?.state?.value?.status?.phase
-        if (request.fromInvite && phase == null) return
+        if (request.requireIdle && phase == null) return
         viewModel.pendingConnection = null
-        if (!request.fromInvite || phase?.allowsOfflineActions == true) {
-            TeamSpeakService.connect(this, request.config, request.fromInvite)
+        if (!request.requireIdle || phase?.allowsOfflineActions == true) {
+            TeamSpeakService.connect(this, request.config, request.fromInvite, request.requireIdle)
         }
     }
 

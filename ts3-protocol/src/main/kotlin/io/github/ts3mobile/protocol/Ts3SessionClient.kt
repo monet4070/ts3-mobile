@@ -26,6 +26,16 @@ interface Ts3SessionClient : AutoCloseable {
         password: String = "",
     )
 
+    /** Check ownership before submitting; an unconfirmed move must not be retried automatically. */
+    fun joinChannelIfCurrent(
+        channelId: Int,
+        password: String,
+        canSubmit: () -> Boolean,
+    ) {
+        if (!canSubmit()) throw ChannelMoveNotSubmittedException()
+        joinChannel(channelId, password)
+    }
+
     /** One attempt only; Unknown never authorizes an automatic retry. */
     suspend fun sendTextMessage(
         target: TextTarget,
@@ -57,6 +67,16 @@ interface Ts3SessionClient : AutoCloseable {
             true
         },
     ): ChannelInfoResult = ChannelInfoResult(ControlOutcome(ControlStatus.UNSUPPORTED))
+
+    /** The returned port is valid only for this visit to the connected client's channel. */
+    fun channelFiles(channelId: Int): ChannelFiles? = null
+
+    fun serverImages(): ServerImages? = null
+
+    fun attachmentDownload(
+        attachment: ChannelAttachment,
+        canSubmit: () -> Boolean = { true },
+    ): AttachmentDownload? = null
 
     fun disconnect(reason: String = DEFAULT_DISCONNECT_REASON)
 

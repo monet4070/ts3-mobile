@@ -1,15 +1,26 @@
 package io.github.ts3mobile.app.service
 
 import io.github.ts3mobile.audio.opus.MicrophoneSettings
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MicrophoneTrialTest {
@@ -75,6 +86,197 @@ class MicrophoneTrialTest {
             retained.releaseFails = false
             assertTrue(trial.stop())
         }
+
+    @Test fun asyncDispatcherOffloadsStartAndCloseAndStopAndAwaitTracksRelease() =
+        runBlocking {
+            val started = CountDownLatch(1)
+            val releaseGate = CountDownLatch(1)
+            val requestStops = AtomicInteger(0)
+            val closes = AtomicInteger(0)
+            val source =
+                object : MicrophoneTrialSource {
+                    override var isCapturing = false
+                    override val isSilenced = false
+
+                    override fun start(settings: MicrophoneSettings) {
+                        isCapturing = true
+                        started.countDown()
+                    }
+
+                    override fun requestStop() {
+                        requestStops.incrementAndGet()
+                    }
+
+                    override fun reading() = MicrophoneTrialState(MicrophoneTrialPhase.RUNNING)
+
+                    override fun close() {
+                        check(releaseGate.await(5, TimeUnit.SECONDS))
+                        closes.incrementAndGet()
+                        isCapturing = false
+                    }
+                }
+            val trial = MicrophoneTrial(this, Dispatchers.IO) { source }
+            trial.start(MicrophoneSettings())
+            assertTrue(started.await(3, TimeUnit.SECONDS))
+            withTimeout(3_000) { trial.state.first { it.phase == MicrophoneTrialPhase.RUNNING } }
+            assertFalse(trial.isInputReleased)
+
+            // Non-blocking stop triggers requestStop immediately and keeps isInputReleased false until close() completes.
+            assertTrue(trial.stop())
+            assertTrue(requestStops.get() >= 1)
+            assertFalse(trial.isInputReleased)
+            assertEquals(0, closes.get())
+
+            releaseGate.countDown()
+            assertTrue(withTimeout(3_000) { trial.stopAndAwait() })
+            assertTrue(trial.isInputReleased)
+            assertEquals(1, closes.get())
+            assertEquals(MicrophoneTrialPhase.IDLE, trial.state.value.phase)
+        }
+
+    @Test fun cancellingAsyncStartBeforeDispatcherRunsReleasesInputAndAllowsRestart() =
+        runTest {
+            val captureDispatcher = StandardTestDispatcher(testScheduler)
+            var createdCount = 0
+            val trial =
+                MicrophoneTrial(backgroundScope, captureDispatcher) {
+                    createdCount++
+                    SampleSource()
+                }
+
+            trial.start(MicrophoneSettings())
+            assertEquals(0, createdCount)
+            assertFalse(trial.isInputReleased)
+
+            assertTrue(trial.stop())
+            assertEquals(0, createdCount)
+            assertTrue("isInputReleased remained stuck false after cancelling unstarted trial", trial.isInputReleased)
+            assertEquals(MicrophoneTrialPhase.IDLE, trial.state.value.phase)
+            assertTrue(trial.stopAndAwait())
+
+            trial.start(MicrophoneSettings())
+            runCurrent()
+            assertEquals(1, createdCount)
+            assertEquals(MicrophoneTrialPhase.RUNNING, trial.state.value.phase)
+            assertTrue(trial.stopAndAwait())
+            assertTrue(trial.isInputReleased)
+        }
+
+    @Test fun concurrentStopsCloseSourceOnceReturnToIdleAndAllowRestart() =
+        runBlocking {
+            repeat(20) { iteration ->
+                val sources = CopyOnWriteArrayList<AtomicSampleSource>()
+                var currentStarted = CountDownLatch(1)
+                var currentCloseGate: CompletableDeferred<Unit>? = null
+                val trial =
+                    MicrophoneTrial(this, Dispatchers.IO) {
+                        val source = AtomicSampleSource(startedLatch = currentStarted, closeGate = currentCloseGate)
+                        sources += source
+                        source
+                    }
+
+                trial.start(MicrophoneSettings())
+                assertTrue("iteration $iteration did not start", currentStarted.await(3, TimeUnit.SECONDS))
+                withTimeout(3_000) { trial.state.first { it.phase == MicrophoneTrialPhase.RUNNING } }
+                val activeSource = sources.single()
+                assertEquals(MicrophoneTrialPhase.RUNNING, trial.state.value.phase)
+
+                val barrier = CountDownLatch(2)
+                val firstStop =
+                    async(Dispatchers.Default) {
+                        barrier.countDown()
+                        assertTrue(barrier.await(3, TimeUnit.SECONDS))
+                        trial.stop()
+                    }
+                val secondStop =
+                    async(Dispatchers.IO) {
+                        barrier.countDown()
+                        assertTrue(barrier.await(3, TimeUnit.SECONDS))
+                        trial.stopAndAwait()
+                    }
+
+                assertTrue(withTimeout(3_000) { firstStop.await() })
+                assertTrue(withTimeout(3_000) { secondStop.await() })
+                assertEquals("iteration $iteration closed source != 1", 1, activeSource.closes.get())
+                assertEquals(MicrophoneTrialPhase.IDLE, trial.state.value.phase)
+                assertTrue(trial.isInputReleased)
+
+                currentStarted = CountDownLatch(1)
+                currentCloseGate = null
+                trial.start(MicrophoneSettings())
+                assertTrue("iteration $iteration failed to restart", currentStarted.await(3, TimeUnit.SECONDS))
+                withTimeout(3_000) { trial.state.first { it.phase == MicrophoneTrialPhase.RUNNING } }
+                assertEquals(2, sources.size)
+                assertEquals(MicrophoneTrialPhase.RUNNING, trial.state.value.phase)
+                assertTrue(withTimeout(3_000) { trial.stopAndAwait() })
+                assertEquals(1, sources.last().closes.get())
+                assertTrue(trial.isInputReleased)
+            }
+        }
+
+    @Test fun concurrentStopsDuringInFlightStartCloseCreatedSourceOnceAndReturnToIdle() =
+        runBlocking {
+            val createEntered = CountDownLatch(1)
+            val allowCreate = CountDownLatch(1)
+            val sources = CopyOnWriteArrayList<AtomicSampleSource>()
+            val trial =
+                MicrophoneTrial(this, Dispatchers.IO) {
+                    if (sources.isEmpty()) {
+                        createEntered.countDown()
+                        check(allowCreate.await(5, TimeUnit.SECONDS))
+                    }
+                    AtomicSampleSource().also { sources += it }
+                }
+
+            trial.start(MicrophoneSettings())
+            assertTrue(createEntered.await(3, TimeUnit.SECONDS))
+
+            assertTrue(trial.stop())
+            val secondStop = async(Dispatchers.Default) { trial.stopAndAwait() }
+            allowCreate.countDown()
+
+            assertTrue(withTimeout(3_000) { secondStop.await() })
+            assertEquals(1, sources.size)
+            assertEquals(1, sources.single().closes.get())
+            assertEquals(MicrophoneTrialPhase.IDLE, trial.state.value.phase)
+            assertTrue(trial.isInputReleased)
+
+            trial.start(MicrophoneSettings())
+            val restarted =
+                withTimeout(3_000) {
+                    while (sources.size < 2 || !sources.last().isCapturing) {
+                        kotlinx.coroutines.delay(5)
+                    }
+                    true
+                }
+            assertTrue(restarted)
+            withTimeout(3_000) { trial.state.first { it.phase == MicrophoneTrialPhase.RUNNING } }
+            assertEquals(MicrophoneTrialPhase.RUNNING, trial.state.value.phase)
+            assertTrue(withTimeout(3_000) { trial.stopAndAwait() })
+            assertEquals(1, sources.last().closes.get())
+        }
+
+    private class AtomicSampleSource(
+        private val startedLatch: CountDownLatch? = null,
+        private val closeGate: CompletableDeferred<Unit>? = null,
+    ) : MicrophoneTrialSource {
+        @Volatile override var isCapturing = false
+        override val isSilenced = false
+        val closes = AtomicInteger(0)
+
+        override fun start(settings: MicrophoneSettings) {
+            isCapturing = true
+            startedLatch?.countDown()
+        }
+
+        override fun reading() = MicrophoneTrialState(MicrophoneTrialPhase.RUNNING)
+
+        override fun close() {
+            closes.incrementAndGet()
+            isCapturing = false
+            closeGate?.let { runBlocking { it.await() } }
+        }
+    }
 
     private class SampleSource(
         private val startError: Exception? = null,
